@@ -1,0 +1,38 @@
+# Node modules
+node_modules/
+
+# Build output
+dist/
+.vite/
+out/
+
+# Vite / bundler cache
+.cache/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+npm-debug.log*
+.yarn-debug.log*
+.yarn-error.log*
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Misc
+.cache/
+.eslintcache
