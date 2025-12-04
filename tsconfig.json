@@ -10,6 +10,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "lib": ["DOM", "ES2022"],
+    "types": ["@webgpu/types"],
     "resolveJsonModule": true,
     "isolatedModules": true
   },
