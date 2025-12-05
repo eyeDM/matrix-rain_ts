@@ -24,28 +24,28 @@
 @group(0) @binding(1) var atlasTex: texture_2d<f32>;
 
 struct InstanceData {
-  offset: vec2<f32>;
-  cellSize: vec2<f32>;
-  uvRect: vec4<f32>;
-  brightness: f32;
-  pad0: vec3<f32>;
-};
+  offset: vec2<f32>,
+  cellSize: vec2<f32>,
+  uvRect: vec4<f32>,
+  brightness: f32,
+  pad0: vec3<f32>
+}
 
 @group(0) @binding(2)
 var<storage, read> instances: array<InstanceData>;
 
 struct Screen {
-  size: vec2<f32>;
-};
+  size: vec2<f32>
+}
 
 @group(0) @binding(3)
 var<uniform> screen: Screen;
 
 struct VertexOut {
-  @builtin(position) Position: vec4<f32>;
-  @location(0) v_uv: vec2<f32>;
-  @location(1) v_brightness: f32;
-};
+  @builtin(position) Position: vec4<f32>,
+  @location(0) v_uv: vec2<f32>,
+  @location(1) v_brightness: f32
+}
 
 @vertex
 fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @builtin(instance_index) instanceIdx: u32) -> VertexOut {

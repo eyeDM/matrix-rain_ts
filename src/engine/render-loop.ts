@@ -8,11 +8,13 @@
  * required each frame by the WebGPU model — we only avoid recreating
  * descriptor objects on the JS heap per-frame.
  */
-export function startRenderLoop(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFormat) {
+export type FrameCallback = (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
+
+export function startRenderLoop(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFormat, frameCallback: FrameCallback) {
   let rafId = 0;
   const queue = device.queue;
 
-  // Reusable clear color (black) and attachment descriptors
+  // Reusable clear color (black) and attachment descriptor template
   const clearColor = { r: 0, g: 0, b: 0, a: 1 };
 
   const colorAttachment = {
@@ -26,16 +28,25 @@ export function startRenderLoop(device: GPUDevice, context: GPUCanvasContext, fo
     colorAttachments: [colorAttachment]
   };
 
+  let lastTime = performance.now();
+
   function frame(): void {
+    const now = performance.now();
+    const dt = (now - lastTime) / 1000.0;
+    lastTime = now;
+
     // Acquire the current texture view from the context (required per-frame)
     const currentView = context.getCurrentTexture().createView();
     colorAttachment.view = currentView;
 
     const commandEncoder = device.createCommandEncoder();
-    const passEncoder = commandEncoder.beginRenderPass(renderPassDesc);
-    passEncoder.end();
 
+    // Let caller encode compute + render using the same encoder to guarantee ordering
+    frameCallback(commandEncoder, currentView, dt);
+
+    // If the frameCallback didn't encode a render pass, we still submit the encoder.
     queue.submit([commandEncoder.finish()]);
+
     rafId = requestAnimationFrame(frame);
   }
 

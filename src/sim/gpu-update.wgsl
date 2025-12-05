@@ -21,11 +21,11 @@ WGSL implementation:
 */
 
 struct Params {
-  dt: f32;
-  rows: u32;
-  cols: u32;
-  pad: u32; // padding to 16 bytes
-};
+  dt: f32,
+  rows: u32,
+  cols: u32,
+  pad: u32 // padding to 16 bytes
+}
 
 @group(0) @binding(0)
 var<uniform> params: Params;
