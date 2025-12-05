@@ -110,10 +110,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var len: u32 = lengths[i];
   if (len > MAX_TRAIL) { len = MAX_TRAIL; }
 
-  // choose a glyph index for this column
-  let glyphIdx: u32 = seeds[i] % params.glyphCount;
-
   // Emit entries: head (t==0) downwards; brightness decreases with t
+  // Use a per-sample PRNG derived from the column seed so each sample can
+  // pick a different glyph without modifying the column's persistent seed.
   var t: u32 = 0u;
   loop {
     if (t >= len) { break; }
@@ -125,7 +124,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx: u32 = i * MAX_TRAIL + t;
     instancesOut[idx].offset = vec2<f32>(f32(i) * params.cellWidth, f32(rowPos) * params.cellHeight);
     instancesOut[idx].cellSize = vec2<f32>(params.cellWidth, params.cellHeight);
+
+    // Per-sample PRNG: mix column seed with sample index, run one LCG step
+    var s: u32 = seeds[i] + t * 747796405u;
+    s = s * LCG_A + LCG_C;
+    let glyphIdx: u32 = s % params.glyphCount;
     instancesOut[idx].uvRect = glyphUVs[glyphIdx];
+
     // brightness: 1.0 for head, decreasing to ~0 for tail
     instancesOut[idx].brightness = 1.0 - (f32(t) / f32(max(1u, len - 1u)));
     // pad left unchanged

@@ -69,6 +69,7 @@ Copilot must strictly follow this structure:
 
 ```
 matrix-rain_ts/
+├─ README.md
 ├─ index.html
 ├─ package.json
 ├─ tsconfig.json
