@@ -16,7 +16,7 @@ export type StreamBuffers = {
  * Create and initialize storage buffers for the compute simulation.
  * This is an init-time operation only; no per-frame allocations are performed here.
  */
-export function createStreamBuffers(device: GPUDevice, cols: number, rows: number): StreamBuffers {
+export function createStreamBuffers(device: GPUDevice, cols: number, rows: number, glyphCount: number, cellWidth: number, cellHeight: number): StreamBuffers {
   // Initialize CPU-side arrays
   const heads = new Float32Array(cols);
   const speeds = new Float32Array(cols);
@@ -58,20 +58,23 @@ export function createStreamBuffers(device: GPUDevice, cols: number, rows: numbe
   const seedsBuf = createMappedBuffer(seeds, GPUBufferUsage.STORAGE);
   const columnsBuf = createMappedBuffer(columns, GPUBufferUsage.STORAGE);
 
-  // Uniform params buffer: [dt: f32, rows: u32, cols: u32, pad: u32] -> 16 bytes
+  // Uniform params buffer layout (32 bytes):
+  // [dt: f32, rows: u32, cols: u32, glyphCount: u32, cellWidth: f32, cellHeight: f32, pad0: vec2<f32>]
   const paramsBuf = device.createBuffer({
-    size: 16,
+    size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
   });
 
-  // Initialize params with dt=0, rows, cols
-  const initParams = new ArrayBuffer(16);
-  const f32 = new Float32Array(initParams);
-  const u32 = new Uint32Array(initParams);
-  f32[0] = 0.0;      // dt
-  u32[1] = rows;     // rows (shares bytes with f32[1])
-  u32[2] = cols;     // cols
-  u32[3] = 0;        // padding
+  const initParams = new ArrayBuffer(32);
+  const f32v = new Float32Array(initParams);
+  const u32v = new Uint32Array(initParams);
+  f32v[0] = 0.0;        // dt
+  u32v[1] = rows;
+  u32v[2] = cols;
+  u32v[3] = glyphCount;
+  f32v[4] = cellWidth;
+  f32v[5] = cellHeight;
+  // pad left zeroed
   device.queue.writeBuffer(paramsBuf, 0, initParams);
 
   return {
@@ -90,13 +93,15 @@ export function createStreamBuffers(device: GPUDevice, cols: number, rows: numbe
  * Update the uniform params buffer with a new delta-time.
  * Call each frame before dispatching the compute pass to pass `dt`.
  */
-export function updateParams(queue: GPUQueue, paramsBuffer: GPUBuffer, dt: number, rows: number, cols: number) {
-  const buf = new ArrayBuffer(16);
+export function updateParams(queue: GPUQueue, paramsBuffer: GPUBuffer, dt: number, rows: number, cols: number, glyphCount: number, cellWidth: number, cellHeight: number) {
+  const buf = new ArrayBuffer(32);
   const f32 = new Float32Array(buf);
   const u32 = new Uint32Array(buf);
   f32[0] = dt;
   u32[1] = rows;
   u32[2] = cols;
-  u32[3] = 0;
+  u32[3] = glyphCount;
+  f32[4] = cellWidth;
+  f32[5] = cellHeight;
   queue.writeBuffer(paramsBuffer, 0, buf);
 }

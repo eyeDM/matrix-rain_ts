@@ -33,13 +33,63 @@ export async function bootstrap(): Promise<void> {
     const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
     const atlas = await createGlyphAtlas(device, glyphs, { font: '28px monospace', padding: 6 });
 
+    // Extract cell size from atlas (assume uniform cell size)
+    const firstIter = atlas.glyphMap.values().next();
+    if (firstIter.done) throw new Error('Atlas glyphMap is empty');
+    const first = firstIter.value;
+    const cellW = first.width;
+    const cellH = first.height;
+
     // Create stream buffers for simulation (Stage 4): choose cols/rows conservatively
     const cols = 128;
     const rows = 64;
-    const streams = createStreamBuffers(device, cols, rows);
+    const streams = createStreamBuffers(device, cols, rows, glyphs.length, cellW, cellH);
+
+    // Create glyph UV buffer (array of vec4<u32> normalized UV rects) in glyph order
+    const glyphCount = glyphs.length;
+    const glyphUVData = new Float32Array(glyphCount * 4);
+    for (let i = 0; i < glyphCount; i++) {
+      const uv = atlas.glyphMap.get(glyphs[i])!;
+      glyphUVData[i * 4 + 0] = uv.u0;
+      glyphUVData[i * 4 + 1] = uv.v0;
+      glyphUVData[i * 4 + 2] = uv.u1;
+      glyphUVData[i * 4 + 3] = uv.v1;
+    }
+
+    const glyphUVsBuffer = device.createBuffer({
+      size: glyphUVData.byteLength,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    });
+    device.queue.writeBuffer(glyphUVsBuffer, 0, glyphUVData.buffer);
+
+    // Instances buffer: one instance per column (head instance)
+    const instanceSize = 32; // bytes (matches InstanceOut struct in WGSL)
+    const instancesBuffer = device.createBuffer({
+      size: cols * instanceSize,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    });
 
     // Create renderer (loads compute shader and prepares pipelines)
-    const renderer = await createRenderer(device, cols, rows, streams.params, streams.heads, streams.speeds, streams.lengths, streams.seeds, streams.columns);
+    const renderer = await createRenderer(
+      device,
+      cols,
+      rows,
+      streams.params,
+      streams.heads,
+      streams.speeds,
+      streams.lengths,
+      streams.seeds,
+      streams.columns,
+      glyphUVsBuffer,
+      instancesBuffer,
+      glyphCount,
+      cellW,
+      cellH,
+      atlas.texture,
+      atlas.sampler,
+      canvasEl,
+      format
+    );
 
     // Start render loop that calls renderer.encodeFrame each frame
     const stop = startRenderLoop(device, context, format, (encoder, currentView, dt) => {

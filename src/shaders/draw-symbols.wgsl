@@ -69,7 +69,7 @@ fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @builtin(ins
   let uv11 = inst.uvRect.zw;
   out.v_uv = mix(uv00, uv11, uv);
 
-  out.v_brightness = inst.brightness;
+  out.v_brightness = 1.0;
 
   return out;
 }
@@ -82,9 +82,7 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
   // Use sampled luminance (assuming glyphs are white) as intensity
   let intensity = sample.r;
 
-  // Green-only output, scale by instance brightness
-  let g = intensity * in.v_brightness;
-
-  // Output alpha multiplied by brightness for smooth edges
-  return vec4<f32>(0.0, g, 0.0, sample.a * in.v_brightness);
+  // Green-only output
+  let g = intensity;
+  return vec4<f32>(0.0, g, 0.0, sample.a);
 }

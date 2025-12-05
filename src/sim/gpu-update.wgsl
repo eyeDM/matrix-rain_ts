@@ -24,7 +24,10 @@ struct Params {
   dt: f32,
   rows: u32,
   cols: u32,
-  pad: u32 // padding to 16 bytes
+  glyphCount: u32,
+  cellWidth: f32,
+  cellHeight: f32,
+  pad0: vec2<f32>
 }
 
 @group(0) @binding(0)
@@ -44,6 +47,19 @@ var<storage, read_write> seeds: array<u32>;
 
 @group(0) @binding(5)
 var<storage, read> columns: array<u32>;
+
+// Glyph UV lookup table: one vec4<u32> per glyph: u0, v0, u1, v1 (normalized)
+@group(0) @binding(6)
+var<storage, read> glyphUVs: array<vec4<f32>>;
+
+struct InstanceOut {
+  offset: vec2<f32>,
+  cellSize: vec2<f32>,
+  uvRect: vec4<f32>
+}
+
+@group(0) @binding(7)
+var<storage, read_write> instancesOut: array<InstanceOut>;
 
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
@@ -81,4 +97,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   heads[i] = head;
+
+  // Emit a simple instance representing the column head so the render pipeline
+  // can directly sample the atlas. instancesOut has length == params.cols.
+  // offset.x = column * cellWidth, offset.y = head * cellHeight
+  instancesOut[i].offset = vec2<f32>(f32(i) * params.cellWidth, head * params.cellHeight);
+  instancesOut[i].cellSize = vec2<f32>(params.cellWidth, params.cellHeight);
+  let glyphIdx: u32 = seeds[i] % params.glyphCount;
+  instancesOut[i].uvRect = glyphUVs[glyphIdx];
 }
