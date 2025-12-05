@@ -68,22 +68,32 @@ You **must**:
 Copilot must strictly follow this structure:
 
 ```
-src/
-├─ main.ts
-├─ boot/
-│  └─ webgpu-init.ts
-├─ engine/
-│  ├─ render-loop.ts
-│  ├─ renderer.ts
-│  └─ resources.ts
-├─ sim/
-│  ├─ streams.ts
-│  └─ gpu-update.wgsl
-├─ shaders/
-│  └─ draw-symbols.wgsl
-└─ util/
-   ├─ dpi.ts
-   └─ perf.ts
+matrix-rain_ts/
+├─ index.html
+├─ package.json
+├─ tsconfig.json
+├─ vite.config.ts
+├─ public/
+│  └─ favicon.ico
+├─ src/
+│  ├─ main.ts                 // bootstrap, feature-detect WebGPU, entrypoint
+│  ├─ boot/
+│  │  └─ webgpu-init.ts       // initialization of device, swapChain, format, canvas resize
+│  ├─ engine/
+│  │  ├─ render-loop.ts       // requestAnimationFrame loop + GPU timing hooks
+│  │  ├─ renderer.ts          // high level render calls / submit
+│  │  └─ resources.ts         // loading fonts/atlases/textures
+│  ├─ sim/
+│  │  ├─ streams.ts           // CPU-side: generating initial buffers (minimal)
+│  │  └─ gpu-update.wgsl      // WGSL compute shader: update stream indices/offsets
+│  ├─ shaders/
+│  │  └─ draw-symbols.wgsl    // vertex/fragment for rendering characters (sprite atlas)
+│  └─ util/
+│     ├─ dpi.ts
+│     └─ perf.ts
+├─ .eslintrc.cjs
+└─ .github/
+   └─ workflows/ci.yml
 ```
 
 ---
