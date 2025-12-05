@@ -2,6 +2,7 @@ import { createStreamBuffers, updateParams } from '../sim/streams';
 
 export type Renderer = {
   encodeFrame: (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
+  destroy: () => void;
 };
 
 /**
@@ -185,5 +186,16 @@ export async function createRenderer(
     rpass.end();
   }
 
-  return { encodeFrame };
+  function destroy() {
+    try {
+      vertexBuffer.destroy();
+    } catch (e) {
+      // ignore if destroy not supported
+    }
+    try {
+      screenBuffer.destroy();
+    } catch (e) {}
+  }
+
+  return { encodeFrame, destroy };
 }

@@ -11,7 +11,13 @@ export type WebGPUInitResult = {
  * @param canvas - HTMLCanvasElement to attach the WebGPU context to.
  * @returns device, context and preferred format.
  */
-export async function initWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUInitResult> {
+export type WebGPUInitExtended = WebGPUInitResult & {
+  // Call to (re)configure canvas size and reconfigure the context
+  configureCanvas: () => void;
+  canvas: HTMLCanvasElement;
+};
+
+export async function initWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUInitExtended> {
   if (!('gpu' in navigator)) {
     throw new Error('WebGPU not supported in this browser (navigator.gpu missing). Use Firefox 145+ or Chrome with WebGPU enabled.');
   }
@@ -32,21 +38,22 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUInitR
 
   const format = navigator.gpu.getPreferredCanvasFormat();
 
-  // HiDPI support: ensure canvas backing buffer matches CSS size * devicePixelRatio.
-  const dpr = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-  const height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
+  // Helper to size the canvas backing buffer for HiDPI and reconfigure the context.
+  function configureCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+    const height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    // Reconfigure the context. Calling configure on resize is safe and recommended.
+    context!.configure({ device, format, alphaMode: 'opaque' });
   }
 
-  // Configure the context (swap chain) for rendering.
-  context.configure({
-    device,
-    format,
-    alphaMode: 'opaque'
-  });
+  // Initial configuration
+  configureCanvas();
 
-  return { device, context, format };
+  return { device, context, format, configureCanvas, canvas };
 }
