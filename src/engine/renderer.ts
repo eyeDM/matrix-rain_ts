@@ -1,4 +1,4 @@
-import { createStreamBuffers, updateParams } from '../sim/streams';
+import { updateParams } from '../sim/streams';
 
 export type Renderer = {
   encodeFrame: (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
@@ -16,6 +16,7 @@ export async function createRenderer(
   cols: number,
   rows: number,
   paramsBuffer: GPUBuffer,
+  paramsStaging: ArrayBuffer,
   heads: GPUBuffer,
   speeds: GPUBuffer,
   lengths: GPUBuffer,
@@ -23,6 +24,7 @@ export async function createRenderer(
   columns: GPUBuffer,
   glyphUVsBuffer: GPUBuffer,
   instancesBuffer: GPUBuffer,
+  instanceCount: number,
   glyphCount: number,
   cellWidth: number,
   cellHeight: number
@@ -101,6 +103,7 @@ export async function createRenderer(
 
   // Screen uniform buffer (vec2<f32>), align to 16 bytes
   const screenBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const screenStaging = new Float32Array(4); // reuse per-frame
 
   const renderBindGroupLayout = device.createBindGroupLayout({
     entries: [
@@ -147,9 +150,21 @@ export async function createRenderer(
     ]
   });
 
+  // Pre-allocated render pass descriptor templates to avoid per-frame allocations.
+  const colorAttachmentTemplate: GPURenderPassColorAttachment = {
+    view: {} as GPUTextureView,
+    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+    loadOp: 'clear',
+    storeOp: 'store'
+  };
+
+  const renderPassDescTemplate: GPURenderPassDescriptor = {
+    colorAttachments: [colorAttachmentTemplate]
+  };
+
   function encodeFrame(encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) {
-    // Update params buffer with dt, rows, cols, glyphCount and cell sizes
-    updateParams(device.queue, paramsBuffer, dt, rows, cols, glyphCount, cellWidth, cellHeight);
+    // Update params buffer with dt, rows, cols, glyphCount and cell sizes using preallocated staging
+    updateParams(device.queue, paramsBuffer, paramsStaging, dt, rows, cols, glyphCount, cellWidth, cellHeight);
 
     // Compute pass
     const cpass = encoder.beginComputePass();
@@ -159,30 +174,23 @@ export async function createRenderer(
     cpass.end();
 
     // Render pass
-    const colorAttachment: GPURenderPassColorAttachment = {
-      view: currentView,
-      clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-      loadOp: 'clear',
-      storeOp: 'store'
-    };
+    // Reuse color attachment descriptor to avoid allocations
+    const colorAttachment = colorAttachmentTemplate;
+    colorAttachment.view = currentView;
 
-    const rpassDesc: GPURenderPassDescriptor = { colorAttachments: [colorAttachment] };
-    const rpass = encoder.beginRenderPass(rpassDesc);
+    const rpass = encoder.beginRenderPass(renderPassDescTemplate);
 
-    // Update screen uniform
-    // screen: vec2<f32> -> write canvas size (pixels)
-    // We cannot access the canvas size from here; caller should update screenBuffer via device.queue prior to frame
-    // write current screen size into screenBuffer
-    const screenBuf = new Float32Array([canvasEl.width, canvasEl.height]);
-    device.queue.writeBuffer(screenBuffer, 0, screenBuf.buffer);
+    // Update screen uniform using staging buffer to avoid allocation
+    screenStaging[0] = canvasEl.width;
+    screenStaging[1] = canvasEl.height;
+    // write entire backing buffer (16 bytes)
+    device.queue.writeBuffer(screenBuffer, 0, screenStaging.buffer);
 
     rpass.setPipeline(renderPipeline);
-    // bind group 0 reserved for compute; render uses bind group 0 as its own group in this pipeline layout
-    // Set vertex buffer and draw instanced (one instance per column)
     rpass.setVertexBuffer(0, vertexBuffer);
     rpass.setBindGroup(0, renderBindGroup);
-    // The render bind group must be provided externally; we expect caller to bind it in a future patch
-    rpass.draw(6, cols, 0, 0);
+    // draw all emitted instances (cols * MAX_TRAIL)
+    rpass.draw(6, instanceCount, 0, 0);
     rpass.end();
   }
 

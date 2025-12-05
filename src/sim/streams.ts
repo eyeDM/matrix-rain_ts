@@ -10,6 +10,7 @@ export type StreamBuffers = {
   seeds: GPUBuffer;   // array<u32> length = cols
   columns: GPUBuffer; // array<u32> length = cols (optional index buffer)
   params: GPUBuffer;  // uniform buffer containing dt, rows, cols
+  paramsStaging: ArrayBuffer; // preallocated staging buffer for params (reuse to avoid per-frame alloc)
 };
 
 /**
@@ -85,7 +86,8 @@ export function createStreamBuffers(device: GPUDevice, cols: number, rows: numbe
     lengths: lengthsBuf,
     seeds: seedsBuf,
     columns: columnsBuf,
-    params: paramsBuf
+    params: paramsBuf,
+    paramsStaging: initParams
   };
 }
 
@@ -93,15 +95,15 @@ export function createStreamBuffers(device: GPUDevice, cols: number, rows: numbe
  * Update the uniform params buffer with a new delta-time.
  * Call each frame before dispatching the compute pass to pass `dt`.
  */
-export function updateParams(queue: GPUQueue, paramsBuffer: GPUBuffer, dt: number, rows: number, cols: number, glyphCount: number, cellWidth: number, cellHeight: number) {
-  const buf = new ArrayBuffer(32);
-  const f32 = new Float32Array(buf);
-  const u32 = new Uint32Array(buf);
+export function updateParams(queue: GPUQueue, paramsBuffer: GPUBuffer, staging: ArrayBuffer, dt: number, rows: number, cols: number, glyphCount: number, cellWidth: number, cellHeight: number) {
+  // Reuse provided staging ArrayBuffer to avoid per-frame allocations
+  const f32 = new Float32Array(staging);
+  const u32 = new Uint32Array(staging);
   f32[0] = dt;
   u32[1] = rows;
   u32[2] = cols;
   u32[3] = glyphCount;
   f32[4] = cellWidth;
   f32[5] = cellHeight;
-  queue.writeBuffer(paramsBuffer, 0, buf);
+  queue.writeBuffer(paramsBuffer, 0, staging);
 }

@@ -27,7 +27,7 @@ struct Params {
   glyphCount: u32,
   cellWidth: f32,
   cellHeight: f32,
-  pad0: vec2<f32>
+  pad0: vec2<f32>,
 }
 
 @group(0) @binding(0)
@@ -55,7 +55,9 @@ var<storage, read> glyphUVs: array<vec4<f32>>;
 struct InstanceOut {
   offset: vec2<f32>,
   cellSize: vec2<f32>,
-  uvRect: vec4<f32>
+  uvRect: vec4<f32>,
+  brightness: f32,
+  pad: vec3<f32>,
 }
 
 @group(0) @binding(7)
@@ -64,6 +66,9 @@ var<storage, read_write> instancesOut: array<InstanceOut>;
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
 const LCG_C: u32 = 1013904223u;
+
+// Maximum trail samples per column. Must match JS `MAX_TRAIL`.
+const MAX_TRAIL: u32 = 32u;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -98,11 +103,32 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   heads[i] = head;
 
-  // Emit a simple instance representing the column head so the render pipeline
-  // can directly sample the atlas. instancesOut has length == params.cols.
-  // offset.x = column * cellWidth, offset.y = head * cellHeight
-  instancesOut[i].offset = vec2<f32>(f32(i) * params.cellWidth, head * params.cellHeight);
-  instancesOut[i].cellSize = vec2<f32>(params.cellWidth, params.cellHeight);
+  // Emit trail instances for this column. We reserve a fixed maximum trail
+  // length per column and write instances at index = i * MAX_TRAIL + t
+  // so the CPU does not need to compact results. This keeps the pipeline
+  // simple and predictable.
+  var len: u32 = lengths[i];
+  if (len > MAX_TRAIL) { len = MAX_TRAIL; }
+
+  // choose a glyph index for this column
   let glyphIdx: u32 = seeds[i] % params.glyphCount;
-  instancesOut[i].uvRect = glyphUVs[glyphIdx];
+
+  // Emit entries: head (t==0) downwards; brightness decreases with t
+  var t: u32 = 0u;
+  loop {
+    if (t >= len) { break; }
+    // compute row position for this trail sample (wrap negative)
+    var rowPos: i32 = i32(floor(head)) - i32(t);
+    if (rowPos < 0) {
+      rowPos = rowPos + i32(params.rows);
+    }
+    let idx: u32 = i * MAX_TRAIL + t;
+    instancesOut[idx].offset = vec2<f32>(f32(i) * params.cellWidth, f32(rowPos) * params.cellHeight);
+    instancesOut[idx].cellSize = vec2<f32>(params.cellWidth, params.cellHeight);
+    instancesOut[idx].uvRect = glyphUVs[glyphIdx];
+    // brightness: 1.0 for head, decreasing to ~0 for tail
+    instancesOut[idx].brightness = 1.0 - (f32(t) / f32(max(1u, len - 1u)));
+    // pad left unchanged
+    t = t + 1u;
+  }
 }

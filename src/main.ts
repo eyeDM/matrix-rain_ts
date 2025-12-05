@@ -62,10 +62,12 @@ export async function bootstrap(): Promise<void> {
     });
     device.queue.writeBuffer(glyphUVsBuffer, 0, glyphUVData.buffer);
 
-    // Instances buffer: one instance per column (head instance)
-    const instanceSize = 32; // bytes (matches InstanceOut struct in WGSL)
+    // Instances buffer: reserve a fixed number of trail samples per column
+    const MAX_TRAIL = 32; // must match compute shader
+    const instanceSize = 48; // bytes (matches InstanceOut struct in WGSL: 48 bytes)
+    const instanceCount = cols * MAX_TRAIL;
     const instancesBuffer = device.createBuffer({
-      size: cols * instanceSize,
+      size: instanceCount * instanceSize,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     });
 
@@ -75,6 +77,7 @@ export async function bootstrap(): Promise<void> {
       cols,
       rows,
       streams.params,
+      streams.paramsStaging,
       streams.heads,
       streams.speeds,
       streams.lengths,
@@ -82,6 +85,7 @@ export async function bootstrap(): Promise<void> {
       streams.columns,
       glyphUVsBuffer,
       instancesBuffer,
+      instanceCount,
       glyphCount,
       cellW,
       cellH,
@@ -135,12 +139,14 @@ export async function bootstrap(): Promise<void> {
 
       // Recreate buffers and renderer with new grid size first
       const newStreams = createStreamBuffers(device, newCols, newRows, glyphCount, cellW, cellH);
-      const newInstances = device.createBuffer({ size: newCols * instanceSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      const newInstanceCount = newCols * MAX_TRAIL;
+      const newInstances = device.createBuffer({ size: newInstanceCount * instanceSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
       const newRenderer = await createRenderer(
         device,
         newCols,
         newRows,
         newStreams.params,
+        newStreams.paramsStaging,
         newStreams.heads,
         newStreams.speeds,
         newStreams.lengths,
@@ -148,6 +154,7 @@ export async function bootstrap(): Promise<void> {
         newStreams.columns,
         glyphUVsBuffer,
         newInstances,
+        newInstanceCount,
         glyphCount,
         cellW,
         cellH,

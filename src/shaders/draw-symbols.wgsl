@@ -69,7 +69,7 @@ fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @builtin(ins
   let uv11 = inst.uvRect.zw;
   out.v_uv = mix(uv00, uv11, uv);
 
-  out.v_brightness = 1.0;
+  out.v_brightness = inst.brightness;
 
   return out;
 }
@@ -80,9 +80,9 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
   let sample = textureSample(atlasTex, atlasSampler, in.v_uv);
 
   // Use sampled luminance (assuming glyphs are white) as intensity
-  let intensity = sample.r;
+  let intensity = sample.r * in.v_brightness;
 
-  // Green-only output
+  // Green-only output modulated by brightness
   let g = intensity;
-  return vec4<f32>(0.0, g, 0.0, sample.a);
+  return vec4<f32>(0.0, g, 0.0, sample.a * in.v_brightness);
 }
