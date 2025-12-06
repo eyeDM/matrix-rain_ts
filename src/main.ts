@@ -6,27 +6,12 @@ import { createStreamBuffers } from './sim/streams';
 import { createRenderer } from './engine/renderer';
 
 const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement | null;
-if (!canvas) {
-  throw new Error('Canvas element #gpu-canvas not found');
-}
+if (!canvas) throw new Error('Canvas element #gpu-canvas not found');
 const canvasEl = canvas; // narrowed non-null reference for inner functions
-
-function resizeCanvasToDisplaySize(): void {
-  const dpr = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.floor(canvasEl.clientWidth * dpr));
-  const height = Math.max(1, Math.floor(canvasEl.clientHeight * dpr));
-  if (canvasEl.width !== width || canvasEl.height !== height) {
-    canvasEl.width = width;
-    canvasEl.height = height;
-  }
-}
-
-resizeCanvasToDisplaySize();
-window.addEventListener('resize', resizeCanvasToDisplaySize);
 
 export async function bootstrap(): Promise<void> {
   try {
-    const { device, context, format } = await initWebGPU(canvasEl);
+    const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
     console.log('WebGPU initialized (Stage 1)', { device, format, context });
 
     // Create a small glyph set and build an atlas (Stage 3 usage)
@@ -107,31 +92,10 @@ export async function bootstrap(): Promise<void> {
       rendererRef.encodeFrame(encoder, currentView, dt);
     });
     (window as any).__stopRenderLoop = stop;
-
-    // Resize handling: reconfigure canvas and, if grid dims changed, recreate simulation buffers and renderer
+    // Resize handling: use `configureCanvas` from init to reconfigure the canvas/context
     const handleResize = async () => {
-      try {
-        // reconfigure canvas backing buffer and swap chain
-        (await import('./boot/webgpu-init')).initWebGPU; // noop to satisfy bundler; we have configure from init result
-        // call configureCanvas from the init result by re-querying init (we have context from earlier)
-        // Actually we kept no reference to configureCanvas; call context.configure via initWebGPU again isn't necessary.
-      } catch (e) {
-        // ignore
-      }
-      // ensure canvas backing buffer matches CSS size
-      const dpr = window.devicePixelRatio || 1;
-      const newWidth = Math.max(1, Math.floor(canvasEl.clientWidth * dpr));
-      const newHeight = Math.max(1, Math.floor(canvasEl.clientHeight * dpr));
-      if (canvasEl.width !== newWidth || canvasEl.height !== newHeight) {
-        canvasEl.width = newWidth;
-        canvasEl.height = newHeight;
-        // reconfigure the context to be safe
-        try {
-          context.configure({ device, format, alphaMode: 'opaque' });
-        } catch (e) {
-          // some browsers may complain; ignore
-        }
-      }
+      // ensure canvas backing buffer matches CSS size and context is reconfigured
+      configureCanvas();
 
       const newCols = Math.max(1, Math.floor(canvasEl.width / cellW));
       const newRows = Math.max(1, Math.floor(canvasEl.height / cellH));
@@ -177,11 +141,7 @@ export async function bootstrap(): Promise<void> {
       currentRows = newRows;
 
       // Wait for GPU to finish submitted work before destroying old buffers to avoid "buffer destroyed" errors
-      try {
-        await device.queue.onSubmittedWorkDone();
-      } catch (e) {
-        // ignore
-      }
+      try { await device.queue.onSubmittedWorkDone(); } catch (e) { /* ignore */ }
 
       // Now safe to destroy old resources
       try { oldStreams.heads.destroy(); } catch (e) {}
@@ -194,7 +154,7 @@ export async function bootstrap(): Promise<void> {
       try { oldRenderer.destroy(); } catch (e) {}
     };
 
-    // Debounced resize listener
+    // Debounced resize listener (single listener)
     let resizeTimer: number | undefined;
     window.addEventListener('resize', () => {
       if (resizeTimer) cancelAnimationFrame(resizeTimer);
