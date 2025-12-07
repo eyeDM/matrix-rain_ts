@@ -1,7 +1,18 @@
 import { updateParams } from '../sim/streams';
 
+export type PassEncoderCompute = {
+  encode: (encoder: GPUCommandEncoder, dt: number) => void;
+  destroy?: () => void;
+};
+
+export type PassEncoderDraw = {
+  encode: (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
+  destroy?: () => void;
+};
+
 export type Renderer = {
-  encodeFrame: (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
+  compute: PassEncoderCompute;
+  draw: PassEncoderDraw;
   destroy: () => void;
 };
 
@@ -166,7 +177,7 @@ export async function createRenderer(
     colorAttachments: [colorAttachmentTemplate]
   };
 
-  function encodeFrame(encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) {
+  function encodeCompute(encoder: GPUCommandEncoder, dt: number) {
     // Update params buffer with dt, rows, cols, glyphCount and cell sizes using preallocated staging
     updateParams(device.queue, paramsBuffer, paramsStaging, dt, rows, cols, glyphCount, cellWidth, cellHeight);
 
@@ -176,7 +187,9 @@ export async function createRenderer(
     cpass.setBindGroup(0, computeBindGroup);
     cpass.dispatchWorkgroups(dispatchX);
     cpass.end();
+  }
 
+  function encodeDraw(encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) {
     // Render pass
     // Reuse color attachment descriptor to avoid allocations
     const colorAttachment = colorAttachmentTemplate;
@@ -234,5 +247,9 @@ export async function createRenderer(
     // Note: do not destroy or null out buffers owned by the caller (paramsBuffer, instancesBuffer, etc.)
   }
 
-  return { encodeFrame, destroy };
+  // Expose compute and draw encoders as separate objects so callers can manage lifetimes independently
+  const computeObj: PassEncoderCompute = { encode: encodeCompute, destroy: undefined };
+  const drawObj: PassEncoderDraw = { encode: encodeDraw, destroy: undefined };
+
+  return { compute: computeObj, draw: drawObj, destroy };
 }

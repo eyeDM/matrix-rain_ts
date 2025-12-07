@@ -4,6 +4,7 @@ import { startRenderLoop } from './engine/render-loop';
 import { createGlyphAtlas } from './engine/resources';
 import { createStreamBuffers } from './sim/streams';
 import { createRenderer } from './engine/renderer';
+import { createRenderGraph } from './engine/render-graph';
 
 const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element #gpu-canvas not found');
@@ -79,16 +80,40 @@ export async function bootstrap(): Promise<void> {
       format
     );
 
-    // Start render loop that calls renderer.encodeFrame each frame
+    // Prepare dynamic references so renderer can be hot-swapped on resize
     let rendererRef = renderer;
     let streamsRef = streams;
     let instancesBufRef = instancesBuffer;
     let currentCols = cols;
     let currentRows = rows;
 
+    // Build a simple render graph and register the renderer as separate compute/draw passes
+    const graph = createRenderGraph();
+
+    // Compute pass (no dependencies)
+    graph.addPass({
+      name: 'compute',
+      kind: 'compute',
+      deps: [],
+      execute: (encoder, _currentView, dt) => {
+        // dynamic reference ensures hot-swap on resize works
+        rendererRef.compute.encode(encoder, dt);
+      }
+    });
+
+    // Draw pass depends on compute
+    graph.addPass({
+      name: 'draw',
+      kind: 'draw',
+      deps: ['compute'],
+      execute: (encoder, currentView, dt) => {
+        rendererRef.draw.encode(encoder, currentView, dt);
+      }
+    });
+
     const stop = startRenderLoop(device, context, format, (encoder, currentView, dt) => {
-      // dynamic reference to allow hot-swap on resize
-      rendererRef.encodeFrame(encoder, currentView, dt);
+      // Execute declarative render graph (ordered by dependencies)
+      graph.execute(encoder, currentView, dt);
     });
     (window as any).__stopRenderLoop = stop;
     // Resize handling: use `configureCanvas` from init to reconfigure the canvas/context
