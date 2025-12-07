@@ -75,7 +75,7 @@ matrix-rain_ts/
 ├─ tsconfig.json
 ├─ vite.config.ts
 ├─ public/
-│  └─ favicon.ico
+│  └─ favicon.svg
 ├─ src/
 │  ├─ main.ts                 // bootstrap, feature-detect WebGPU, entrypoint
 │  ├─ boot/
