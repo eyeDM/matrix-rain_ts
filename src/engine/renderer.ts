@@ -33,8 +33,8 @@ export async function createRenderer(
   canvasEl: HTMLCanvasElement,
   format: GPUTextureFormat
 ): Promise<Renderer> {
-  // Load compute WGSL
-  const computeResp = await fetch('/src/sim/gpu-update.wgsl');
+  // Load compute WGSL (use URL relative to this module so bundlers/dev-servers resolve correctly)
+  const computeResp = await fetch(new URL('../sim/gpu-update.wgsl', import.meta.url).href);
   const computeCode = await computeResp.text();
   const computeModule = device.createShaderModule({ code: computeCode });
 
@@ -78,8 +78,8 @@ export async function createRenderer(
   const dispatchX = Math.ceil(cols / workgroupSize);
 
   // --- Render pipeline setup ---
-  // Load draw shader
-  const drawResp = await fetch('/src/shaders/draw-symbols.wgsl');
+  // Load draw shader (URL relative to this module)
+  const drawResp = await fetch(new URL('../shaders/draw-symbols.wgsl', import.meta.url).href);
   const drawCode = await drawResp.text();
   const drawModule = device.createShaderModule({ code: drawCode });
 
@@ -140,11 +140,13 @@ export async function createRenderer(
   });
 
   // Note: atlas texture & sampler will be bound per-frame via a persistent bind group created in main
+  // Create and reuse a single texture view for the atlas (no need to recreate per-frame)
+  const atlasView = atlasTexture.createView();
   const renderBindGroup = device.createBindGroup({
     layout: renderBindGroupLayout,
     entries: [
       { binding: 0, resource: atlasSampler },
-      { binding: 1, resource: atlasTexture.createView() },
+      { binding: 1, resource: atlasView },
       { binding: 2, resource: { buffer: instancesBuffer } },
       { binding: 3, resource: { buffer: screenBuffer } }
     ]

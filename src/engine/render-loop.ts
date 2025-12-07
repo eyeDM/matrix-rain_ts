@@ -36,16 +36,38 @@ export function startRenderLoop(device: GPUDevice, context: GPUCanvasContext, fo
     lastTime = now;
 
     // Acquire the current texture view from the context (required per-frame)
-    const currentView = context.getCurrentTexture().createView();
+    let currentView: GPUTextureView;
+    try {
+      currentView = context.getCurrentTexture().createView();
+    } catch (e) {
+      // If we fail to acquire a view (platform/browser timing), skip this frame but keep the loop alive
+      // This avoids uncaught exceptions that would stop the RAF loop entirely.
+      // eslint-disable-next-line no-console
+      console.warn('Could not acquire current swap-chain texture, skipping frame', e);
+      rafId = requestAnimationFrame(frame);
+      return;
+    }
+
     colorAttachment.view = currentView;
 
     const commandEncoder = device.createCommandEncoder();
 
-    // Let caller encode compute + render using the same encoder to guarantee ordering
-    frameCallback(commandEncoder, currentView, dt);
+    // Let caller encode compute + render using the same encoder to guarantee ordering.
+    // Protect against exceptions in the frame callback so the RAF loop continues.
+    try {
+      frameCallback(commandEncoder, currentView, dt);
+    } catch (err) {
+      // Log and continue — we still attempt to finish/submit whatever was encoded.
+      // eslint-disable-next-line no-console
+      console.error('Error in frame callback:', err);
+    }
 
-    // If the frameCallback didn't encode a render pass, we still submit the encoder.
-    queue.submit([commandEncoder.finish()]);
+    try {
+      queue.submit([commandEncoder.finish()]);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to submit GPU commands for frame:', err);
+    }
 
     rafId = requestAnimationFrame(frame);
   }
