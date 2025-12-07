@@ -12,7 +12,6 @@ const canvasEl = canvas; // narrowed non-null reference for inner functions
 export async function bootstrap(): Promise<void> {
   try {
     const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
-    console.log('WebGPU initialized (Stage 1)', { device, format, context });
 
     // Create a small glyph set and build an atlas (Stage 3 usage)
     const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
