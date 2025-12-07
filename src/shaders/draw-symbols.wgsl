@@ -67,7 +67,11 @@ fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @builtin(ins
   // Compute atlas UV by interpolating between uvRect corners
   let uv00 = inst.uvRect.xy;
   let uv11 = inst.uvRect.zw;
-  out.v_uv = mix(uv00, uv11, uv);
+  // Interpolate inside the glyph cell and clamp slightly inside the cell to avoid sampling neighbor pixels
+  // Use explicit linear interpolation to avoid relying on `mix` availability
+  let rawUV = uv00 + uv * (uv11 - uv00);
+  let eps = 1e-5;
+  out.v_uv = clamp(rawUV, uv00 + vec2<f32>(eps, eps), uv11 - vec2<f32>(eps, eps));
 
   out.v_brightness = inst.brightness;
 
@@ -78,11 +82,10 @@ fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @builtin(ins
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
   // Sample the atlas (glyphs rendered white on transparent background)
   let sample = textureSample(atlasTex, atlasSampler, in.v_uv);
-
-  // Use sampled luminance (assuming glyphs are white) as intensity
-  let intensity = sample.r * in.v_brightness;
+  // Use sampled alpha as the glyph mask (more robust than sampling R when white-on-transparent)
+  let intensity = sample.a * in.v_brightness;
 
   // Green-only output modulated by brightness
   let g = intensity;
-  return vec4<f32>(0.0, g, 0.0, sample.a * in.v_brightness);
+  return vec4<f32>(0.0, g, 0.0, intensity);
 }
