@@ -104,6 +104,8 @@ export async function createRenderer(
   // Screen uniform buffer (vec2<f32>), align to 16 bytes
   const screenBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const screenStaging = new Float32Array(4); // reuse per-frame
+  let lastScreenW = 0;
+  let lastScreenH = 0;
 
   const renderBindGroupLayout = device.createBindGroupLayout({
     entries: [
@@ -182,11 +184,17 @@ export async function createRenderer(
 
     const rpass = encoder.beginRenderPass(renderPassDescTemplate);
 
-    // Update screen uniform using staging buffer to avoid allocation
-    screenStaging[0] = canvasEl.width;
-    screenStaging[1] = canvasEl.height;
-    // write entire backing buffer (16 bytes)
-    device.queue.writeBuffer(screenBuffer, 0, screenStaging.buffer);
+    // Update screen uniform only when backing size changes to avoid a per-frame buffer upload
+    const bw = canvasEl.width;
+    const bh = canvasEl.height;
+    if (bw !== lastScreenW || bh !== lastScreenH) {
+      lastScreenW = bw;
+      lastScreenH = bh;
+      screenStaging[0] = bw;
+      screenStaging[1] = bh;
+      // write entire backing buffer (16 bytes)
+      device.queue.writeBuffer(screenBuffer, 0, screenStaging.buffer);
+    }
 
     rpass.setPipeline(renderPipeline);
     rpass.setVertexBuffer(0, vertexBuffer);
