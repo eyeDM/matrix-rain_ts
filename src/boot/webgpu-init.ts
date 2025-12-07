@@ -13,7 +13,7 @@ export type WebGPUInitResult = {
  */
 export type WebGPUInitExtended = WebGPUInitResult & {
   // Call to (re)configure canvas size and reconfigure the context
-  configureCanvas: () => void;
+  configureCanvas: () => { width: number; height: number; dpr: number };
   canvas: HTMLCanvasElement;
 };
 
@@ -50,6 +50,8 @@ export async function initWebGPU(canvas: HTMLCanvasElement): Promise<WebGPUInitE
 
     // Reconfigure the context. Calling configure on resize is safe and recommended.
     context!.configure({ device, format, alphaMode: 'opaque' });
+
+    return { width: canvas.width, height: canvas.height, dpr };
   }
 
   // Initial configuration

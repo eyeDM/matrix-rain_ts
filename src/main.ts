@@ -95,10 +95,10 @@ export async function bootstrap(): Promise<void> {
     // Resize handling: use `configureCanvas` from init to reconfigure the canvas/context
     const handleResize = async () => {
       // ensure canvas backing buffer matches CSS size and context is reconfigured
-      configureCanvas();
+      const { width: backingWidth, height: backingHeight } = configureCanvas();
 
-      const newCols = Math.max(1, Math.floor(canvasEl.width / cellW));
-      const newRows = Math.max(1, Math.floor(canvasEl.height / cellH));
+      const newCols = Math.max(1, Math.floor(backingWidth / cellW));
+      const newRows = Math.max(1, Math.floor(backingHeight / cellH));
       if (newCols === currentCols && newRows === currentRows) return;
 
       // Recreate buffers and renderer with new grid size first

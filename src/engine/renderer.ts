@@ -197,14 +197,33 @@ export async function createRenderer(
   }
 
   function destroy() {
+    // Destroy GPU resources created by this renderer where the API supports it.
+    // We only destroy objects that the renderer created itself; buffers passed in by
+    // the caller (like instancesBuffer) must be managed by the caller.
+
     try {
-      vertexBuffer.destroy();
-    } catch (e) {
-      // ignore if destroy not supported
-    }
+      if (vertexBuffer && typeof (vertexBuffer as any).destroy === 'function') (vertexBuffer as any).destroy();
+    } catch (e) { /* ignore */ }
+
     try {
-      screenBuffer.destroy();
-    } catch (e) {}
+      if (screenBuffer && typeof (screenBuffer as any).destroy === 'function') (screenBuffer as any).destroy();
+    } catch (e) { /* ignore */ }
+
+    // Some implementations may expose destroy on shader modules, pipelines or bind groups.
+    // Call destroy only when present to avoid runtime errors in browsers that don't implement it.
+    try { if (typeof (computeModule as any)?.destroy === 'function') (computeModule as any).destroy(); } catch (e) {}
+    try { if (typeof (drawModule as any)?.destroy === 'function') (drawModule as any).destroy(); } catch (e) {}
+
+    try { if (typeof (computePipeline as any)?.destroy === 'function') (computePipeline as any).destroy(); } catch (e) {}
+    try { if (typeof (renderPipeline as any)?.destroy === 'function') (renderPipeline as any).destroy(); } catch (e) {}
+
+    try { if (typeof (computeBindGroup as any)?.destroy === 'function') (computeBindGroup as any).destroy(); } catch (e) {}
+    try { if (typeof (renderBindGroup as any)?.destroy === 'function') (renderBindGroup as any).destroy(); } catch (e) {}
+
+    try { if (typeof (computeBindGroupLayout as any)?.destroy === 'function') (computeBindGroupLayout as any).destroy(); } catch (e) {}
+    try { if (typeof (renderBindGroupLayout as any)?.destroy === 'function') (renderBindGroupLayout as any).destroy(); } catch (e) {}
+
+    // Note: do not destroy or null out buffers owned by the caller (paramsBuffer, instancesBuffer, etc.)
   }
 
   return { encodeFrame, destroy };
