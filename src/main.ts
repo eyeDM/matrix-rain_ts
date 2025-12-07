@@ -5,6 +5,7 @@ import { createGlyphAtlas } from './engine/resources';
 import { createStreamBuffers } from './sim/streams';
 import { createRenderer } from './engine/renderer';
 import { createRenderGraph } from './engine/render-graph';
+import { createResourceManager } from './engine/resource-manager';
 
 const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element #gpu-canvas not found');
@@ -14,9 +15,14 @@ export async function bootstrap(): Promise<void> {
   try {
     const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
 
+    // Create resource managers:
+    // - `persistentRM` for long-lived resources (glyph atlas, samplers)
+    // - `rendererRM` will be created per-renderer generation and destroyed on resize
+    const persistentRM = createResourceManager(device);
+
     // Create a small glyph set and build an atlas (Stage 3 usage)
     const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
-    const atlas = await createGlyphAtlas(device, glyphs, { font: '28px monospace', padding: 6 });
+    const atlas = await createGlyphAtlas(device, glyphs, { font: '28px monospace', padding: 6 }, persistentRM);
 
     // Extract cell size from atlas (assume uniform cell size)
     const firstIter = atlas.glyphMap.values().next();
@@ -57,6 +63,7 @@ export async function bootstrap(): Promise<void> {
     });
 
     // Create renderer (loads compute shader and prepares pipelines)
+    let rendererRM = createResourceManager(device);
     const renderer = await createRenderer(
       device,
       cols,
@@ -77,7 +84,8 @@ export async function bootstrap(): Promise<void> {
       atlas.texture,
       atlas.sampler,
       canvasEl,
-      format
+      format,
+      rendererRM
     );
 
     // Prepare dynamic references so renderer can be hot-swapped on resize
@@ -129,6 +137,8 @@ export async function bootstrap(): Promise<void> {
       const newStreams = createStreamBuffers(device, newCols, newRows, glyphCount, cellW, cellH);
       const newInstanceCount = newCols * MAX_TRAIL;
       const newInstances = device.createBuffer({ size: newInstanceCount * instanceSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      const newRendererRM = createResourceManager(device);
+
       const newRenderer = await createRenderer(
         device,
         newCols,
@@ -149,16 +159,19 @@ export async function bootstrap(): Promise<void> {
         atlas.texture,
         atlas.sampler,
         canvasEl,
-        format
+        format,
+        newRendererRM
       );
 
       // Keep references to old resources so we can destroy them after GPU is idle
       const oldStreams = streamsRef;
       const oldInstances = instancesBufRef;
       const oldRenderer = rendererRef;
+      const oldRendererRM = rendererRM;
 
       // swap refs so render loop begins using new resources immediately
       rendererRef = newRenderer;
+      rendererRM = newRendererRM;
       streamsRef = newStreams;
       instancesBufRef = newInstances;
       currentCols = newCols;
@@ -175,6 +188,8 @@ export async function bootstrap(): Promise<void> {
       try { oldStreams.columns.destroy(); } catch (e) {}
       try { oldStreams.params.destroy(); } catch (e) {}
       try { oldInstances.destroy(); } catch (e) {}
+      // Destroy renderer-owned GPU objects via the old renderer resource manager
+      try { oldRendererRM.destroyAll(); } catch (e) {}
       try { oldRenderer.destroy(); } catch (e) {}
     };
 

@@ -1,4 +1,5 @@
 import { updateParams } from '../sim/streams';
+import { ResourceManager } from './resource-manager';
 
 export type PassEncoderCompute = {
   encode: (encoder: GPUCommandEncoder, dt: number) => void;
@@ -43,11 +44,12 @@ export async function createRenderer(
   atlasSampler: GPUSampler,
   canvasEl: HTMLCanvasElement,
   format: GPUTextureFormat
+  , resourceManager?: ResourceManager
 ): Promise<Renderer> {
   // Load compute WGSL (use URL relative to this module so bundlers/dev-servers resolve correctly)
   const computeResp = await fetch(new URL('../sim/gpu-update.wgsl', import.meta.url).href);
   const computeCode = await computeResp.text();
-  const computeModule = device.createShaderModule({ code: computeCode });
+  const computeModule = resourceManager?.createShaderModule({ code: computeCode }) ?? device.createShaderModule({ code: computeCode });
 
   // Create an explicit bind group layout that matches the compute shader's expected bindings
   const computeBindGroupLayout = device.createBindGroupLayout({
@@ -65,12 +67,12 @@ export async function createRenderer(
 
   const computePipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [computeBindGroupLayout] });
 
-  const computePipeline = device.createComputePipeline({
+  const computePipeline = resourceManager?.createComputePipeline({
     layout: computePipelineLayout,
     compute: { module: computeModule, entryPoint: 'main' }
-  });
+  }) ?? device.createComputePipeline({ layout: computePipelineLayout, compute: { module: computeModule, entryPoint: 'main' } });
 
-  const computeBindGroup = device.createBindGroup({
+  const computeBindGroup = resourceManager?.createBindGroup({
     layout: computeBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: paramsBuffer } },
@@ -82,7 +84,16 @@ export async function createRenderer(
       { binding: 6, resource: { buffer: glyphUVsBuffer } },
       { binding: 7, resource: { buffer: instancesBuffer } }
     ]
-  });
+  }) ?? device.createBindGroup({ layout: computeBindGroupLayout, entries: [
+    { binding: 0, resource: { buffer: paramsBuffer } },
+    { binding: 1, resource: { buffer: heads } },
+    { binding: 2, resource: { buffer: speeds } },
+    { binding: 3, resource: { buffer: lengths } },
+    { binding: 4, resource: { buffer: seeds } },
+    { binding: 5, resource: { buffer: columns } },
+    { binding: 6, resource: { buffer: glyphUVsBuffer } },
+    { binding: 7, resource: { buffer: instancesBuffer } }
+  ] });
 
   // Precompute dispatch size
   const workgroupSize = 64;
@@ -92,7 +103,7 @@ export async function createRenderer(
   // Load draw shader (URL relative to this module)
   const drawResp = await fetch(new URL('../shaders/draw-symbols.wgsl', import.meta.url).href);
   const drawCode = await drawResp.text();
-  const drawModule = device.createShaderModule({ code: drawCode });
+  const drawModule = resourceManager?.createShaderModule({ code: drawCode }) ?? device.createShaderModule({ code: drawCode });
 
   // Vertex buffer: unit quad (two triangles), attrs: pos.xy, uv.xy
   const quadVerts = new Float32Array([
@@ -106,14 +117,11 @@ export async function createRenderer(
     -0.5,  0.5, 0.0, 1.0
   ]);
 
-  const vertexBuffer = device.createBuffer({
-    size: quadVerts.byteLength,
-    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
-  });
+  const vertexBuffer = resourceManager?.createBuffer({ size: quadVerts.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST }) ?? device.createBuffer({ size: quadVerts.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
   device.queue.writeBuffer(vertexBuffer, 0, quadVerts.buffer);
 
   // Screen uniform buffer (vec2<f32>), align to 16 bytes
-  const screenBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const screenBuffer = resourceManager?.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }) ?? device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const screenStaging = new Float32Array(4); // reuse per-frame
   let lastScreenW = 0;
   let lastScreenH = 0;
@@ -129,7 +137,7 @@ export async function createRenderer(
 
   const renderPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [renderBindGroupLayout] });
 
-  const renderPipeline = device.createRenderPipeline({
+  const renderPipeline = resourceManager?.createRenderPipeline({
     layout: renderPipelineLayout,
     vertex: {
       module: drawModule,
@@ -150,12 +158,13 @@ export async function createRenderer(
       targets: [{ format }]
     },
     primitive: { topology: 'triangle-list' }
-  });
+  }) ?? device.createRenderPipeline({ layout: renderPipelineLayout, vertex: { module: drawModule, entryPoint: 'vs_main', buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }, { shaderLocation: 1, offset: 8, format: 'float32x2' }] }] }, fragment: { module: drawModule, entryPoint: 'fs_main', targets: [{ format }] }, primitive: { topology: 'triangle-list' } });
 
   // Note: atlas texture & sampler will be bound per-frame via a persistent bind group created in main
   // Create and reuse a single texture view for the atlas (no need to recreate per-frame)
   const atlasView = atlasTexture.createView();
-  const renderBindGroup = device.createBindGroup({
+
+  const renderBindGroup = resourceManager?.createBindGroup({
     layout: renderBindGroupLayout,
     entries: [
       { binding: 0, resource: atlasSampler },
@@ -163,7 +172,7 @@ export async function createRenderer(
       { binding: 2, resource: { buffer: instancesBuffer } },
       { binding: 3, resource: { buffer: screenBuffer } }
     ]
-  });
+  }) ?? device.createBindGroup({ layout: renderBindGroupLayout, entries: [{ binding: 0, resource: atlasSampler }, { binding: 1, resource: atlasView }, { binding: 2, resource: { buffer: instancesBuffer } }, { binding: 3, resource: { buffer: screenBuffer } }] });
 
   // Pre-allocated render pass descriptor templates to avoid per-frame allocations.
   const colorAttachmentTemplate: GPURenderPassColorAttachment = {
@@ -221,6 +230,11 @@ export async function createRenderer(
     // Destroy GPU resources created by this renderer where the API supports it.
     // We only destroy objects that the renderer created itself; buffers passed in by
     // the caller (like instancesBuffer) must be managed by the caller.
+    // If a ResourceManager was provided, it owns the resources and will destroy them centrally.
+    if (resourceManager) {
+      // caller should call `resourceManager.destroyAll()` when safe (after GPU idle)
+      return;
+    }
 
     try {
       if (vertexBuffer && typeof (vertexBuffer as any).destroy === 'function') (vertexBuffer as any).destroy();
@@ -250,6 +264,18 @@ export async function createRenderer(
   // Expose compute and draw encoders as separate objects so callers can manage lifetimes independently
   const computeObj: PassEncoderCompute = { encode: encodeCompute, destroy: undefined };
   const drawObj: PassEncoderDraw = { encode: encodeDraw, destroy: undefined };
+
+  // If a ResourceManager was provided, ensure it tracks our created resources (for central destruction)
+  if (resourceManager) {
+    resourceManager.track(vertexBuffer as any);
+    resourceManager.track(screenBuffer as any);
+    resourceManager.track(computeModule as any);
+    resourceManager.track(drawModule as any);
+    resourceManager.track(computePipeline as any);
+    resourceManager.track(renderPipeline as any);
+    resourceManager.track(computeBindGroup as any);
+    resourceManager.track(renderBindGroup as any);
+  }
 
   return { compute: computeObj, draw: drawObj, destroy };
 }

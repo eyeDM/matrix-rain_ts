@@ -54,7 +54,8 @@ export type AtlasOptions = {
 export async function createGlyphAtlas(
   device: GPUDevice,
   glyphs: string[],
-  options?: AtlasOptions
+  options?: AtlasOptions,
+  resourceManager?: import('./resource-manager').ResourceManager
 ): Promise<AtlasResult> {
   const opts: Required<AtlasOptions> = {
     font: options?.font ?? '24px monospace',
@@ -141,11 +142,11 @@ export async function createGlyphAtlas(
   }
 
   // Create GPU texture and upload atlas
-  const texture = device.createTexture({
+  const texture = resourceManager?.createTexture({
     size: [atlasWidth, atlasHeight, 1],
     format: 'rgba8unorm',
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-  });
+  }) ?? device.createTexture({ size: [atlasWidth, atlasHeight, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
 
   // Create an ImageBitmap from the canvas (fast path) and copy to GPU texture
   let bitmap: ImageBitmap;
@@ -172,12 +173,17 @@ export async function createGlyphAtlas(
     try { bitmap.close(); } catch (e) { /* ignore */ }
   }
 
-  const sampler = device.createSampler({
+  const sampler = resourceManager?.createSampler({
     magFilter: 'linear',
     minFilter: 'linear',
     addressModeU: 'clamp-to-edge',
     addressModeV: 'clamp-to-edge'
-  });
+  }) ?? device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
+
+  if (resourceManager) {
+    resourceManager.track(texture as any);
+    resourceManager.track(sampler as any);
+  }
 
   return { texture, sampler, glyphMap };
 }
