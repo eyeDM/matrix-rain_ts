@@ -2,15 +2,19 @@
 GPU Simulation Compute Shader - gpu-update.wgsl
 
 Buffers layout (group 0):
- - binding 0: uniform Params { dt: f32; rows: u32; cols: u32; pad: u32; }
+ - binding 0: uniform Params { dt: f32; rows: u32; cols: u32; glyphCount: u32; cellWidth: f32; cellHeight: f32; }
  - binding 1: storage heads: array<f32>           // current head Y position per column
  - binding 2: storage speeds: array<f32>          // speed in cells per second per column
  - binding 3: storage lengths: array<u32>         // trail length in cells per column
  - binding 4: storage seeds: array<u32>           // PRNG seed per column
- - binding 5: storage columns: array<u32>         // column indices (optional)
+ - binding 5: storage columns: array<u32>         // column indices (optional index buffer)
+ - binding 6: storage glyphUVs: array<vec4<f32>>  // per-glyph UV rects (u0,v0,u1,v1) in normalized float
+ - binding 7: storage instancesOut: array<InstanceOut> // output instances (per-column fixed slots)
 
-All storage buffers are declared as read_write because the compute shader
-updates head positions, seeds, speeds, and lengths in-place.
+All storage buffers are declared as read_write when the shader needs to mutate them,
+and read-only when the shader only reads (e.g. `columns`, `glyphUVs`). The compute
+shader advances heads, updates seeds/speeds/lengths when wrapping, and writes
+per-column trail instances into a preallocated `instancesOut` array.
 
 The compute kernel advances each head by `speed * dt`, wraps when >= rows,
 and when wrapping updates the seed using an LCG, then derives new speed/length
