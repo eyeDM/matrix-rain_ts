@@ -161,11 +161,16 @@ export async function createGlyphAtlas(
   }
 
   // Copy external image to the texture
-  device.queue.copyExternalImageToTexture(
-    { source: bitmap },
-    { texture },
-    [atlasWidth, atlasHeight]
-  );
+  try {
+    device.queue.copyExternalImageToTexture(
+      { source: bitmap },
+      { texture },
+      [atlasWidth, atlasHeight]
+    );
+  } finally {
+    // Close the ImageBitmap to release browser resources (avoid leaking GPU-backed bitmaps)
+    try { bitmap.close(); } catch (e) { /* ignore */ }
+  }
 
   const sampler = device.createSampler({
     magFilter: 'linear',
