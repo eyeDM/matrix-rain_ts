@@ -16,7 +16,7 @@
 * Vite
 * WebGPU
 * WGSL
-* Firefox 145+ (Windows x64)
+* Firefox 145+, Chrome 142+ (Windows x64)
 
 **Global Priorities (Strict Order):**
 

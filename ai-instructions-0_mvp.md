@@ -4,7 +4,7 @@
 
 **Project:** Matrix Rain Visualization
 **Goal:** Portfolio-grade, GPU-first WebGPU application
-**Runtime:** Firefox 145+, Windows x64
+**Runtime:** Firefox 145+, Chrome 142+
 **Stack:**
 
 * Vanilla TypeScript (strict)
@@ -27,7 +27,7 @@
 
 ---
 
-## ROLE DEFINITION (FOR COPILOT AGENT)
+## ROLE DEFINITION (FOR CODING AGENT)
 
 You act as:
 
@@ -65,7 +65,7 @@ You **must**:
 
 ## TARGET PROJECT STRUCTURE
 
-Copilot must strictly follow this structure:
+You must strictly follow this structure:
 
 ```
 matrix-rain_ts/
@@ -101,7 +101,7 @@ matrix-rain_ts/
 
 ## DEVELOPMENT MODE
 
-Copilot must work in **iteration mode**:
+You must work in **iteration mode**:
 
 For **every step** it must output in this exact order:
 
@@ -111,7 +111,7 @@ For **every step** it must output in this exact order:
 4. **Architecture explanation**
 5. **What should be visible in the browser**
 
-Copilot **must never skip steps**.
+You **must never skip steps**.
 
 ---
 
@@ -286,7 +286,7 @@ Must:
 
 ## QUALITY CONTROL (MANDATORY EACH STAGE)
 
-Before declaring a stage complete, Copilot must verify:
+Before declaring a stage complete, You must verify:
 
 * ✅ No TypeScript errors
 * ✅ No WebGPU validation errors
@@ -304,4 +304,4 @@ User will start the project with:
 STAGE 0
 ```
 
-Copilot must immediately begin Stage 0 without asking questions.
+You must immediately begin Stage 0 without asking questions.
