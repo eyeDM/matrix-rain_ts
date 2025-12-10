@@ -1,54 +1,40 @@
 // draw-symbols.wgsl
 // Instanced symbol renderer.
-//
-// Buffer / bind group layout (group 0):
-//  binding(0) : sampler       - sampler for atlas texture
-//  binding(1) : texture_2d<f32> - atlas texture (rgba8unorm)
-//  binding(2) : storage<read> InstanceData[] - per-instance data (one per symbol instance)
-//  binding(3) : uniform Screen { size: vec2<f32> } - canvas size in pixels
-//
-// Vertex input (vertex buffer 0):
-//  @location(0) pos: vec2<f32>   - quad corner in normalized cell space (-0.5..0.5)
-//  @location(1) uv: vec2<f32>    - quad corner UV in cell space (0..1)
-//
+
 // Instance data layout (storage buffer) - InstanceData (packed to 16-byte alignment):
-// struct InstanceData {
-//   offset: vec2<f32>;   // pixel-space offset of top-left of cell
-//   cellSize: vec2<f32>; // pixel size (width, height) of cell
-//   uvRect: vec4<f32>;   // u0, v0, u1, v1 (normalized atlas UVs)
-//   brightness: f32;     // 0..1 multiplier based on trail depth
-//   _pad: vec3<f32>;     // pad to 16-byte multiple
-// };
-
-@group(0) @binding(0) var atlasSampler: sampler;
-@group(0) @binding(1) var atlasTex: texture_2d<f32>;
-
 struct InstanceData {
-  offset: vec2<f32>,
-  cellSize: vec2<f32>,
-  uvRect: vec4<f32>,
-  brightness: f32,
-  pad0: vec3<f32>
-}
-
-@group(0) @binding(2)
-var<storage, read> instances: array<InstanceData>;
+  offset: vec2<f32>,   // pixel-space offset of top-left of cell
+  cellSize: vec2<f32>, // pixel size (width, height) of cell
+  uvRect: vec4<f32>,   // u0, v0, u1, v1 (normalized atlas UVs)
+  brightness: f32,     // 0..1 multiplier based on trail depth
+  pad0: vec3<f32>,     // pad to 16-byte multiple (total 48 bytes)
+};
 
 struct Screen {
-  size: vec2<f32>
-}
-
-@group(0) @binding(3)
-var<uniform> screen: Screen;
+  size: vec2<f32>, // canvas size in pixels
+};
 
 struct VertexOut {
   @builtin(position) Position: vec4<f32>,
   @location(0) v_uv: vec2<f32>,
-  @location(1) v_brightness: f32
-}
+  @location(1) v_brightness: f32,
+};
 
+// Buffer / bind group layout:
+@group(0) @binding(0) var atlasSampler: sampler; // sampler for atlas texture
+@group(0) @binding(1) var atlasTexture: texture_2d<f32>; // rgba8unorm
+@group(0) @binding(2) var<storage, read> instances: array<InstanceData>; // per-instance data (one per symbol instance)
+@group(0) @binding(3) var<uniform> screen: Screen; // canvas size in pixels
+
+// Vertex input (vertex buffer 0):
+//  @location(0) pos: vec2<f32>   - quad corner in normalized cell space (-0.5..0.5)
+//  @location(1) uv: vec2<f32>    - quad corner UV in cell space (0..1)
 @vertex
-fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @builtin(instance_index) instanceIdx: u32) -> VertexOut {
+fn vs_main(
+  @location(0) pos: vec2<f32>,
+  @location(1) uv: vec2<f32>,
+  @builtin(instance_index) instanceIdx: u32
+) -> VertexOut {
   var out: VertexOut;
 
   // Load instance
@@ -81,7 +67,7 @@ fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @builtin(ins
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
   // Sample the atlas (glyphs rendered white on transparent background)
-  let sample = textureSample(atlasTex, atlasSampler, in.v_uv);
+  let sample = textureSample(atlasTexture, atlasSampler, in.v_uv);
   // Use sampled alpha as the glyph mask (more robust than sampling R when white-on-transparent)
   let intensity = sample.a * in.v_brightness;
 

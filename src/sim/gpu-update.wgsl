@@ -1,28 +1,25 @@
-/*
-GPU Simulation Compute Shader - gpu-update.wgsl
-
-Buffers layout (group 0):
- - binding 0: uniform Params { dt: f32; rows: u32; cols: u32; glyphCount: u32; cellWidth: f32; cellHeight: f32; }
- - binding 1: storage heads: array<f32>           // current head Y position per column
- - binding 2: storage speeds: array<f32>          // speed in cells per second per column
- - binding 3: storage lengths: array<u32>         // trail length in cells per column
- - binding 4: storage seeds: array<u32>           // PRNG seed per column
- - binding 5: storage columns: array<u32>         // column indices (optional index buffer)
- - binding 6: storage glyphUVs: array<vec4<f32>>  // per-glyph UV rects (u0,v0,u1,v1) in normalized float
- - binding 7: storage instancesOut: array<InstanceOut> // output instances (per-column fixed slots)
-
-All storage buffers are declared as read_write when the shader needs to mutate them,
-and read-only when the shader only reads (e.g. `columns`, `glyphUVs`). The compute
-shader advances heads, updates seeds/speeds/lengths when wrapping, and writes
-per-column trail instances into a preallocated `instancesOut` array.
-
-The compute kernel advances each head by `speed * dt`, wraps when >= rows,
-and when wrapping updates the seed using an LCG, then derives new speed/length
-from the seed. Symbol changes can be driven by the seed in the rendering stage.
-
-WGSL implementation:
-
-*/
+/**
+ * GPU Simulation Compute Shader
+ *
+ * Buffers layout (group 0):
+ *  - binding 0: uniform Params { dt: f32; rows: u32; cols: u32; glyphCount: u32; cellWidth: f32; cellHeight: f32; }
+ *  - binding 1: storage heads: array<f32>                // current head Y position per column
+ *  - binding 2: storage speeds: array<f32>               // speed in cells per second per column
+ *  - binding 3: storage lengths: array<u32>              // trail length in cells per column
+ *  - binding 4: storage seeds: array<u32>                // PRNG seed per column
+ *  - binding 5: storage columns: array<u32>              // column indices (optional index buffer)
+ *  - binding 6: storage glyphUVs: array<vec4<f32>>       // per-glyph UV rects (u0,v0,u1,v1) in normalized float
+ *  - binding 7: storage instancesOut: array<InstanceOut> // output instances (per-column fixed slots)
+ *
+ * All storage buffers are declared as read_write when the shader needs to mutate them,
+ * and read-only when the shader only reads (e.g. `columns`, `glyphUVs`). The compute
+ * shader advances heads, updates seeds/speeds/lengths when wrapping, and writes
+ * per-column trail instances into a preallocated `instancesOut` array.
+ *
+ * The compute kernel advances each head by `speed * dt`, wraps when >= rows,
+ * and when wrapping updates the seed using an LCG, then derives new speed/length
+ * from the seed. Symbol changes can be driven by the seed in the rendering stage.
+ */
 
 struct Params {
   dt: f32,
@@ -32,29 +29,7 @@ struct Params {
   cellWidth: f32,
   cellHeight: f32,
   pad0: vec2<f32>,
-}
-
-@group(0) @binding(0)
-var<uniform> params: Params;
-
-@group(0) @binding(1)
-var<storage, read_write> heads: array<f32>;
-
-@group(0) @binding(2)
-var<storage, read_write> speeds: array<f32>;
-
-@group(0) @binding(3)
-var<storage, read_write> lengths: array<u32>;
-
-@group(0) @binding(4)
-var<storage, read_write> seeds: array<u32>;
-
-@group(0) @binding(5)
-var<storage, read> columns: array<u32>;
-
-// Glyph UV lookup table: one vec4<u32> per glyph: u0, v0, u1, v1 (normalized)
-@group(0) @binding(6)
-var<storage, read> glyphUVs: array<vec4<f32>>;
+};
 
 struct InstanceOut {
   offset: vec2<f32>,
@@ -62,10 +37,24 @@ struct InstanceOut {
   uvRect: vec4<f32>,
   brightness: f32,
   pad: vec3<f32>,
-}
+};
 
-@group(0) @binding(7)
-var<storage, read_write> instancesOut: array<InstanceOut>;
+@group(0) @binding(0) var<uniform> params: Params;
+
+@group(0) @binding(1) var<storage, read_write> heads: array<f32>;
+
+@group(0) @binding(2) var<storage, read_write> speeds: array<f32>;
+
+@group(0) @binding(3) var<storage, read_write> lengths: array<u32>;
+
+@group(0) @binding(4) var<storage, read_write> seeds: array<u32>;
+
+@group(0) @binding(5) var<storage, read> columns: array<u32>;
+
+// Glyph UV lookup table: one vec4<u32> per glyph: u0, v0, u1, v1 (normalized)
+@group(0) @binding(6) var<storage, read> glyphUVs: array<vec4<f32>>;
+
+@group(0) @binding(7) var<storage, read_write> instancesOut: array<InstanceOut>;
 
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
