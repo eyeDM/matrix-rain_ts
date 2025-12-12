@@ -1,5 +1,3 @@
-import type { AtlasResult } from '../engine/resources';
-
 export type StreamBuffers = {
   cols: number;
   rows: number;
@@ -17,7 +15,14 @@ export type StreamBuffers = {
  * Create and initialize storage buffers for the compute simulation.
  * This is an init-time operation only; no per-frame allocations are performed here.
  */
-export function createStreamBuffers(device: GPUDevice, cols: number, rows: number, glyphCount: number, cellWidth: number, cellHeight: number): StreamBuffers {
+export function createStreamBuffers(
+  device: GPUDevice,
+  cols: number,
+  rows: number,
+  glyphCount: number,
+  cellWidth: number,
+  cellHeight: number
+): StreamBuffers {
   // Initialize CPU-side arrays
   const heads = new Float32Array(cols);
   const speeds = new Float32Array(cols);
@@ -27,8 +32,9 @@ export function createStreamBuffers(device: GPUDevice, cols: number, rows: numbe
 
   // Populate with sensible defaults/random values
   const cryptoAvailable = typeof crypto !== 'undefined' && typeof (crypto as any).getRandomValues === 'function';
-  const rnd = (n: number) => Math.random() * n;
-  const rndU32 = () => (cryptoAvailable ? (crypto as any).getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 0xffffffff));
+  const rndU32 = () => (cryptoAvailable
+    ? (crypto as any).getRandomValues(new Uint32Array(1))[0]
+    : Math.floor(Math.random() * 0xffffffff));
 
   for (let i = 0; i < cols; i++) {
     heads[i] = Math.random() * rows; // random starting head position
@@ -41,7 +47,11 @@ export function createStreamBuffers(device: GPUDevice, cols: number, rows: numbe
   // Helper to create mapped GPUBuffer and initialize with typed array
   function createMappedBuffer(arr: ArrayBufferView, usage: GPUBufferUsageFlags): GPUBuffer {
     const byteLength = arr.byteLength;
-    const buf = device.createBuffer({ size: alignTo(byteLength, 4), usage: usage | GPUBufferUsage.COPY_DST, mappedAtCreation: true });
+    const buf = device.createBuffer({
+      size: alignTo(byteLength, 4),
+      usage: usage | GPUBufferUsage.COPY_DST,
+      mappedAtCreation: true
+    });
     const mapped = buf.getMappedRange();
     new (arr.constructor as any)(mapped).set(new (arr.constructor as any)(arr.buffer));
     buf.unmap();
@@ -95,7 +105,17 @@ export function createStreamBuffers(device: GPUDevice, cols: number, rows: numbe
  * Update the uniform params buffer with a new delta-time.
  * Call each frame before dispatching the compute pass to pass `dt`.
  */
-export function updateParams(queue: GPUQueue, paramsBuffer: GPUBuffer, staging: ArrayBuffer, dt: number, rows: number, cols: number, glyphCount: number, cellWidth: number, cellHeight: number) {
+export function updateParams(
+  queue: GPUQueue,
+  paramsBuffer: GPUBuffer,
+  staging: ArrayBuffer,
+  dt: number,
+  rows: number,
+  cols: number,
+  glyphCount: number,
+  cellWidth: number,
+  cellHeight: number
+): void {
   // Reuse provided staging ArrayBuffer to avoid per-frame allocations
   const f32 = new Float32Array(staging);
   const u32 = new Uint32Array(staging);

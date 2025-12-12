@@ -1,27 +1,17 @@
 import { updateParams } from '../sim/streams';
-import { ResourceManager } from './resource-manager';
-
-export type PassEncoderCompute = {
-  encode: (encoder: GPUCommandEncoder, dt: number) => void;
-  destroy?: () => void;
-};
-
-export type PassEncoderDraw = {
-  encode: (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
-  destroy?: () => void;
-};
+import { RenderPass, PassKind } from './render-graph';
 
 export type Renderer = {
-  compute: PassEncoderCompute;
-  draw: PassEncoderDraw;
-  destroy: () => void;
+  computePass: RenderPass;
+  drawPass: RenderPass;
+  destroy: () => void; // Destroy internally created GPU resources
 };
 
 /**
  * Create renderer that runs a compute pass (simulation) then a render pass.
- * - Loads WGSL compute shader at runtime
- * - Creates compute pipeline & bind groups once and reuses them
- * - encodeFrame runs compute dispatch then a simple clear render pass (placeholder)
+ * - Loads WGSL compute shader at runtime.
+ * - Creates compute pipeline & bind groups once and reuses them.
+ * - The returned object exposes RenderPasses that can be integrated into a RenderGraph.
  */
 export async function createRenderer(
   device: GPUDevice,
@@ -39,40 +29,75 @@ export async function createRenderer(
   instanceCount: number,
   glyphCount: number,
   cellWidth: number,
-  cellHeight: number
-  , atlasTexture: GPUTexture,
+  cellHeight: number,
+  atlasTexture: GPUTexture,
   atlasSampler: GPUSampler,
   canvasEl: HTMLCanvasElement,
   format: GPUTextureFormat
-  , resourceManager?: ResourceManager
 ): Promise<Renderer> {
-  // Load compute WGSL (use URL relative to this module so bundlers/dev-servers resolve correctly)
-  const computeResp = await fetch(new URL('../sim/gpu-update.wgsl', import.meta.url).href);
-  const computeCode = await computeResp.text();
-  const computeModule = resourceManager?.createShaderModule({ code: computeCode }) ?? device.createShaderModule({ code: computeCode });
+  // --- Internal State (to be destroyed) ---
+  const destructibleResources: (GPUBindingResource | GPUShaderModule | GPUBuffer | GPUPipelineLayout | GPURenderPipeline | GPUComputePipeline | GPUBindGroup | GPUBindGroupLayout)[] = [];
 
-  // Create an explicit bind group layout that matches the compute shader's expected bindings
+  const track = (r: (GPUBindingResource | GPUShaderModule | GPUBuffer | GPUPipelineLayout | GPURenderPipeline | GPUComputePipeline | GPUBindGroup | GPUBindGroupLayout | null | undefined)) => {
+    if (r && typeof (r as GPUBuffer).destroy === 'function') destructibleResources.push(r);
+  };
+
+  // --- 1. Load Shaders (Compute & Draw) ---
+
+  // Load compute WGSL (use URL relative to this module so bundlers/dev-servers resolve correctly)
+  const computeShaderUrl = new URL('../sim/gpu-update.wgsl', import.meta.url).href;
+  const computeCode = await fetch(computeShaderUrl).then(res => res.text());
+  const computeModule = device.createShaderModule({
+    code: computeCode,
+    label: 'Matrix Compute Shader Module',
+  });
+  track(computeModule);
+
+  // Load draw shader (URL relative to this module)
+  const drawShaderUrl = new URL('../shaders/draw-symbols.wgsl', import.meta.url).href;
+  const drawCode = await fetch(drawShaderUrl).then(res => res.text());
+  const drawModule = device.createShaderModule({
+    code: drawCode,
+    label: 'Matrix Draw Shader Module',
+  });
+  track(drawModule);
+
+  // --- 2. Compute Pipeline Setup ---
+
+  // Layout for: Params, Heads, Speeds, Lengths, Seeds, Columns, GlyphUVs, InstancesOut
   const computeBindGroupLayout = device.createBindGroupLayout({
+    label: 'Compute BGL',
     entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-      { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } }
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },     // Params
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Heads
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Speeds
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Lengths
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Seeds
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // Columns (read-only)
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // GlyphUVs (read-only)
+      { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // InstancesOut
     ]
   });
+  track(computeBindGroupLayout);
 
-  const computePipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [computeBindGroupLayout] });
+  const computePipelineLayout = device.createPipelineLayout({
+    label: 'Compute Pipeline Layout',
+    bindGroupLayouts: [computeBindGroupLayout],
+  });
+  track(computePipelineLayout);
 
-  const computePipeline = resourceManager?.createComputePipeline({
+  const computePipeline = device.createComputePipeline({
+    label: 'Matrix Compute Pipeline',
     layout: computePipelineLayout,
-    compute: { module: computeModule, entryPoint: 'main' }
-  }) ?? device.createComputePipeline({ layout: computePipelineLayout, compute: { module: computeModule, entryPoint: 'main' } });
+    compute: {
+      module: computeModule,
+      entryPoint: 'main',
+    },
+  });
+  track(computePipeline);
 
-  const computeBindGroup = resourceManager?.createBindGroup({
+  const computeBindGroup = device.createBindGroup({
+    label: 'Compute Bind Group',
     layout: computeBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: paramsBuffer } },
@@ -82,32 +107,17 @@ export async function createRenderer(
       { binding: 4, resource: { buffer: seeds } },
       { binding: 5, resource: { buffer: columns } },
       { binding: 6, resource: { buffer: glyphUVsBuffer } },
-      { binding: 7, resource: { buffer: instancesBuffer } }
+      { binding: 7, resource: { buffer: instancesBuffer } },
     ]
-  }) ?? device.createBindGroup({ layout: computeBindGroupLayout, entries: [
-    { binding: 0, resource: { buffer: paramsBuffer } },
-    { binding: 1, resource: { buffer: heads } },
-    { binding: 2, resource: { buffer: speeds } },
-    { binding: 3, resource: { buffer: lengths } },
-    { binding: 4, resource: { buffer: seeds } },
-    { binding: 5, resource: { buffer: columns } },
-    { binding: 6, resource: { buffer: glyphUVsBuffer } },
-    { binding: 7, resource: { buffer: instancesBuffer } }
-  ] });
+  });
+  track(computeBindGroup);
 
-  // Precompute dispatch size
-  const workgroupSize = 64;
-  const dispatchX = Math.ceil(cols / workgroupSize);
+  // --- 3. Render Pipeline Setup ---
 
-  // --- Render pipeline setup ---
-  // Load draw shader (URL relative to this module)
-  const drawResp = await fetch(new URL('../shaders/draw-symbols.wgsl', import.meta.url).href);
-  const drawCode = await drawResp.text();
-  const drawModule = resourceManager?.createShaderModule({ code: drawCode }) ?? device.createShaderModule({ code: drawCode });
-
-  // Vertex buffer: unit quad (two triangles), attrs: pos.xy, uv.xy
-  const quadVerts = new Float32Array([
-    // x, y, u, v
+  // Quad Vertex Buffer (a simple quad that covers one cell space [-0.5, 0.5])
+  // Data: position (vec2f), uv (vec2f)
+  const vertexData = new Float32Array([
+    // posX, posY, uvU, uvV
     -0.5, -0.5, 0.0, 0.0,
      0.5, -0.5, 1.0, 0.0,
     -0.5,  0.5, 0.0, 1.0,
@@ -117,165 +127,163 @@ export async function createRenderer(
     -0.5,  0.5, 0.0, 1.0
   ]);
 
-  const vertexBuffer = resourceManager?.createBuffer({ size: quadVerts.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST }) ?? device.createBuffer({ size: quadVerts.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-  device.queue.writeBuffer(vertexBuffer, 0, quadVerts.buffer);
+  const vertexBuffer = device.createBuffer({
+    label: 'Quad Vertex Buffer',
+    size: vertexData.byteLength,
+    usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    mappedAtCreation: true, // ?
+  });
+  new Float32Array(vertexBuffer.getMappedRange()).set(vertexData); // ?
+  vertexBuffer.unmap(); // ?
+  track(vertexBuffer);
 
   // Screen uniform buffer (vec2<f32>), align to 16 bytes
-  const screenBuffer = resourceManager?.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }) ?? device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const screenStaging = new Float32Array(4); // reuse per-frame
-  let lastScreenW = 0;
-  let lastScreenH = 0;
+  const screenBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    label: 'Screen Uniform Buffer',
+  });
+  track(screenBuffer);
 
+  // Layout for: Sampler, Texture, Instances, ScreenUniform
   const renderBindGroupLayout = device.createBindGroupLayout({
+    label: 'Render BGL',
     entries: [
-      { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
-      { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
-      { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-      { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Atlas Sampler
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Atlas Texture
+      { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData (read-only)
+      { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenUniform
     ]
   });
+  track(renderBindGroupLayout);
 
-  const renderPipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [renderBindGroupLayout] });
+  const renderPipelineLayout = device.createPipelineLayout({
+    label: 'Render Pipeline Layout',
+    bindGroupLayouts: [renderBindGroupLayout],
+  });
+  track(renderPipelineLayout);
 
-  const renderPipeline = resourceManager?.createRenderPipeline({
+  const renderPipeline = device.createRenderPipeline({
+    label: 'Matrix Rain Render Pipeline',
     layout: renderPipelineLayout,
     vertex: {
       module: drawModule,
       entryPoint: 'vs_main',
       buffers: [
         {
-          arrayStride: 16,
+          arrayStride: 4 * 4, // 4 floats (pos, uv) * 4 bytes/float
           attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x2' },
-            { shaderLocation: 1, offset: 8, format: 'float32x2' }
-          ]
-        }
-      ]
+            { shaderLocation: 0, offset: 0, format: 'float32x2' }, // pos: @location(0)
+            { shaderLocation: 1, offset: 2 * 4, format: 'float32x2' }, // uv: @location(1)
+          ],
+        },
+      ],
     },
     fragment: {
       module: drawModule,
       entryPoint: 'fs_main',
-      targets: [{ format }]
+      targets: [{
+        format: format,
+        blend: {
+          color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+          alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+        },
+      }],
     },
-    primitive: { topology: 'triangle-list' }
-  }) ?? device.createRenderPipeline({ layout: renderPipelineLayout, vertex: { module: drawModule, entryPoint: 'vs_main', buffers: [{ arrayStride: 16, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x2' }, { shaderLocation: 1, offset: 8, format: 'float32x2' }] }] }, fragment: { module: drawModule, entryPoint: 'fs_main', targets: [{ format }] }, primitive: { topology: 'triangle-list' } });
+    primitive: { topology: 'triangle-list' },
+  });
+  track(renderPipeline);
 
   // Note: atlas texture & sampler will be bound per-frame via a persistent bind group created in main
   // Create and reuse a single texture view for the atlas (no need to recreate per-frame)
   const atlasView = atlasTexture.createView();
 
-  const renderBindGroup = resourceManager?.createBindGroup({
+  const renderBindGroup = device.createBindGroup({
+    label: 'Render Bind Group',
     layout: renderBindGroupLayout,
     entries: [
       { binding: 0, resource: atlasSampler },
       { binding: 1, resource: atlasView },
       { binding: 2, resource: { buffer: instancesBuffer } },
-      { binding: 3, resource: { buffer: screenBuffer } }
-    ]
-  }) ?? device.createBindGroup({ layout: renderBindGroupLayout, entries: [{ binding: 0, resource: atlasSampler }, { binding: 1, resource: atlasView }, { binding: 2, resource: { buffer: instancesBuffer } }, { binding: 3, resource: { buffer: screenBuffer } }] });
+      { binding: 3, resource: { buffer: screenBuffer } },
+    ],
+  });
+  track(renderBindGroup);
 
-  // Pre-allocated render pass descriptor templates to avoid per-frame allocations.
-  const colorAttachmentTemplate: GPURenderPassColorAttachment = {
-    view: {} as GPUTextureView,
-    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-    loadOp: 'clear',
-    storeOp: 'store'
+  // --- 4. Pass Definitions (RenderPass objects for RenderGraph) ---
+
+  const computePass: RenderPass = {
+    name: 'matrix-compute',
+    kind: 'compute' as PassKind,
+    deps: [],
+    execute: (encoder: GPUCommandEncoder, _currentView: GPUTextureView, dt: number) => {
+      // 1. Update Uniforms (CPU copy to GPU)
+      updateParams(device.queue, paramsBuffer, paramsStaging, dt, rows, cols, glyphCount, cellWidth, cellHeight);
+
+      // DEBUG: Log params to verify they're being set
+      //console.log('Params update - dt:', dt, 'cols:', cols, 'rows:', rows,
+      //            'cellWidth:', cellWidth, 'cellHeight:', cellHeight);
+
+      // 2. Encode the Compute Pass
+      const cpass = encoder.beginComputePass();
+      cpass.setPipeline(computePipeline);
+      cpass.setBindGroup(0, computeBindGroup);
+
+      // Dispatch one workgroup per column.
+      const workgroupsX = Math.ceil(cols / 64);
+      cpass.dispatchWorkgroups(workgroupsX);
+
+      cpass.end();
+    }
   };
 
-  const renderPassDescTemplate: GPURenderPassDescriptor = {
-    colorAttachments: [colorAttachmentTemplate]
+  const drawPass: RenderPass = {
+    name: 'matrix-draw',
+    kind: 'draw' as PassKind,
+    deps: ['matrix-compute'], // Depends on compute simulation finishing
+    execute: (encoder: GPUCommandEncoder, currentView: GPUTextureView, _dt: number) => {
+      // 1. Update Screen Uniforms (must be done before render pass)
+      const screenData = new Float32Array([canvasEl.width, canvasEl.height]);
+      device.queue.writeBuffer(screenBuffer, 0, screenData);
+
+      // 2. Prepare Render Pass Descriptor
+      const renderPassDesc: GPURenderPassDescriptor = {
+        colorAttachments: [{
+          view: currentView,
+          clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+          loadOp: 'clear' as const,
+          storeOp: 'store' as const,
+        }]
+      };
+
+      // 3. Encode the Render Pass
+      const rpass = encoder.beginRenderPass(renderPassDesc);
+      rpass.setPipeline(renderPipeline);
+      rpass.setVertexBuffer(0, vertexBuffer);
+      rpass.setBindGroup(0, renderBindGroup);
+
+      // Draw 6 vertices (quad) per instance (total instanceCount symbols)
+      rpass.draw(6, instanceCount);
+      rpass.end();
+    }
   };
 
-  function encodeCompute(encoder: GPUCommandEncoder, dt: number) {
-    // Update params buffer with dt, rows, cols, glyphCount and cell sizes using preallocated staging
-    updateParams(device.queue, paramsBuffer, paramsStaging, dt, rows, cols, glyphCount, cellWidth, cellHeight);
+  // --- 5. Destruction Logic ---
 
-    // Compute pass
-    const cpass = encoder.beginComputePass();
-    cpass.setPipeline(computePipeline);
-    cpass.setBindGroup(0, computeBindGroup);
-    cpass.dispatchWorkgroups(dispatchX);
-    cpass.end();
-  }
-
-  function encodeDraw(encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) {
-    // Render pass
-    // Reuse color attachment descriptor to avoid allocations
-    const colorAttachment = colorAttachmentTemplate;
-    colorAttachment.view = currentView;
-
-    const rpass = encoder.beginRenderPass(renderPassDescTemplate);
-
-    // Update screen uniform only when backing size changes to avoid a per-frame buffer upload
-    const bw = canvasEl.width;
-    const bh = canvasEl.height;
-    if (bw !== lastScreenW || bh !== lastScreenH) {
-      lastScreenW = bw;
-      lastScreenH = bh;
-      screenStaging[0] = bw;
-      screenStaging[1] = bh;
-      // write entire backing buffer (16 bytes)
-      device.queue.writeBuffer(screenBuffer, 0, screenStaging.buffer);
+  const destroy = () => {
+    // Destroy internal resources created via device.create*
+    for (const r of destructibleResources) {
+      try {
+        if (typeof (r as GPUBuffer).destroy === 'function') {
+          (r as GPUBuffer).destroy();
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('Error destroying internal resource:', e);
+      }
     }
+    destructibleResources.length = 0; // Clear the array
+  };
 
-    rpass.setPipeline(renderPipeline);
-    rpass.setVertexBuffer(0, vertexBuffer);
-    rpass.setBindGroup(0, renderBindGroup);
-    // draw all emitted instances (cols * MAX_TRAIL)
-    rpass.draw(6, instanceCount, 0, 0);
-    rpass.end();
-  }
-
-  function destroy() {
-    // Destroy GPU resources created by this renderer where the API supports it.
-    // We only destroy objects that the renderer created itself; buffers passed in by
-    // the caller (like instancesBuffer) must be managed by the caller.
-    // If a ResourceManager was provided, it owns the resources and will destroy them centrally.
-    if (resourceManager) {
-      // caller should call `resourceManager.destroyAll()` when safe (after GPU idle)
-      return;
-    }
-
-    try {
-      if (vertexBuffer && typeof (vertexBuffer as any).destroy === 'function') (vertexBuffer as any).destroy();
-    } catch (e) { /* ignore */ }
-
-    try {
-      if (screenBuffer && typeof (screenBuffer as any).destroy === 'function') (screenBuffer as any).destroy();
-    } catch (e) { /* ignore */ }
-
-    // Some implementations may expose destroy on shader modules, pipelines or bind groups.
-    // Call destroy only when present to avoid runtime errors in browsers that don't implement it.
-    try { if (typeof (computeModule as any)?.destroy === 'function') (computeModule as any).destroy(); } catch (e) {}
-    try { if (typeof (drawModule as any)?.destroy === 'function') (drawModule as any).destroy(); } catch (e) {}
-
-    try { if (typeof (computePipeline as any)?.destroy === 'function') (computePipeline as any).destroy(); } catch (e) {}
-    try { if (typeof (renderPipeline as any)?.destroy === 'function') (renderPipeline as any).destroy(); } catch (e) {}
-
-    try { if (typeof (computeBindGroup as any)?.destroy === 'function') (computeBindGroup as any).destroy(); } catch (e) {}
-    try { if (typeof (renderBindGroup as any)?.destroy === 'function') (renderBindGroup as any).destroy(); } catch (e) {}
-
-    try { if (typeof (computeBindGroupLayout as any)?.destroy === 'function') (computeBindGroupLayout as any).destroy(); } catch (e) {}
-    try { if (typeof (renderBindGroupLayout as any)?.destroy === 'function') (renderBindGroupLayout as any).destroy(); } catch (e) {}
-
-    // Note: do not destroy or null out buffers owned by the caller (paramsBuffer, instancesBuffer, etc.)
-  }
-
-  // Expose compute and draw encoders as separate objects so callers can manage lifetimes independently
-  const computeObj: PassEncoderCompute = { encode: encodeCompute, destroy: undefined };
-  const drawObj: PassEncoderDraw = { encode: encodeDraw, destroy: undefined };
-
-  // If a ResourceManager was provided, ensure it tracks our created resources (for central destruction)
-  if (resourceManager) {
-    resourceManager.track(vertexBuffer as any);
-    resourceManager.track(screenBuffer as any);
-    resourceManager.track(computeModule as any);
-    resourceManager.track(drawModule as any);
-    resourceManager.track(computePipeline as any);
-    resourceManager.track(renderPipeline as any);
-    resourceManager.track(computeBindGroup as any);
-    resourceManager.track(renderBindGroup as any);
-  }
-
-  return { compute: computeObj, draw: drawObj, destroy };
+  return { computePass, drawPass, destroy };
 }

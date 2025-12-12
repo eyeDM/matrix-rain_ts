@@ -14,6 +14,9 @@
  * }
  */
 
+/**
+ * UVRect: Normalized UV coordinates and pixel dimensions of a single glyph cell.
+ */
 export type UVRect = {
   // UV coordinates in normalized [0,1] texture space
   u0: number;
@@ -25,140 +28,143 @@ export type UVRect = {
   height: number;
 };
 
+/**
+ * AtlasResult: All resources needed by the renderer from the atlas generation process.
+ */
 export type AtlasResult = {
   texture: GPUTexture;
   sampler: GPUSampler;
   glyphMap: Map<string, UVRect>;
+  glyphUVsBuffer: GPUBuffer; // Storage buffer for compute shader lookups
+  cellWidth: number; // Final calculated cell dimensions
+  cellHeight: number;
 };
 
+/**
+ * AtlasOptions: Configuration for the glyph atlas rendering.
+ */
 export type AtlasOptions = {
   font?: string; // CSS font string, e.g. '24px monospace'
   fontSize?: number; // fallback font size in px
   padding?: number; // padding around glyphs in pixels
-  cols?: number; // optional fixed number of columns
+  cols?: number; // optional fixed number of columns for atlas layout
   bgFillStyle?: string; // background fill for atlas, default transparent
-  fillStyle?: string; // glyph color when drawing onto the atlas (ignored for shader colorization)
+  fillStyle?: string; // glyph color when drawing onto the atlas
 };
 
+// --- CONSTANTS ---
+const ATLAS_MAX_SIZE = 2048; // Max size for texture atlas (WebGPU limit)
+const GLYPH_UV_RECT_SIZE = 4; // vec4<f32> for u0, v0, u1, v1
+
 /**
- * Create a GPU-backed glyph atlas by rendering glyphs to an offscreen canvas.
+ * Creates an OffscreenCanvas (or regular canvas fallback) and renders all glyphs
+ * into an image atlas, then uploads it to the GPU as a GPUTexture.
+ * It also generates the UV coordinates buffer required by the compute shader.
  *
- * Implementation notes / constraints:
- * - Uses OffscreenCanvas when available for worker-friendly, GPU-safe rendering.
- * - Produces an atlas texture with format `rgba8unorm` and usage `TEXTURE_BINDING | COPY_DST`.
- * - Uploads via `device.queue.copyExternalImageToTexture` using an ImageBitmap (fast path).
- * - Documents atlas layout: grid with fixed cellWidth x cellHeight. UVs map to full cells.
- *
- * The function intentionally avoids any per-frame allocations; it's intended to be called during init.
+ * @param device - The WebGPU device.
+ * @param glyphs - Array of strings (single characters) to include in the atlas.
+ * @param options - Configuration options for the atlas.
+ * @returns All necessary GPU and metadata resources.
  */
 export async function createGlyphAtlas(
   device: GPUDevice,
   glyphs: string[],
-  options?: AtlasOptions,
-  resourceManager?: import('./resource-manager').ResourceManager
+  options: AtlasOptions = {},
 ): Promise<AtlasResult> {
-  const opts: Required<AtlasOptions> = {
-    font: options?.font ?? '24px monospace',
-    fontSize: options?.fontSize ?? 24,
-    padding: options?.padding ?? 4,
-    cols: options?.cols ?? 0,
-    bgFillStyle: options?.bgFillStyle ?? 'transparent',
-    fillStyle: options?.fillStyle ?? '#ffffff'
-  };
+  // --- 1. Canvas Setup and Measurement ---
+  const canUseOffscreen = typeof OffscreenCanvas !== 'undefined';
+  const PADDING = options.padding ?? 6;
+  const FONT_SIZE = options.fontSize ?? 28;
+  const FONT = options.font ?? `${FONT_SIZE}px monospace`;
 
-  // Determine cell size by measuring a representative glyph using a temporary 2D context.
-  // We create a tiny canvas for measurement only.
-  const measureCanvas = typeof OffscreenCanvas !== 'undefined'
+  const tempCanvas = canUseOffscreen
     ? new OffscreenCanvas(1, 1)
     : document.createElement('canvas');
-  const measureCtx = measureCanvas.getContext('2d') as CanvasRenderingContext2D | null;
-  if (!measureCtx) throw new Error('2D context unavailable for glyph measurement');
-  measureCtx.font = opts.font;
 
-  // Measure max glyph width/height
-  let maxW = 0;
-  let maxH = opts.fontSize;
-  for (const g of glyphs) {
-    const metrics = measureCtx.measureText(g);
-    const w = Math.ceil(metrics.width);
-    if (w > maxW) maxW = w;
-    // height estimate: use fontSize as conservative height
+  const ctx = tempCanvas.getContext('2d', { alpha: true }) as (CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) | null;
+  if (!ctx) throw new Error('Failed to get 2D canvas context for atlas generation.');
+
+  ctx.font = FONT;
+
+  // Calculate cell dimensions based on the first glyph
+  const cellWidth = Math.ceil(ctx.measureText(glyphs[0] ?? 'A').width) + PADDING * 2;
+  const cellHeight = FONT_SIZE + PADDING * 2;
+
+  // Determine atlas layout
+  const glyphsPerRow = options.cols ?? Math.floor(ATLAS_MAX_SIZE / cellWidth);
+  const totalRows = Math.ceil(glyphs.length / glyphsPerRow);
+
+  const atlasWidth = Math.min(ATLAS_MAX_SIZE, glyphsPerRow * cellWidth);
+  const atlasHeight = totalRows * cellHeight;
+
+  if (atlasWidth > ATLAS_MAX_SIZE || atlasHeight > ATLAS_MAX_SIZE) {
+    throw new Error('Atlas size exceeds maximum allowed size. Reduce font size or glyph count.');
   }
 
-  const cellW = maxW + opts.padding * 2;
-  const cellH = Math.ceil(maxH + opts.padding * 2);
+  // Final canvas sizing
+  tempCanvas.width = atlasWidth;
+  tempCanvas.height = atlasHeight;
 
-  // Grid layout
-  const count = glyphs.length;
-  const cols = opts.cols > 0 ? opts.cols : Math.ceil(Math.sqrt(count));
-  const rows = Math.ceil(count / cols);
+  // --- 2. Glyph Drawing and UV Mapping ---
+  const glyphMap = new Map<string, UVRect>();
+  const uvRects = new Float32Array(glyphs.length * GLYPH_UV_RECT_SIZE); // u0, v0, u1, v1
 
-  const atlasWidth = cols * cellW;
-  const atlasHeight = rows * cellH;
-
-  // Create drawing canvas (offscreen when available)
-  let canvas: OffscreenCanvas | HTMLCanvasElement;
-  if (typeof OffscreenCanvas !== 'undefined') {
-    canvas = new OffscreenCanvas(atlasWidth, atlasHeight);
-  } else {
-    const el = document.createElement('canvas');
-    el.width = atlasWidth;
-    el.height = atlasHeight;
-    canvas = el;
-  }
-
-  const ctx = (canvas as any).getContext('2d') as CanvasRenderingContext2D | null;
-  if (!ctx) throw new Error('Failed to get 2D context for atlas rendering');
-
-  // Clear / background
-  ctx.fillStyle = opts.bgFillStyle;
+  // Clear canvas
+  ctx.fillStyle = options.bgFillStyle ?? 'transparent';
   ctx.fillRect(0, 0, atlasWidth, atlasHeight);
 
-  ctx.font = opts.font;
-  ctx.textBaseline = 'middle';
+  // Set drawing styles
+  ctx.fillStyle = options.fillStyle ?? 'white'; // Draw white, the shader applies green
   ctx.textAlign = 'center';
-  ctx.fillStyle = opts.fillStyle; // white glyphs by default
+  ctx.textBaseline = 'middle';
+  ctx.font = FONT;
 
-  const glyphMap = new Map<string, UVRect>();
-
-  // Layout and draw glyphs into grid cells
+  // Draw all glyphs
   for (let i = 0; i < glyphs.length; i++) {
-    const g = glyphs[i];
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = col * cellW + cellW / 2; // center of cell
-    const y = row * cellH + cellH / 2; // center of cell
+    const glyph = glyphs[i];
+    const col = i % glyphsPerRow;
+    const row = Math.floor(i / glyphsPerRow);
 
-    // Draw glyph centered in its cell
-    ctx.fillText(g, x, y);
+    const x = col * cellWidth;
+    const y = row * cellHeight;
 
-    // UV mapping uses the full cell to simplify lookup in shader.
-    const u0 = (col * cellW) / atlasWidth;
-    const v0 = (row * cellH) / atlasHeight;
-    const u1 = ((col + 1) * cellW) / atlasWidth;
-    const v1 = ((row + 1) * cellH) / atlasHeight;
+    // Draw glyph centered in the cell
+    const drawX = x + cellWidth / 2;
+    const drawY = y + cellHeight / 2;
+    ctx.fillText(glyph, drawX, drawY);
 
-    glyphMap.set(g, { u0, v0, u1, v1, width: cellW, height: cellH });
+    // Calculate normalized UV rects
+    const u0 = x / atlasWidth;
+    const v0 = y / atlasHeight;
+    const u1 = (x + cellWidth) / atlasWidth;
+    const v1 = (y + cellHeight) / atlasHeight;
+
+    glyphMap.set(glyph, { u0, v0, u1, v1, width: cellWidth, height: cellHeight });
+
+    const bufferOffset = i * GLYPH_UV_RECT_SIZE;
+    uvRects[bufferOffset + 0] = u0; // u0
+    uvRects[bufferOffset + 1] = v0; // v0
+    uvRects[bufferOffset + 2] = u1; // u1
+    uvRects[bufferOffset + 3] = v1; // v1
   }
 
-  // Create GPU texture and upload atlas
-  const texture = resourceManager?.createTexture({
-    size: [atlasWidth, atlasHeight, 1],
-    format: 'rgba8unorm',
-    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
-  }) ?? device.createTexture({ size: [atlasWidth, atlasHeight, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+  // --- 3. GPU Texture Creation and Copy ---
 
-  // Create an ImageBitmap from the canvas (fast path) and copy to GPU texture
+  const texture = device.createTexture({
+    size: { width: atlasWidth, height: atlasHeight, depthOrArrayLayers: 1 },
+    format: 'rgba8unorm',
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    label: 'Glyph Atlas Texture',
+  });
+
+  // Convert canvas to ImageBitmap
   let bitmap: ImageBitmap;
-  if (typeof (canvas as OffscreenCanvas).transferToImageBitmap === 'function') {
-    // OffscreenCanvas fast path
-    // @ts-ignore - type narrowing for OffscreenCanvas
-    bitmap = (canvas as OffscreenCanvas).transferToImageBitmap();
+  if (canUseOffscreen && (tempCanvas as OffscreenCanvas).transferToImageBitmap) {
+    // @ts-ignore
+    bitmap = (tempCanvas as OffscreenCanvas).transferToImageBitmap();
   } else {
-    // HTMLElement canvas path
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore createImageBitmap is available globally in browser contexts
-    bitmap = await createImageBitmap(canvas as HTMLCanvasElement);
+    // @ts-ignore createImageBitmap is globally available
+    bitmap = await createImageBitmap(tempCanvas as HTMLCanvasElement);
   }
 
   // Copy external image to the texture
@@ -169,21 +175,66 @@ export async function createGlyphAtlas(
       [atlasWidth, atlasHeight]
     );
   } finally {
-    // Close the ImageBitmap to release browser resources (avoid leaking GPU-backed bitmaps)
+    // Release browser resources
     try { bitmap.close(); } catch (e) { /* ignore */ }
   }
 
-  const sampler = resourceManager?.createSampler({
+  // --- 4. Sampler Creation ---
+
+  const sampler = device.createSampler({
     magFilter: 'linear',
     minFilter: 'linear',
     addressModeU: 'clamp-to-edge',
-    addressModeV: 'clamp-to-edge'
-  }) ?? device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
+    addressModeV: 'clamp-to-edge',
+    label: 'Glyph Atlas Sampler',
+  });
 
-  if (resourceManager) {
-    resourceManager.track(texture as any);
-    resourceManager.track(sampler as any);
-  }
+  // --- 5. Glyph UV Buffer Creation ---
 
-  return { texture, sampler, glyphMap };
+  const glyphUVsBuffer = device.createBuffer({
+    size: uvRects.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    label: 'Glyph UV Storage Buffer',
+    mappedAtCreation: true,
+  });
+
+  new Float32Array(glyphUVsBuffer.getMappedRange()).set(uvRects);
+  glyphUVsBuffer.unmap();
+
+  // --- 6. Return Result ---
+
+  return {
+    texture,
+    sampler,
+    glyphMap,
+    glyphUVsBuffer,
+    cellWidth,
+    cellHeight,
+  };
+}
+
+
+/**
+ * Create a GPU buffer specifically for holding instance data (InstanceData[] in WGSL).
+ * This buffer acts as the output target for the Compute Shader and the input source
+ * for the Render (Draw) Shader.
+ *
+ * @param device - The WebGPU device.
+ * @param instanceCount - Total number of symbol instances to allocate space for (cols * MAX_TRAIL).
+ * @returns The initialized GPUBuffer.
+ */
+export function createInstanceBuffer(device: GPUDevice, instanceCount: number): GPUBuffer {
+  // InstanceData size is 48 bytes (vec2f, vec2f, vec4f, f32, vec3f_pad), packed to 16-byte alignment.
+  const INSTANCE_DATA_SIZE = 48;
+  const totalSize = instanceCount * INSTANCE_DATA_SIZE;
+
+  // Ensure minimum buffer size to avoid WebGPU validation errors if instanceCount is 0
+  const size = Math.max(4, totalSize);
+
+  // Must be STORAGE for compute (output) and STORAGE for render (input)
+  return device.createBuffer({
+    size: size,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    label: 'Matrix Instance Data Buffer',
+  });
 }

@@ -10,7 +10,12 @@
  */
 export type FrameCallback = (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
 
-export function startRenderLoop(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFormat, frameCallback: FrameCallback) {
+export function startRenderLoop(
+  device: GPUDevice,
+  context: GPUCanvasContext,
+  format: GPUTextureFormat,
+  frameCallback: FrameCallback
+) {
   let rafId = 0;
   const queue = device.queue;
 
