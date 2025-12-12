@@ -1,5 +1,5 @@
 // draw-symbols.wgsl
-// Instanced symbol renderer.
+// * Instanced symbol renderer *
 
 // Instance data layout (storage buffer) - InstanceData (packed to 16-byte alignment):
 struct InstanceData {
@@ -66,12 +66,18 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-  // Sample the atlas (glyphs rendered white on transparent background)
-  let sample = textureSample(atlasTexture, atlasSampler, in.v_uv);
-  // Use sampled alpha as the glyph mask (more robust than sampling R when white-on-transparent)
-  let intensity = sample.a * in.v_brightness;
+  // Sample the glyph from the atlas texture
+  let glyphColor = textureSample(atlasTexture, atlasSampler, in.v_uv).a; // Use alpha channel if atlas is monochrome
 
-  // Green-only output modulated by brightness
-  let g = intensity;
-  return vec4<f32>(0.0, g, 0.0, intensity);
+  // The final color is a green base color scaled by the glyph's alpha/luminosity
+  let baseColor = vec3<f32>(0.0, 1.0, 0.0); // Bright green base
+
+  // Fading logic:
+  let finalBrightness = pow(in.v_brightness, 1.5); // Use power curve for faster falloff
+  let finalColor = baseColor * finalBrightness;
+
+  // Mix the color with the sampled glyph visibility
+  let alpha = glyphColor * finalBrightness;
+
+  return vec4<f32>(finalColor, alpha);
 }
