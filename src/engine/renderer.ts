@@ -1,5 +1,6 @@
 import { updateParams } from '../sim/streams';
 import { RenderPass, PassKind } from './render-graph';
+import { ResourceManager } from './resource-manager';
 
 export type Renderer = {
     computePass: RenderPass;
@@ -15,6 +16,7 @@ export type Renderer = {
  */
 export async function createRenderer(
     device: GPUDevice,
+    rm: ResourceManager,
     cols: number,
     rows: number,
     paramsBuffer: GPUBuffer,
@@ -35,35 +37,27 @@ export async function createRenderer(
     canvasEl: HTMLCanvasElement,
     format: GPUTextureFormat
 ): Promise<Renderer> {
-    // --- Internal State (to be destroyed) ---
-    const destructibleResources: (GPUBindingResource | GPUShaderModule | GPUBuffer | GPUPipelineLayout | GPURenderPipeline | GPUComputePipeline | GPUBindGroup | GPUBindGroupLayout)[] = [];
-
-    const track = (r: (GPUBindingResource | GPUShaderModule | GPUBuffer | GPUPipelineLayout | GPURenderPipeline | GPUComputePipeline | GPUBindGroup | GPUBindGroupLayout | null | undefined)) => {
-        if (r && typeof (r as GPUBuffer).destroy === 'function') destructibleResources.push(r);
-    };
-
     // --- 1. Load Shaders (Compute & Draw) ---
 
     // Load compute WGSL (use URL relative to this module so bundlers/dev-servers resolve correctly)
     const computeShaderUrl = new URL('../sim/gpu-update.wgsl', import.meta.url).href;
     const computeCode = await fetch(computeShaderUrl).then(res => res.text());
-    const computeModule = device.createShaderModule({
+    const computeModule = rm.createShaderModule({
         code: computeCode,
         label: 'Matrix Compute Shader Module',
     });
-    track(computeModule);
 
     // Load draw shader (URL relative to this module)
     const drawShaderUrl = new URL('../shaders/draw-symbols.wgsl', import.meta.url).href;
     const drawCode = await fetch(drawShaderUrl).then(res => res.text());
-    const drawModule = device.createShaderModule({
+    const drawModule = rm.createShaderModule({
         code: drawCode,
         label: 'Matrix Draw Shader Module',
     });
-    track(drawModule);
 
     // --- 2. Compute Pipeline Setup ---
 
+    /** Persistent GPU resource – destroyed only on app shutdown */
     // Layout for: Params, Heads, Speeds, Lengths, Seeds, Columns, GlyphUVs, InstancesOut
     const computeBindGroupLayout = device.createBindGroupLayout({
         label: 'Compute BGL',
@@ -78,15 +72,14 @@ export async function createRenderer(
             { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // InstancesOut
         ]
     });
-    track(computeBindGroupLayout);
 
+    /** Persistent GPU resource – destroyed only on app shutdown */
     const computePipelineLayout = device.createPipelineLayout({
         label: 'Compute Pipeline Layout',
         bindGroupLayouts: [computeBindGroupLayout],
     });
-    track(computePipelineLayout);
 
-    const computePipeline = device.createComputePipeline({
+    const computePipeline = rm.createComputePipeline({
         label: 'Matrix Compute Pipeline',
         layout: computePipelineLayout,
         compute: {
@@ -94,9 +87,8 @@ export async function createRenderer(
             entryPoint: 'main',
         },
     });
-    track(computePipeline);
 
-    const computeBindGroup = device.createBindGroup({
+    const computeBindGroup = rm.createBindGroup({
         label: 'Compute Bind Group',
         layout: computeBindGroupLayout,
         entries: [
@@ -110,7 +102,6 @@ export async function createRenderer(
             { binding: 7, resource: { buffer: instancesBuffer } },
         ]
     });
-    track(computeBindGroup);
 
     // --- 3. Render Pipeline Setup ---
 
@@ -127,7 +118,7 @@ export async function createRenderer(
         -0.5,  0.5, 0.0, 1.0
     ]);
 
-    const vertexBuffer = device.createBuffer({
+    const vertexBuffer = rm.createBuffer({
         label: 'Quad Vertex Buffer',
         size: vertexData.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -135,15 +126,13 @@ export async function createRenderer(
     });
     new Float32Array(vertexBuffer.getMappedRange()).set(vertexData); // ?
     vertexBuffer.unmap(); // ?
-    track(vertexBuffer);
 
     // Screen uniform buffer (vec2<f32>), align to 16 bytes
-    const screenBuffer = device.createBuffer({
+    const screenBuffer = rm.createBuffer({
         size: 16,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         label: 'Screen Uniform Buffer',
     });
-    track(screenBuffer);
 
     // Layout for: Sampler, Texture, Instances, ScreenUniform
     const renderBindGroupLayout = device.createBindGroupLayout({
@@ -155,15 +144,13 @@ export async function createRenderer(
             { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenUniform
         ]
     });
-    track(renderBindGroupLayout);
 
     const renderPipelineLayout = device.createPipelineLayout({
         label: 'Render Pipeline Layout',
         bindGroupLayouts: [renderBindGroupLayout],
     });
-    track(renderPipelineLayout);
 
-    const renderPipeline = device.createRenderPipeline({
+    const renderPipeline = rm.createRenderPipeline({
         label: 'Matrix Rain Render Pipeline',
         layout: renderPipelineLayout,
         vertex: {
@@ -192,13 +179,12 @@ export async function createRenderer(
         },
         primitive: { topology: 'triangle-list' },
     });
-    track(renderPipeline);
 
     // Note: atlas texture & sampler will be bound per-frame via a persistent bind group created in main
     // Create and reuse a single texture view for the atlas (no need to recreate per-frame)
     const atlasView = atlasTexture.createView();
 
-    const renderBindGroup = device.createBindGroup({
+    const renderBindGroup = rm.createBindGroup({
         label: 'Render Bind Group',
         layout: renderBindGroupLayout,
         entries: [
@@ -208,7 +194,6 @@ export async function createRenderer(
             { binding: 3, resource: { buffer: screenBuffer } },
         ],
     });
-    track(renderBindGroup);
 
     // --- 4. Pass Definitions (RenderPass objects for RenderGraph) ---
 
@@ -267,18 +252,7 @@ export async function createRenderer(
     // --- 5. Destruction Logic ---
 
     const destroy = () => {
-        // Destroy internal resources created via device.create*
-        for (const r of destructibleResources) {
-            try {
-                if (typeof (r as GPUBuffer).destroy === 'function') {
-                    (r as GPUBuffer).destroy();
-                }
-            } catch (e) {
-                // eslint-disable-next-line no-console
-                console.warn('Error destroying internal resource:', e);
-            }
-        }
-        destructibleResources.length = 0; // Clear the array
+        rm.destroyAll();
     };
 
     return { computePass, drawPass, destroy };

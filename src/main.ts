@@ -90,6 +90,7 @@ export async function bootstrap(): Promise<void> {
             const newRendererRM = createResourceManager(device);
             const newRenderer = await createRenderer(
                 device,
+                newRendererRM,
                 newCols,
                 newRows,
                 newStreams.params,
@@ -163,6 +164,7 @@ export async function bootstrap(): Promise<void> {
         rendererRM = createResourceManager(device);
         rendererRef = await createRenderer(
             device,
+            rendererRM,
             currentCols,
             currentRows,
             streamsRef.params,
