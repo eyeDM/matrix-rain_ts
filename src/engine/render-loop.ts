@@ -11,75 +11,75 @@
 export type FrameCallback = (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
 
 export function startRenderLoop(
-  device: GPUDevice,
-  context: GPUCanvasContext,
-  format: GPUTextureFormat,
-  frameCallback: FrameCallback
+    device: GPUDevice,
+    context: GPUCanvasContext,
+    format: GPUTextureFormat,
+    frameCallback: FrameCallback
 ) {
-  let rafId = 0;
-  const queue = device.queue;
+    let rafId = 0;
+    const queue = device.queue;
 
-  // Reusable clear color (black) and attachment descriptor template
-  const clearColor = { r: 0, g: 0, b: 0, a: 1 };
+    // Reusable clear color (black) and attachment descriptor template
+    const clearColor = { r: 0, g: 0, b: 0, a: 1 };
 
-  const colorAttachment = {
-    view: undefined as unknown as GPUTextureView,
-    clearValue: clearColor,
-    loadOp: 'clear' as const,
-    storeOp: 'store' as const
-  } as GPURenderPassColorAttachment;
+    const colorAttachment = {
+        view: undefined as unknown as GPUTextureView,
+        clearValue: clearColor,
+        loadOp: 'clear' as const,
+        storeOp: 'store' as const
+    } as GPURenderPassColorAttachment;
 
-  const renderPassDesc: GPURenderPassDescriptor = {
-    colorAttachments: [colorAttachment]
-  };
+    const renderPassDesc: GPURenderPassDescriptor = {
+        colorAttachments: [colorAttachment]
+    };
 
-  let lastTime = performance.now();
+    let lastTime = performance.now();
 
-  function frame(): void {
-    const now = performance.now();
-    const dt = (now - lastTime) / 1000.0;
-    lastTime = now;
+    function frame(): void {
+        const now = performance.now();
+        const dt = (now - lastTime) / 1000.0;
+        lastTime = now;
 
-    // Acquire the current texture view from the context (required per-frame)
-    let currentView: GPUTextureView;
-    try {
-      currentView = context.getCurrentTexture().createView();
-    } catch (e) {
-      // If we fail to acquire a view (platform/browser timing), skip this frame but keep the loop alive
-      // This avoids uncaught exceptions that would stop the RAF loop entirely.
-      // eslint-disable-next-line no-console
-      console.warn('Could not acquire current swap-chain texture, skipping frame', e);
-      rafId = requestAnimationFrame(frame);
-      return;
-    }
+        // Acquire the current texture view from the context (required per-frame)
+        let currentView: GPUTextureView;
+        try {
+            currentView = context.getCurrentTexture().createView();
+        } catch (e) {
+            // If we fail to acquire a view (platform/browser timing), skip this frame but keep the loop alive
+            // This avoids uncaught exceptions that would stop the RAF loop entirely.
+            // eslint-disable-next-line no-console
+            console.warn('Could not acquire current swap-chain texture, skipping frame', e);
+            rafId = requestAnimationFrame(frame);
+            return;
+        }
 
-    colorAttachment.view = currentView;
+        colorAttachment.view = currentView;
 
-    const commandEncoder = device.createCommandEncoder();
+        const commandEncoder = device.createCommandEncoder();
 
-    // Let caller encode compute + render using the same encoder to guarantee ordering.
-    // Protect against exceptions in the frame callback so the RAF loop continues.
-    try {
-      frameCallback(commandEncoder, currentView, dt);
-    } catch (err) {
-      // Log and continue — we still attempt to finish/submit whatever was encoded.
-      // eslint-disable-next-line no-console
-      console.error('Error in frame callback:', err);
-    }
+        // Let caller encode compute + render using the same encoder to guarantee ordering.
+        // Protect against exceptions in the frame callback so the RAF loop continues.
+        try {
+            frameCallback(commandEncoder, currentView, dt);
+        } catch (err) {
+            // Log and continue — we still attempt to finish/submit whatever was encoded.
+            // eslint-disable-next-line no-console
+            console.error('Error in frame callback:', err);
+        }
 
-    try {
-      queue.submit([commandEncoder.finish()]);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to submit GPU commands for frame:', err);
+        try {
+            queue.submit([commandEncoder.finish()]);
+        } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('Failed to submit GPU commands for frame:', err);
+        }
+
+        rafId = requestAnimationFrame(frame);
     }
 
     rafId = requestAnimationFrame(frame);
-  }
 
-  rafId = requestAnimationFrame(frame);
-
-  return function stop() {
-    cancelAnimationFrame(rafId);
-  };
+    return function stop() {
+        cancelAnimationFrame(rafId);
+    };
 }
