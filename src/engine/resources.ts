@@ -111,6 +111,7 @@ export async function createGlyphAtlas(
     options: AtlasOptions = {},
 ): Promise<AtlasResult> {
     // --- 1. Canvas Setup and Measurement ---
+
     const canUseOffscreen = typeof OffscreenCanvas !== 'undefined';
 
     const FONT_SIZE = options.fontSize ?? 32;
@@ -150,8 +151,12 @@ export async function createGlyphAtlas(
     const cellWidth = Math.ceil(glyphContentWidth) + PADDING * 2;
     const cellHeight = FONT_SIZE + PADDING * 2;
 
-    // Determine atlas layout
-    const glyphsPerRow = options.cols ?? Math.floor(ATLAS_MAX_SIZE / cellWidth);
+    // --- 2. Minimal Atlas Layout Calculation ---
+
+    const glyphsPerRow = options.cols && options.cols > 0
+        ? options.cols
+        : Math.floor(Math.sqrt(glyphs.length)); // Near-square packing for minimal area
+
     const totalRows = Math.ceil(glyphs.length / glyphsPerRow);
 
     const atlasWidth = glyphsPerRow * cellWidth;
@@ -167,7 +172,8 @@ export async function createGlyphAtlas(
     tempCanvas.width = atlasWidth;
     tempCanvas.height = atlasHeight;
 
-    // --- 2. Glyph Drawing and UV Mapping ---
+    // --- 3. Glyph Drawing and UV Mapping ---
+
     const glyphMap = new Map<string, UVRect>();
     const uvRects = new Float32Array(glyphs.length * GLYPH_UV_RECT_SIZE); // u0, v0, u1, v1
 
@@ -216,7 +222,7 @@ export async function createGlyphAtlas(
         uvRects[bufferOffset + 3] = v1;
     }
 
-    // --- 3. GPU Texture Creation and Copy ---
+    // --- 4. GPU Texture Creation and Copy ---
 
     const texture = device.createTexture({
         size: { width: atlasWidth, height: atlasHeight, depthOrArrayLayers: 1 },
@@ -242,7 +248,7 @@ export async function createGlyphAtlas(
         try { bitmap.close(); } catch (e) { /* ignore */ }
     }
 
-    // --- 4. Sampler Creation ---
+    // --- 5. Sampler Creation ---
 
     const sampler = device.createSampler({
         magFilter: 'linear',
@@ -252,7 +258,7 @@ export async function createGlyphAtlas(
         label: 'Glyph Atlas Sampler',
     });
 
-    // --- 5. Glyph UV Buffer Creation ---
+    // --- 6. Glyph UV Buffer Creation ---
 
     const glyphUVsBuffer = device.createBuffer({
         size: uvRects.byteLength,
@@ -264,7 +270,7 @@ export async function createGlyphAtlas(
     new Float32Array(glyphUVsBuffer.getMappedRange()).set(uvRects);
     glyphUVsBuffer.unmap();
 
-    // --- 6. Return Result ---
+    // --- 7. Return Result ---
 
     return {
         texture,
