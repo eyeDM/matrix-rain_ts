@@ -53,8 +53,41 @@ export type AtlasOptions = {
 };
 
 // --- CONSTANTS ---
-const ATLAS_MAX_SIZE = 2048; // Max size for texture atlas (WebGPU limit)
+const DEFAULT_ATLAS_CAP = 8192; // Max size for texture atlas
+const MIN_PADDING = 2;
 const GLYPH_UV_RECT_SIZE = 4; // vec4<f32> for u0, v0, u1, v1
+
+/**
+ * Compute a safe maximum atlas size based on device limits.
+ */
+function computeMaxAtlasSize(device: GPUDevice): number {
+    return Math.min(device.limits.maxTextureDimension2D, DEFAULT_ATLAS_CAP);
+}
+
+/**
+ * Compute adaptive padding to ensure sufficient column count.
+ */
+function computeAdaptivePadding(
+    basePadding: number,
+    glyphCount: number,
+    cellContentWidth: number,
+    maxAtlasSize: number,
+): number {
+    let padding = basePadding;
+
+    while (padding > MIN_PADDING) {
+        const cellWidth = Math.ceil(cellContentWidth) + padding * 2;
+        const cols = Math.floor(maxAtlasSize / cellWidth);
+
+        if (cols > 0 && cols * Math.ceil(glyphCount / cols) * cellWidth <= maxAtlasSize) {
+            break;
+        }
+
+        padding--;
+    }
+
+    return padding;
+}
 
 /**
  * Creates an OffscreenCanvas (or regular canvas fallback) and renders all glyphs
@@ -63,7 +96,13 @@ const GLYPH_UV_RECT_SIZE = 4; // vec4<f32> for u0, v0, u1, v1
  *
  * @param device - The WebGPU device.
  * @param glyphs - Array of strings (single characters) to include in the atlas.
- * @param options - Configuration options for the atlas.
+ * @param {Object} options - Configuration options for the atlas.
+ * @param {number} [options.cols]
+ * @param {number} [options.fontSize=32]
+ * @param {string} [options.font='36px monospace']
+ * @param {number} [options.padding=8]
+ * @param {string} [options.bgFillStyle='transparent']
+ * @param {string} [options.fillStyle='white']
  * @returns All necessary GPU and metadata resources.
  */
 export async function createGlyphAtlas(
@@ -73,32 +112,55 @@ export async function createGlyphAtlas(
 ): Promise<AtlasResult> {
   // --- 1. Canvas Setup and Measurement ---
   const canUseOffscreen = typeof OffscreenCanvas !== 'undefined';
-  const PADDING = options.padding ?? 6;
-  const FONT_SIZE = options.fontSize ?? 28;
+
+  const FONT_SIZE = options.fontSize ?? 32;
   const FONT = options.font ?? `${FONT_SIZE}px monospace`;
+  const BASE_PADDING = options.padding ?? 8;
+
+  const ATLAS_MAX_SIZE = computeMaxAtlasSize(device);
 
   const tempCanvas = canUseOffscreen
     ? new OffscreenCanvas(1, 1)
     : document.createElement('canvas');
 
-  const ctx = tempCanvas.getContext('2d', { alpha: true }) as (CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D) | null;
-  if (!ctx) throw new Error('Failed to get 2D canvas context for atlas generation.');
+  const ctx = tempCanvas.getContext('2d', { alpha: true }) as
+      | CanvasRenderingContext2D
+      | OffscreenCanvasRenderingContext2D
+      | null;
+
+  if (!ctx) {
+      throw new Error('Failed to get 2D canvas context for atlas generation.');
+  }
 
   ctx.font = FONT;
 
+  // Measure glyph content width once
+  const glyphMetrics = ctx.measureText(glyphs[0] ?? 'A');
+  const glyphContentWidth = glyphMetrics.width;
+
+  // Adaptive padding calculation
+  const PADDING = computeAdaptivePadding(
+    BASE_PADDING,
+    glyphs.length,
+    glyphContentWidth,
+    ATLAS_MAX_SIZE,
+  );
+
   // Calculate cell dimensions based on the first glyph
-  const cellWidth = Math.ceil(ctx.measureText(glyphs[0] ?? 'A').width) + PADDING * 2;
+  const cellWidth = Math.ceil(glyphContentWidth) + PADDING * 2;
   const cellHeight = FONT_SIZE + PADDING * 2;
 
   // Determine atlas layout
   const glyphsPerRow = options.cols ?? Math.floor(ATLAS_MAX_SIZE / cellWidth);
   const totalRows = Math.ceil(glyphs.length / glyphsPerRow);
 
-  const atlasWidth = Math.min(ATLAS_MAX_SIZE, glyphsPerRow * cellWidth);
+  const atlasWidth = glyphsPerRow * cellWidth;
   const atlasHeight = totalRows * cellHeight;
 
   if (atlasWidth > ATLAS_MAX_SIZE || atlasHeight > ATLAS_MAX_SIZE) {
-    throw new Error('Atlas size exceeds maximum allowed size. Reduce font size or glyph count.');
+    throw new Error(
+      `Atlas size ${atlasWidth}x${atlasHeight} exceeds device limit ${ATLAS_MAX_SIZE}`,
+    );
   }
 
   // Final canvas sizing
@@ -121,7 +183,6 @@ export async function createGlyphAtlas(
 
   // Draw all glyphs
   for (let i = 0; i < glyphs.length; i++) {
-    const glyph = glyphs[i];
     const col = i % glyphsPerRow;
     const row = Math.floor(i / glyphsPerRow);
 
@@ -131,7 +192,7 @@ export async function createGlyphAtlas(
     // Draw glyph centered in the cell
     const drawX = x + cellWidth / 2;
     const drawY = y + cellHeight / 2;
-    ctx.fillText(glyph, drawX, drawY);
+    ctx.fillText(glyphs[i], drawX, drawY);
 
     // Calculate normalized UV rects
     const u0 = x / atlasWidth;
@@ -139,13 +200,20 @@ export async function createGlyphAtlas(
     const u1 = (x + cellWidth) / atlasWidth;
     const v1 = (y + cellHeight) / atlasHeight;
 
-    glyphMap.set(glyph, { u0, v0, u1, v1, width: cellWidth, height: cellHeight });
+    glyphMap.set(glyphs[i], {
+      u0,
+      v0,
+      u1,
+      v1,
+      width: cellWidth,
+      height: cellHeight,
+    });
 
     const bufferOffset = i * GLYPH_UV_RECT_SIZE;
-    uvRects[bufferOffset + 0] = u0; // u0
-    uvRects[bufferOffset + 1] = v0; // v0
-    uvRects[bufferOffset + 2] = u1; // u1
-    uvRects[bufferOffset + 3] = v1; // v1
+    uvRects[bufferOffset + 0] = u0;
+    uvRects[bufferOffset + 1] = v0;
+    uvRects[bufferOffset + 2] = u1;
+    uvRects[bufferOffset + 3] = v1;
   }
 
   // --- 3. GPU Texture Creation and Copy ---
@@ -158,21 +226,16 @@ export async function createGlyphAtlas(
   });
 
   // Convert canvas to ImageBitmap
-  let bitmap: ImageBitmap;
-  if (canUseOffscreen && (tempCanvas as OffscreenCanvas).transferToImageBitmap) {
-    // @ts-ignore
-    bitmap = (tempCanvas as OffscreenCanvas).transferToImageBitmap();
-  } else {
-    // @ts-ignore createImageBitmap is globally available
-    bitmap = await createImageBitmap(tempCanvas as HTMLCanvasElement);
-  }
+  const bitmap = canUseOffscreen && (tempCanvas as OffscreenCanvas).transferToImageBitmap
+    ? (tempCanvas as OffscreenCanvas).transferToImageBitmap()
+    : await createImageBitmap(tempCanvas as HTMLCanvasElement);
 
   // Copy external image to the texture
   try {
     device.queue.copyExternalImageToTexture(
       { source: bitmap },
       { texture },
-      [atlasWidth, atlasHeight]
+      [atlasWidth, atlasHeight],
     );
   } finally {
     // Release browser resources
