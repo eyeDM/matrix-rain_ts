@@ -220,10 +220,6 @@ export async function createRenderer(
       // 1. Update Uniforms (CPU copy to GPU)
       updateParams(device.queue, paramsBuffer, paramsStaging, dt, rows, cols, glyphCount, cellWidth, cellHeight);
 
-      // DEBUG: Log params to verify they're being set
-      //console.log('Params update - dt:', dt, 'cols:', cols, 'rows:', rows,
-      //            'cellWidth:', cellWidth, 'cellHeight:', cellHeight);
-
       // 2. Encode the Compute Pass
       const cpass = encoder.beginComputePass();
       cpass.setPipeline(computePipeline);

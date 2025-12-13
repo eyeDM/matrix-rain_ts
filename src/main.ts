@@ -26,7 +26,11 @@ export async function bootstrap(): Promise<void> {
     // Create a small glyph set and build an atlas (Stage 3 usage)
     const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
     const glyphCount = glyphs.length;
-    const atlas = await createGlyphAtlas(device, glyphs, { font: '28px monospace', padding: 6 });
+    const atlas = await createGlyphAtlas(
+        device,
+        glyphs,
+        { font: '32px monospace', padding: 8 }
+    );
 
     // Tracking long-lived resources
     persistentRM.track(atlas.texture);
@@ -46,17 +50,34 @@ export async function bootstrap(): Promise<void> {
     let renderGraphRef: RenderGraph;
 
     // Frame callback for the render loop
-    const frameCallback = (commandEncoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => {
+    const frameCallback = (
+        commandEncoder: GPUCommandEncoder,
+        currentView: GPUTextureView,
+        dt: number
+    ) => {
       renderGraphRef.execute(commandEncoder, currentView, dt);
+    };
+
+    const calcCanvasDims = (cellWidth: number, cellHeight: number) => {
+        const dims = configureCanvas();
+
+        const widthCSS = dims.width * dims.dpr;
+        const heightCSS = dims.height * dims.dpr;
+
+        return {
+            cols: Math.floor(widthCSS / cellWidth),
+            rows: Math.ceil(heightCSS / cellHeight),
+        };
     };
 
     /**
      * Handles canvas resizing and re-initializes all size-dependent resources.
      */
     const handleResize = async () => {
-      const { width: newWidth, height: newHeight } = configureCanvas();
-      const newCols = Math.floor(newWidth / cellWidth);
-      const newRows = Math.ceil(newHeight / cellHeight);
+      const newCanvasDims = calcCanvasDims(cellWidth, cellHeight);
+      const newCols = newCanvasDims.cols;
+      const newRows = newCanvasDims.rows;
+
       const newInstanceCount = newCols * MAX_TRAIL;
 
       if (newCols === currentCols && newRows === currentRows) return;
@@ -128,9 +149,10 @@ export async function bootstrap(): Promise<void> {
     };
 
     // --- INITIALIZATION ---
-    const initialDims = configureCanvas();
-    currentCols = Math.floor(initialDims.width / cellWidth);
-    currentRows = Math.ceil(initialDims.height / cellHeight);
+    const currentDims = calcCanvasDims(cellWidth, cellHeight);
+    currentCols = currentDims.cols;
+    currentRows = currentDims.rows;
+
     const instanceCount = currentCols * MAX_TRAIL;
 
     // Create streams and instance buffers
@@ -171,13 +193,7 @@ export async function bootstrap(): Promise<void> {
     // Start the main render loop
     startRenderLoop(device, context, format, frameCallback);
 
-    //console.log('Canvas dimensions:', canvasEl.width, 'x', canvasEl.height);
-    //console.log('Cell size:', cellWidth, 'x', cellHeight);
-    //console.log('Grid:', currentCols, 'cols x', currentRows, 'rows');
-    //console.log('Instance count:', instanceCount);
-    //console.log('Expected coverage:', currentCols * cellWidth, 'pixels');
-
-// Debounced resize listener
+    // Debounced resize listener
     let resizeTimer: number | undefined;
     window.addEventListener('resize', () => {
       if (resizeTimer) cancelAnimationFrame(resizeTimer);
