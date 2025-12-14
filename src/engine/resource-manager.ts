@@ -1,72 +1,111 @@
-export type TrackedResource = GPUBuffer | GPUTexture | GPUSampler | GPUBindGroup | GPURenderPipeline | GPUComputePipeline | GPUShaderModule;
+// src/engine/resource-manager.ts
+//
+// Type-safe GPU resource ownership manager.
+// Separates ownership tracking from explicit GPU destruction.
+
+export type DestroyableResource = {
+    destroy(): void;
+};
 
 export class ResourceManager {
-    private device: GPUDevice;
-    private resources = new Set<TrackedResource>();
+    private readonly destroyables: DestroyableResource[] = [];
+    private readonly tracked: unknown[] = [];
+    private destroyed = false;
 
-    constructor(device: GPUDevice) {
-        this.device = device;
-    }
+    constructor(private readonly device: GPUDevice) {}
 
-    track(r: TrackedResource | null | undefined) {
-        if (!r) return;
-        this.resources.add(r);
-    }
-
-    createBuffer(desc: GPUBufferDescriptor) {
-        const b = this.device.createBuffer(desc);
-        this.resources.add(b);
-        return b;
-    }
-
-    createTexture(desc: GPUTextureDescriptor) {
-        const t = this.device.createTexture(desc);
-        this.resources.add(t);
-        return t;
-    }
-
-    createSampler(desc: GPUSamplerDescriptor) {
-        const s = this.device.createSampler(desc);
-        this.resources.add(s);
-        return s;
-    }
-
-    createShaderModule(desc: GPUShaderModuleDescriptor) {
-        const m = this.device.createShaderModule(desc);
-        this.resources.add(m as GPUShaderModule);
-        return m;
-    }
-
-    createComputePipeline(desc: GPUComputePipelineDescriptor) {
-        const p = this.device.createComputePipeline(desc);
-        this.resources.add(p as unknown as GPUComputePipeline);
-        return p;
-    }
-
-    createRenderPipeline(desc: GPURenderPipelineDescriptor) {
-        const p = this.device.createRenderPipeline(desc);
-        this.resources.add(p as unknown as GPURenderPipeline);
-        return p;
-    }
-
-    createBindGroup(desc: GPUBindGroupDescriptor) {
-        const bg = this.device.createBindGroup(desc);
-        this.resources.add(bg);
-        return bg;
-    }
-
-    destroyAll() {
-        for (const r of this.resources) {
-            try {
-                if (r && typeof (r as any).destroy === 'function') (r as any).destroy();
-            } catch (e) {
-                /* ignore */
-            }
+    /** Internal invariants */
+    private assertAlive(): void {
+        if (this.destroyed) {
+            throw new Error('ResourceManager: cannot track resources after destroyAll()');
         }
-        this.resources.clear();
+    }
+
+    /**
+     * Track a GPU resource that requires explicit .destroy().
+     * Typical examples: GPUBuffer, GPUTexture, GPUSampler.
+     */
+    trackDestroyable<T extends DestroyableResource>(resource: T): T {
+        this.assertAlive();
+        this.destroyables.push(resource);
+        this.tracked.push(resource);
+        return resource;
+    }
+
+    /**
+     * Track an owned GPU object that does NOT require explicit destruction.
+     * Typical examples: pipelines, bind groups, shader modules.
+     */
+    track<T>(resource: T): T {
+        this.assertAlive();
+        this.tracked.push(resource);
+        return resource;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Convenience factory helpers
+    // ─────────────────────────────────────────────────────────────
+
+    createBuffer(desc: GPUBufferDescriptor): GPUBuffer {
+        return this.trackDestroyable(
+            this.device.createBuffer(desc)
+        );
+    }
+
+    createTexture(desc: GPUTextureDescriptor): GPUTexture {
+        return this.trackDestroyable(
+            this.device.createTexture(desc)
+        );
+    }
+
+    createSampler(desc: GPUSamplerDescriptor): GPUSampler {
+        return this.track(
+            this.device.createSampler(desc)
+        );
+    }
+
+    createShaderModule(desc: GPUShaderModuleDescriptor): GPUShaderModule {
+        return this.track(
+            this.device.createShaderModule(desc)
+        );
+    }
+
+    createBindGroup(desc: GPUBindGroupDescriptor): GPUBindGroup {
+        return this.track(
+            this.device.createBindGroup(desc)
+        );
+    }
+
+    createComputePipeline(desc: GPUComputePipelineDescriptor): GPUComputePipeline {
+        return this.track(
+            this.device.createComputePipeline(desc)
+        );
+    }
+
+    createRenderPipeline(desc: GPURenderPipelineDescriptor): GPURenderPipeline {
+        return this.track(
+            this.device.createRenderPipeline(desc)
+        );
+    }
+
+    /**
+     * End of ownership scope.
+     * Explicitly destroys all destroyable resources and
+     * releases all ownership tracking.
+     */
+    destroyAll(): void {
+        if (this.destroyed) return;
+
+        for (const r of this.destroyables) {
+            r.destroy();
+        }
+
+        this.destroyables.length = 0;
+        this.tracked.length = 0;
+        this.destroyed = true;
     }
 }
 
-export function createResourceManager(device: GPUDevice) {
+export function createResourceManager(device: GPUDevice): ResourceManager {
     return new ResourceManager(device);
 }
