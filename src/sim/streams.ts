@@ -97,7 +97,7 @@ export function createStreamBuffers(
         seeds: seedsBuf,
         columns: columnsBuf,
         params: paramsBuf,
-        paramsStaging: initParams
+        paramsStaging: initParams,
     };
 }
 

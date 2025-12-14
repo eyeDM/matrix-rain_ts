@@ -5,7 +5,7 @@ import { createGlyphAtlas, createInstanceBuffer } from './engine/resources';
 import { StreamBuffers, createStreamBuffers } from './sim/streams';
 import { Renderer, createRenderer } from './engine/renderer';
 import { RenderGraph, createRenderGraph } from './engine/render-graph';
-import { ResourceManager, createResourceManager } from './engine/resource-manager';
+import { createResourceManager } from './engine/resource-manager';
 
 const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element #gpu-canvas not found');
@@ -18,9 +18,7 @@ export async function bootstrap(): Promise<void> {
     try {
         const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
 
-        // Create resource managers:
-        // - `persistentRM` for long-lived resources (glyph atlas, samplers)
-        // - `rendererRM` will be created per-renderer generation and destroyed on resize
+        // Resource manager for long-lived resources (glyph atlas, samplers)
         const persistentRM = createResourceManager(device);
 
         // Create a small glyph set and build an atlas (Stage 3 usage)
@@ -42,7 +40,6 @@ export async function bootstrap(): Promise<void> {
 
         // Mutable state references
         let rendererRef: Renderer;
-        let rendererRM: ResourceManager;
         let streamsRef: StreamBuffers;
         let instancesBufRef: GPUBuffer;
         let currentCols: number;
@@ -86,11 +83,9 @@ export async function bootstrap(): Promise<void> {
             const newStreams = createStreamBuffers(device, newCols, newRows, glyphCount, cellWidth, cellHeight);
             const newInstances = createInstanceBuffer(device, newInstanceCount);
 
-            // Create a fresh resource manager for the new renderer's internal resources
-            const newRendererRM = createResourceManager(device);
+            // Create a fresh renderer
             const newRenderer = await createRenderer(
                 device,
-                newRendererRM,
                 newCols,
                 newRows,
                 newStreams.params,
@@ -119,14 +114,12 @@ export async function bootstrap(): Promise<void> {
 
             // 3. Save old references
             const oldRenderer = rendererRef!;
-            const oldRendererRM = rendererRM!;
             const oldStreams = streamsRef!;
             const oldInstances = instancesBufRef!;
-            // oldRenderGraph не нужно уничтожать, так как он не владеет GPU ресурсами.
+            // oldRenderGraph does not need to be destroyed since it does not own GPU resources
 
             // 4. Assign new references
             rendererRef = newRenderer;
-            rendererRM = newRendererRM;
             streamsRef = newStreams;
             instancesBufRef = newInstances;
             renderGraphRef = newRenderGraph;
@@ -145,7 +138,6 @@ export async function bootstrap(): Promise<void> {
             try { oldStreams.params.destroy(); } catch (e) {}
             try { oldInstances.destroy(); } catch (e) {}
             // Destroy renderer-owned GPU objects via the old renderer resource manager
-            try { oldRendererRM.destroyAll(); } catch (e) {}
             try { oldRenderer.destroy(); } catch (e) {}
         };
 
@@ -160,11 +152,9 @@ export async function bootstrap(): Promise<void> {
         streamsRef = createStreamBuffers(device, currentCols, currentRows, glyphCount, cellWidth, cellHeight);
         instancesBufRef = createInstanceBuffer(device, instanceCount);
 
-        // Create initial renderer and resource manager
-        rendererRM = createResourceManager(device);
+        // Create initial renderer
         rendererRef = await createRenderer(
             device,
-            rendererRM,
             currentCols,
             currentRows,
             streamsRef.params,

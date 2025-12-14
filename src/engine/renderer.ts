@@ -1,6 +1,6 @@
 import { updateParams } from '../sim/streams';
 import { RenderPass, PassKind } from './render-graph';
-import { ResourceManager } from './resource-manager';
+import { createResourceManager } from './resource-manager';
 
 export type Renderer = {
     computePass: RenderPass;
@@ -16,7 +16,6 @@ export type Renderer = {
  */
 export async function createRenderer(
     device: GPUDevice,
-    rm: ResourceManager,
     cols: number,
     rows: number,
     paramsBuffer: GPUBuffer,
@@ -37,6 +36,8 @@ export async function createRenderer(
     canvasEl: HTMLCanvasElement,
     format: GPUTextureFormat
 ): Promise<Renderer> {
+    const rm = createResourceManager(device);
+
     // --- 1. Load Shaders (Compute & Draw) ---
 
     // Load compute WGSL (use URL relative to this module so bundlers/dev-servers resolve correctly)
