@@ -6,8 +6,8 @@ import { Renderer, createRenderer } from './engine/renderer';
 import { RenderGraph, createRenderGraph } from './engine/render-graph';
 import { createResourceManager } from './engine/resource-manager';
 
-const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement | null;
-if (!canvas) throw new Error('Canvas element #gpu-canvas not found');
+const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
+if (!canvas) throw new Error('Canvas element `#canvas` not found');
 const canvasEl = canvas; // narrowed non-null reference for inner functions
 
 // Constants (Per audit, used in instance count calculation)

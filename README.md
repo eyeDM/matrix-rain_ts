@@ -1,4 +1,4 @@
-# Matrix Rain (WebGPU + TypeScript)
+# Matrix Rain (TypeScript + WebGPU)
 
 Minimal WebGPU Matrix Rain demo built with Vite + TypeScript.
 
@@ -33,7 +33,7 @@ npm run preview
 ```
 
 ## Project Structure (important files)
-- `index.html` — contains the `#gpu-canvas` element.
+- `index.html` — contains the `#canvas` element.
 - `src/main.ts` — app bootstrap, WebGPU init, resource creation, render loop, resize handling.
 - `src/boot/webgpu-init.ts` — WebGPU adapter/device/context initialization.
 - `src/sim/gpu-update.wgsl` — compute shader: stream simulation and instance emission.
