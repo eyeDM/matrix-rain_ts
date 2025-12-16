@@ -1,6 +1,7 @@
 export type StreamBuffers = {
     cols: number;
     rows: number;
+
     // GPU buffers
     heads: GPUBuffer;   // array<f32> length = cols
     speeds: GPUBuffer;  // array<f32> length = cols
@@ -9,6 +10,8 @@ export type StreamBuffers = {
     columns: GPUBuffer; // array<u32> length = cols (optional index buffer)
     params: GPUBuffer;  // uniform buffer containing dt, rows, cols
     paramsStaging: ArrayBuffer; // preallocated staging buffer for params (reuse to avoid per-frame alloc)
+
+    destroy(): void;
 };
 
 /**
@@ -88,6 +91,15 @@ export function createStreamBuffers(
     // pad left zeroed
     device.queue.writeBuffer(paramsBuf, 0, initParams);
 
+    function safeDestroy(buffer?: GPUBuffer) {
+        if (!buffer) return;
+        try {
+            buffer.destroy();
+        } catch {
+            /* noop — buffer may already be destroyed */
+        }
+    }
+
     return {
         cols,
         rows,
@@ -98,6 +110,15 @@ export function createStreamBuffers(
         columns: columnsBuf,
         params: paramsBuf,
         paramsStaging: initParams,
+
+        destroy() {
+            safeDestroy(headsBuf);
+            safeDestroy(speedsBuf);
+            safeDestroy(lengthsBuf);
+            safeDestroy(seedsBuf);
+            safeDestroy(columnsBuf);
+            safeDestroy(paramsBuf);
+        },
     };
 }
 

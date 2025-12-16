@@ -1,4 +1,4 @@
-import { updateParams } from '../sim/streams';
+import { updateParams, createStreamBuffers } from '../sim/streams';
 import { RenderPass, PassKind } from './render-graph';
 import { createResourceManager } from './resource-manager';
 
@@ -18,13 +18,6 @@ export async function createRenderer(
     device: GPUDevice,
     cols: number,
     rows: number,
-    paramsBuffer: GPUBuffer,
-    paramsStaging: ArrayBuffer,
-    heads: GPUBuffer,
-    speeds: GPUBuffer,
-    lengths: GPUBuffer,
-    seeds: GPUBuffer,
-    columns: GPUBuffer,
     glyphUVsBuffer: GPUBuffer,
     instancesBuffer: GPUBuffer,
     instanceCount: number,
@@ -37,6 +30,15 @@ export async function createRenderer(
     format: GPUTextureFormat
 ): Promise<Renderer> {
     const rm = createResourceManager(device);
+
+    const streams = createStreamBuffers(
+        device,
+        cols,
+        rows,
+        glyphCount,
+        cellWidth,
+        cellHeight
+    );
 
     // --- 1. Load Shaders (Compute & Draw) ---
 
@@ -93,12 +95,12 @@ export async function createRenderer(
         label: 'Compute Bind Group',
         layout: computeBindGroupLayout,
         entries: [
-            { binding: 0, resource: { buffer: paramsBuffer } },
-            { binding: 1, resource: { buffer: heads } },
-            { binding: 2, resource: { buffer: speeds } },
-            { binding: 3, resource: { buffer: lengths } },
-            { binding: 4, resource: { buffer: seeds } },
-            { binding: 5, resource: { buffer: columns } },
+            { binding: 0, resource: { buffer: streams.params } },
+            { binding: 1, resource: { buffer: streams.heads } },
+            { binding: 2, resource: { buffer: streams.speeds } },
+            { binding: 3, resource: { buffer: streams.lengths } },
+            { binding: 4, resource: { buffer: streams.seeds } },
+            { binding: 5, resource: { buffer: streams.columns } },
             { binding: 6, resource: { buffer: glyphUVsBuffer } },
             { binding: 7, resource: { buffer: instancesBuffer } },
         ]
@@ -204,7 +206,7 @@ export async function createRenderer(
         deps: [],
         execute: (encoder: GPUCommandEncoder, _currentView: GPUTextureView, dt: number) => {
             // 1. Update Uniforms (CPU copy to GPU)
-            updateParams(device.queue, paramsBuffer, paramsStaging, dt, rows, cols, glyphCount, cellWidth, cellHeight);
+            updateParams(device.queue, streams.params, streams.paramsStaging, dt, rows, cols, glyphCount, cellWidth, cellHeight);
 
             // 2. Encode the Compute Pass
             const cpass = encoder.beginComputePass();
@@ -253,6 +255,7 @@ export async function createRenderer(
     // --- 5. Destruction Logic ---
 
     const destroy = () => {
+        streams.destroy();
         rm.destroyAll();
     };
 

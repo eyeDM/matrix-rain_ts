@@ -2,7 +2,6 @@
 import { initWebGPU } from './boot/webgpu-init';
 import { startRenderLoop } from './engine/render-loop';
 import { createGlyphAtlas, createInstanceBuffer } from './engine/resources';
-import { StreamBuffers, createStreamBuffers } from './sim/streams';
 import { Renderer, createRenderer } from './engine/renderer';
 import { RenderGraph, createRenderGraph } from './engine/render-graph';
 import { createResourceManager } from './engine/resource-manager';
@@ -40,7 +39,6 @@ export async function bootstrap(): Promise<void> {
 
         // Mutable state references
         let rendererRef: Renderer;
-        let streamsRef: StreamBuffers;
         let instancesBufRef: GPUBuffer;
         let currentCols: number;
         let currentRows: number;
@@ -80,21 +78,12 @@ export async function bootstrap(): Promise<void> {
             if (newCols === currentCols && newRows === currentRows) return;
 
             // 1. Create NEW resources
-            const newStreams = createStreamBuffers(device, newCols, newRows, glyphCount, cellWidth, cellHeight);
             const newInstances = createInstanceBuffer(device, newInstanceCount);
 
-            // Create a fresh renderer
             const newRenderer = await createRenderer(
                 device,
                 newCols,
                 newRows,
-                newStreams.params,
-                newStreams.paramsStaging,
-                newStreams.heads,
-                newStreams.speeds,
-                newStreams.lengths,
-                newStreams.seeds,
-                newStreams.columns,
                 atlas.glyphUVsBuffer,
                 newInstances,
                 newInstanceCount,
@@ -114,13 +103,11 @@ export async function bootstrap(): Promise<void> {
 
             // 3. Save old references
             const oldRenderer = rendererRef!;
-            const oldStreams = streamsRef!;
             const oldInstances = instancesBufRef!;
             // oldRenderGraph does not need to be destroyed since it does not own GPU resources
 
             // 4. Assign new references
             rendererRef = newRenderer;
-            streamsRef = newStreams;
             instancesBufRef = newInstances;
             renderGraphRef = newRenderGraph;
             currentCols = newCols;
@@ -130,12 +117,6 @@ export async function bootstrap(): Promise<void> {
             try { await device.queue.onSubmittedWorkDone(); } catch (e) { /* ignore */ }
 
             // Now safe to destroy old resources
-            try { oldStreams.heads.destroy(); } catch (e) {}
-            try { oldStreams.speeds.destroy(); } catch (e) {}
-            try { oldStreams.lengths.destroy(); } catch (e) {}
-            try { oldStreams.seeds.destroy(); } catch (e) {}
-            try { oldStreams.columns.destroy(); } catch (e) {}
-            try { oldStreams.params.destroy(); } catch (e) {}
             try { oldInstances.destroy(); } catch (e) {}
             // Destroy renderer-owned GPU objects via the old renderer resource manager
             try { oldRenderer.destroy(); } catch (e) {}
@@ -148,22 +129,12 @@ export async function bootstrap(): Promise<void> {
 
         const instanceCount = currentCols * MAX_TRAIL;
 
-        // Create streams and instance buffers
-        streamsRef = createStreamBuffers(device, currentCols, currentRows, glyphCount, cellWidth, cellHeight);
         instancesBufRef = createInstanceBuffer(device, instanceCount);
 
-        // Create initial renderer
         rendererRef = await createRenderer(
             device,
             currentCols,
             currentRows,
-            streamsRef.params,
-            streamsRef.paramsStaging,
-            streamsRef.heads,
-            streamsRef.speeds,
-            streamsRef.lengths,
-            streamsRef.seeds,
-            streamsRef.columns,
             atlas.glyphUVsBuffer,
             instancesBufRef,
             instanceCount,
@@ -176,7 +147,6 @@ export async function bootstrap(): Promise<void> {
             format
         );
 
-        // INITIAL RENDER GRAPH SETUP
         renderGraphRef = createRenderGraph();
         renderGraphRef.addPass(rendererRef.computePass);
         renderGraphRef.addPass(rendererRef.drawPass);
