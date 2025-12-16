@@ -1,24 +1,69 @@
 // gpu-update.wgsl
-// * GPU Simulation Compute Shader *
+// -----------------------------------------------------------------------------
+// GPU Simulation Compute Shader
+//
+// This shader performs the core per-column simulation step for Matrix streams.
+// It is executed as part of the SimulationGraph and contains no frame orchestration
+// logic. All temporal data comes exclusively from FrameUniforms.
 //
 // Buffers layout (group 0):
-//  - binding 0: uniform Params { dt: f32; rows: u32; cols: u32; glyphCount: u32; cellWidth: f32; cellHeight: f32; }
-//  - binding 1: storage heads: array<f32>                // current head Y position per column
-//  - binding 2: storage speeds: array<f32>               // speed in cells per second per column
-//  - binding 3: storage lengths: array<u32>              // trail length in cells per column
-//  - binding 4: storage seeds: array<u32>                // PRNG seed per column
-//  - binding 5: storage columns: array<u32>              // column indices (optional index buffer)
-//  - binding 6: storage glyphUVs: array<vec4<f32>>       // per-glyph UV rects (u0,v0,u1,v1) in normalized float
-//  - binding 7: storage instancesOut: array<InstanceOut> // output instances (per-column fixed slots)
 //
-// All storage buffers are declared as read_write when the shader needs to mutate them,
-// and read-only when the shader only reads (e.g. `columns`, `glyphUVs`). The compute
-// shader advances heads, updates seeds/speeds/lengths when wrapping, and writes
-// per-column trail instances into a preallocated `instancesOut` array.
+//  - binding 0: uniform Frame
+//      {
+//        time: f32;        // global simulation time (seconds)
+//        dt: f32;          // delta time for the current frame (seconds)
+//        frameIndex: u32;  // monotonically increasing frame counter
+//        noisePhase: f32;  // low-frequency temporal phase for deterministic noise
+//      }
 //
-// The compute kernel advances each head by `speed * dt`, wraps when >= rows,
-// and when wrapping updates the seed using an LCG, then derives new speed/length
-// from the seed. Symbol changes can be driven by the seed in the rendering stage.
+//  - binding 1: uniform Params
+//      {
+//        _dt_unused: f32;  // reserved (dt moved to FrameUniforms in Phase 0)
+//        rows: u32;        // number of rows in the grid
+//        cols: u32;        // number of columns (stream count)
+//        glyphCount: u32;  // total glyphs in the atlas
+//        cellWidth: f32;   // glyph cell width in pixels
+//        cellHeight: f32;  // glyph cell height in pixels
+//      }
+//
+//  - binding 2: storage, read_write heads: array<f32>
+//      // current head Y position per column (in cell units)
+//
+//  - binding 3: storage, read_write speeds: array<f32>
+//      // fall speed in cells per second per column
+//
+//  - binding 4: storage, read_write lengths: array<u32>
+//      // trail length in cells per column
+//
+//  - binding 5: storage, read_write seeds: array<u32>
+//      // deterministic PRNG seed per column
+//
+//  - binding 6: storage, read columns: array<u32>
+//      // column indices (optional indirection / index buffer)
+//
+//  - binding 7: storage, read glyphUVs: array<vec4<f32>>
+//      // per-glyph UV rectangles (u0, v0, u1, v1), normalized
+//
+//  - binding 8: storage, read_write instancesOut: array<InstanceOut>
+//      // preallocated output instances (fixed slots per column)
+//
+// Notes:
+// - All animation timing uses Frame.dt; Params no longer carry time information.
+// - No CPU-side animation logic exists; CPU only updates uniforms.
+// - The shader advances each head by `speed * frame.dt`, wraps when `>= rows`,
+//   and on wrap updates the PRNG seed (LCG) to derive new speed and length.
+// - Instance emission is deterministic and column-local.
+// - Symbol selection and visual variation are driven by seeds and frame.noisePhase
+//   in later simulation or rendering passes.
+// - No per-frame allocations; all buffers are persistent.
+// -----------------------------------------------------------------------------
+
+struct Frame {
+  time: f32,
+  dt: f32,
+  frameIndex: u32,
+  noisePhase: f32,
+};
 
 struct Params {
   dt: f32,
@@ -38,14 +83,15 @@ struct InstanceOut {
   pad: vec3<f32>,
 };
 
-@group(0) @binding(0) var<uniform> params: Params;
-@group(0) @binding(1) var<storage, read_write> heads: array<f32>;
-@group(0) @binding(2) var<storage, read_write> speeds: array<f32>;
-@group(0) @binding(3) var<storage, read_write> lengths: array<u32>;
-@group(0) @binding(4) var<storage, read_write> seeds: array<u32>;
-@group(0) @binding(5) var<storage, read> columns: array<u32>;
-@group(0) @binding(6) var<storage, read> glyphUVs: array<vec4<f32>>;
-@group(0) @binding(7) var<storage, read_write> instancesOut: array<InstanceOut>;
+@group(0) @binding(0) var<uniform> frame: Frame;
+@group(0) @binding(1) var<uniform> params: Params;
+@group(0) @binding(2) var<storage, read_write> heads: array<f32>;
+@group(0) @binding(3) var<storage, read_write> speeds: array<f32>;
+@group(0) @binding(4) var<storage, read_write> lengths: array<u32>;
+@group(0) @binding(5) var<storage, read_write> seeds: array<u32>;
+@group(0) @binding(6) var<storage, read> columns: array<u32>;
+@group(0) @binding(7) var<storage, read> glyphUVs: array<vec4<f32>>;
+@group(0) @binding(8) var<storage, read_write> instancesOut: array<InstanceOut>;
 
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
@@ -65,7 +111,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   var speed: f32 = speeds[i];
 
   // Advance head by speed * dt (cell units)
-  head = head + speed * params.dt;
+  head = head + speed * frame.dt;
 
   // Wrap and respawn logic
   if (head >= f32(params.rows)) {

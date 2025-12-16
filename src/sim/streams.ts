@@ -3,6 +3,7 @@ export type StreamBuffers = {
     rows: number;
 
     // GPU buffers
+    frame: GPUBuffer;
     heads: GPUBuffer;   // array<f32> length = cols
     speeds: GPUBuffer;  // array<f32> length = cols
     lengths: GPUBuffer; // array<u32> length = cols
@@ -22,6 +23,7 @@ export function createStreamBuffers(
     device: GPUDevice,
     cols: number,
     rows: number,
+    frameUniforms: GPUBuffer,
     glyphCount: number,
     cellWidth: number,
     cellHeight: number
@@ -103,6 +105,7 @@ export function createStreamBuffers(
     return {
         cols,
         rows,
+        frame: frameUniforms,
         heads: headsBuf,
         speeds: speedsBuf,
         lengths: lengthsBuf,
@@ -126,11 +129,11 @@ export function createStreamBuffers(
  * Update the uniform params buffer with a new delta-time.
  * Call each frame before dispatching the compute pass to pass `dt`.
  */
-export function updateParams(
+export function updateParamsStatic(
     queue: GPUQueue,
     paramsBuffer: GPUBuffer,
     staging: ArrayBuffer,
-    dt: number,
+//    dt: number,
     rows: number,
     cols: number,
     glyphCount: number,
@@ -140,7 +143,7 @@ export function updateParams(
     // Reuse provided staging ArrayBuffer to avoid per-frame allocations
     const f32 = new Float32Array(staging);
     const u32 = new Uint32Array(staging);
-    f32[0] = dt;
+    f32[0] = 0.0; // dt now comes from FrameUniforms
     u32[1] = rows;
     u32[2] = cols;
     u32[3] = glyphCount;
