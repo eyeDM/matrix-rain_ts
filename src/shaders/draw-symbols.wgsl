@@ -1,7 +1,8 @@
 // draw-symbols.wgsl
 // * Instanced symbol renderer *
 
-// Instance data layout (storage buffer) - InstanceData (packed to 16-byte alignment):
+// Instance data layout (storage buffer) - InstanceData:
+// MUST match InstanceLayout (48 bytes, align 16)
 struct InstanceData {
   offset: vec2<f32>,   // pixel-space offset of top-left of cell
   cellSize: vec2<f32>, // pixel size (width, height) of cell
@@ -10,6 +11,7 @@ struct InstanceData {
   pad0: vec3<f32>,     // pad to 16-byte multiple (total 48 bytes)
 };
 
+// MUST match ScreenLayout (16 bytes, align 16)
 struct Screen {
   size: vec2<f32>, // canvas size in pixels
 };

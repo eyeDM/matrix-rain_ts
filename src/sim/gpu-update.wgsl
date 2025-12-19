@@ -58,6 +58,7 @@
 // - No per-frame allocations; all buffers are persistent.
 // -----------------------------------------------------------------------------
 
+// MUST match FrameLayout (16 bytes, align 16)
 struct Frame {
   time: f32,
   dt: f32,
@@ -65,6 +66,7 @@ struct Frame {
   noisePhase: f32,
 };
 
+// MUST match ParamsLayout (32 bytes, align 16)
 struct Params {
   dt: f32,
   rows: u32,
@@ -75,12 +77,13 @@ struct Params {
   pad0: vec2<f32>,
 };
 
+// MUST match InstanceLayout (48 bytes, align 16)
 struct InstanceOut {
   offset: vec2<f32>,
   cellSize: vec2<f32>,
   uvRect: vec4<f32>,
   brightness: f32,
-  pad: vec3<f32>,
+  pad0: vec3<f32>,
 };
 
 @group(0) @binding(0) var<uniform> frame: Frame;

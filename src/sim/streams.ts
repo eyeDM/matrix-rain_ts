@@ -1,3 +1,5 @@
+import { ParamsLayout } from '../gpu/layouts';
+
 export type StreamBuffers = {
     cols: number;
     rows: number;
@@ -74,22 +76,20 @@ export function createStreamBuffers(
     const seedsBuf = createMappedBuffer(seeds, GPUBufferUsage.STORAGE);
     const columnsBuf = createMappedBuffer(columns, GPUBufferUsage.STORAGE);
 
-    // Uniform params buffer layout (32 bytes):
-    // [dt: f32, rows: u32, cols: u32, glyphCount: u32, cellWidth: f32, cellHeight: f32, pad0: vec2<f32>]
+    // Uniform params buffer layout
     const paramsBuf = device.createBuffer({
-        size: 32,
+        size: ParamsLayout.SIZE,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
 
-    const initParams = new ArrayBuffer(32);
-    const f32v = new Float32Array(initParams);
-    const u32v = new Uint32Array(initParams);
-    f32v[0] = 0.0;        // dt
-    u32v[1] = rows;
-    u32v[2] = cols;
-    u32v[3] = glyphCount;
-    f32v[4] = cellWidth;
-    f32v[5] = cellHeight;
+    const initParams = new ArrayBuffer(ParamsLayout.SIZE);
+    const view = new DataView(initParams);
+    view.setFloat32(ParamsLayout.offsets.dt, 0.0, true);
+    view.setUint32(ParamsLayout.offsets.rows, rows, true);
+    view.setUint32(ParamsLayout.offsets.cols, cols, true);
+    view.setUint32(ParamsLayout.offsets.glyphCount, glyphCount, true);
+    view.setFloat32(ParamsLayout.offsets.cellWidth, cellWidth, true);
+    view.setFloat32(ParamsLayout.offsets.cellHeight, cellHeight, true);
     // pad left zeroed
     device.queue.writeBuffer(paramsBuf, 0, initParams);
 
@@ -133,7 +133,6 @@ export function updateParamsStatic(
     queue: GPUQueue,
     paramsBuffer: GPUBuffer,
     staging: ArrayBuffer,
-//    dt: number,
     rows: number,
     cols: number,
     glyphCount: number,
@@ -141,13 +140,12 @@ export function updateParamsStatic(
     cellHeight: number
 ): void {
     // Reuse provided staging ArrayBuffer to avoid per-frame allocations
-    const f32 = new Float32Array(staging);
-    const u32 = new Uint32Array(staging);
-    f32[0] = 0.0; // dt now comes from FrameUniforms
-    u32[1] = rows;
-    u32[2] = cols;
-    u32[3] = glyphCount;
-    f32[4] = cellWidth;
-    f32[5] = cellHeight;
+    const view = new DataView(staging);
+    view.setFloat32(ParamsLayout.offsets.dt, 0.0, true);
+    view.setUint32(ParamsLayout.offsets.rows, rows, true);
+    view.setUint32(ParamsLayout.offsets.cols, cols, true);
+    view.setUint32(ParamsLayout.offsets.glyphCount, glyphCount, true);
+    view.setFloat32(ParamsLayout.offsets.cellWidth, cellWidth, true);
+    view.setFloat32(ParamsLayout.offsets.cellHeight, cellHeight, true);
     queue.writeBuffer(paramsBuffer, 0, staging);
 }

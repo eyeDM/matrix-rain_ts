@@ -1,3 +1,4 @@
+import { ScreenLayout } from '../gpu/layouts';
 import { updateParamsStatic, createStreamBuffers } from '../sim/streams';
 import { createSimulationGraph } from './simulation-graph';
 import { createFrameUniforms } from '../sim/frame-uniforms';
@@ -137,9 +138,9 @@ export async function createRenderer(
     new Float32Array(vertexBuffer.getMappedRange()).set(vertexData); // ?
     vertexBuffer.unmap(); // ?
 
-    // Screen uniform buffer (vec2<f32>), align to 16 bytes
+    // Screen uniform buffer
     const screenBuffer = rm.createBuffer({
-        size: 16,
+        size: ScreenLayout.SIZE,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         label: 'Screen Uniform Buffer',
     });
@@ -246,8 +247,11 @@ export async function createRenderer(
         deps: ['matrix-compute'], // Depends on compute simulation finishing
         execute: (encoder: GPUCommandEncoder, currentView: GPUTextureView, _dt: number) => {
             // 1. Update Screen Uniforms (must be done before render pass)
-            const screenData = new Float32Array([canvasEl.width, canvasEl.height]);
-            device.queue.writeBuffer(screenBuffer, 0, screenData);
+            const staging = new ArrayBuffer(ScreenLayout.SIZE);
+            const view = new DataView(staging);
+            view.setFloat32(ScreenLayout.offsets.width, canvasEl.width, true);
+            view.setFloat32(ScreenLayout.offsets.height, canvasEl.height, true);
+            device.queue.writeBuffer(screenBuffer, 0, staging);
 
             // 2. Prepare Render Pass Descriptor
             const renderPassDesc: GPURenderPassDescriptor = {

@@ -1,3 +1,5 @@
+import { FrameLayout } from '../gpu/layouts';
+
 /**
  * FrameUniforms
  *
@@ -12,27 +14,16 @@ export type FrameUniforms = {
 };
 
 export function createFrameUniforms(device: GPUDevice): FrameUniforms {
-    // WGSL layout:
-    // struct Frame {
-    //   time: f32;
-    //   dt: f32;
-    //   frameIndex: u32;
-    //   noisePhase: f32;
-    // };
-
-    const SIZE = 16; // Exact uniform buffer size of Frame without padding
-
     const NOISE_TIME_SCALE = 0.17;
 
     const buffer = device.createBuffer({
-        size: SIZE,
+        size: FrameLayout.SIZE,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         label: 'FrameUniforms',
     });
 
-    const staging = new ArrayBuffer(SIZE);
-    const f32 = new Float32Array(staging);
-    const u32 = new Uint32Array(staging);
+    const staging = new ArrayBuffer(FrameLayout.SIZE);
+    const view = new DataView(staging);
 
     let time = 0;
     let frameIndex = 0;
@@ -44,10 +35,10 @@ export function createFrameUniforms(device: GPUDevice): FrameUniforms {
             time += dt;
             frameIndex++;
 
-            f32[0] = time;
-            f32[1] = dt;
-            u32[2] = frameIndex;
-            f32[3] = time * NOISE_TIME_SCALE;
+            view.setFloat32(FrameLayout.offsets.time, time, true);
+            view.setFloat32(FrameLayout.offsets.dt, dt, true);
+            view.setUint32(FrameLayout.offsets.frameIndex, frameIndex, true);
+            view.setFloat32(FrameLayout.offsets.noisePhase, time * NOISE_TIME_SCALE, true);
 
             queue.writeBuffer(buffer, 0, staging);
         },

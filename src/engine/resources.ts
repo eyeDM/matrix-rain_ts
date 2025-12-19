@@ -1,3 +1,5 @@
+import { InstanceLayout } from '../gpu/layouts';
+
 /**
  * Resources: Symbol texture atlas
  *
@@ -282,7 +284,6 @@ export async function createGlyphAtlas(
     };
 }
 
-
 /**
  * Create a GPU buffer specifically for holding instance data (InstanceData[] in WGSL).
  * This buffer acts as the output target for the Compute Shader and the input source
@@ -293,9 +294,7 @@ export async function createGlyphAtlas(
  * @returns The initialized GPUBuffer.
  */
 export function createInstanceBuffer(device: GPUDevice, instanceCount: number): GPUBuffer {
-    // InstanceData size is 48 bytes (vec2f, vec2f, vec4f, f32, vec3f_pad), packed to 16-byte alignment.
-    const INSTANCE_DATA_SIZE = 48;
-    const totalSize = instanceCount * INSTANCE_DATA_SIZE;
+    const totalSize = instanceCount * InstanceLayout.SIZE;
 
     // Ensure minimum buffer size to avoid WebGPU validation errors if instanceCount is 0
     const size = Math.max(4, totalSize);

@@ -1,0 +1,63 @@
+// src/gpu/layouts.ts
+//
+// Canonical CPU ↔ GPU memory layout contracts.
+// This file is the ONLY place allowed to define buffer sizes, offsets, and alignment.
+//
+// WGSL structs MUST mirror these layouts exactly.
+
+//
+// Alignment rules (WGSL / std140-like):
+// - f32 / u32: 4
+// - vec2<f32>: 8
+// - vec3<f32>: 16 (size 12 + padding)
+// - vec4<f32>: 16
+// - struct alignment = max field alignment
+// - struct size = padded to struct alignment
+//
+
+export const FrameLayout = {
+    ALIGN: 16,
+    SIZE: 16,
+    offsets: {
+        time: 0,        // f32
+        dt: 4,          // f32
+        frameIndex: 8,  // u32
+        noisePhase: 12, // f32
+    },
+} as const;
+
+export const ParamsLayout = {
+    ALIGN: 16,
+    SIZE: 32,
+    offsets: {
+        dt: 0,          // f32 (unused)
+        rows: 4,        // u32
+        cols: 8,        // u32
+        glyphCount: 12, // u32
+        cellWidth: 16,  // f32
+        cellHeight: 20, // f32
+        _pad0: 24,      // vec2<f32>
+    },
+} as const;
+
+export const InstanceLayout = {
+    ALIGN: 16,
+    SIZE: 48,
+    offsets: {
+        offset: 0,       // vec2<f32>
+        cellSize: 8,     // vec2<f32>
+        uvRect: 16,      // vec4<f32>
+        brightness: 32,  // f32
+        _pad0: 36,       // vec3<f32>
+    },
+} as const;
+
+export const ScreenLayout = {
+    ALIGN: 16,
+    SIZE: 16,
+    offsets: {
+        width: 0,  // f32
+        height: 4, // f32
+        _pad0: 8,  // vec2<f32>
+    },
+} as const;
