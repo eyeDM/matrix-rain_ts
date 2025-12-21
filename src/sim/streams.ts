@@ -5,7 +5,6 @@ export type StreamBuffers = {
     rows: number;
 
     // GPU buffers
-    frame: GPUBuffer;
     heads: GPUBuffer;   // array<f32> length = cols
     speeds: GPUBuffer;  // array<f32> length = cols
     lengths: GPUBuffer; // array<u32> length = cols
@@ -25,11 +24,15 @@ export function createStreamBuffers(
     device: GPUDevice,
     cols: number,
     rows: number,
-    frameUniforms: GPUBuffer,
     glyphCount: number,
     cellWidth: number,
     cellHeight: number
 ): StreamBuffers {
+    const MIN_SPEED_CELLS_PER_SEC = 6.0;
+    const SPEED_VARIANCE = 40.0;
+    const MIN_TRAIL_LENGTH = 3;
+    const TRAIL_LENGTH_VARIANCE = 20;
+
     // Initialize CPU-side arrays
     const heads = new Float32Array(cols);
     const speeds = new Float32Array(cols);
@@ -45,29 +48,40 @@ export function createStreamBuffers(
 
     for (let i = 0; i < cols; i++) {
         heads[i] = Math.random() * rows; // random starting head position
-        speeds[i] = 6.0 + Math.random() * 40.0; // cells per second
-        lengths[i] = 3 + Math.floor(Math.random() * 20); // trail length
+        speeds[i] = MIN_SPEED_CELLS_PER_SEC + Math.random() * SPEED_VARIANCE; // cells per second
+        lengths[i] = MIN_TRAIL_LENGTH + Math.floor(Math.random() * TRAIL_LENGTH_VARIANCE); // trail length
         seeds[i] = rndU32();
         columns[i] = i;
     }
 
-    // Helper to create mapped GPUBuffer and initialize with typed array
-    function createMappedBuffer(arr: ArrayBufferView, usage: GPUBufferUsageFlags): GPUBuffer {
-        const byteLength = arr.byteLength;
-        const buf = device.createBuffer({
-            size: alignTo(byteLength, 4),
-            usage: usage | GPUBufferUsage.COPY_DST,
-            mappedAtCreation: true
-        });
-        const mapped = buf.getMappedRange();
-        new (arr.constructor as any)(mapped).set(new (arr.constructor as any)(arr.buffer));
-        buf.unmap();
-        return buf;
+    // WebGPU requires buffer sizes to be aligned to 4 bytes
+    function alignTo4(n: number): number {
+        return (n + 3) & ~3;
     }
 
-    // Note: GPUBuffer size must be aligned to 4 bytes; alignTo ensures that.
-    function alignTo(n: number, align: number) {
-        return ((n + align - 1) & ~(align - 1));
+    // Helper to create mapped GPUBuffer and initialize with typed array
+    function createMappedBuffer(
+        data: Float32Array | Uint32Array,
+        usage: GPUBufferUsageFlags
+    ): GPUBuffer {
+        const buffer = device.createBuffer({
+            size: alignTo4(data.byteLength),
+            usage: usage | GPUBufferUsage.COPY_DST,
+            mappedAtCreation: true,
+        });
+
+        new (data.constructor as any)(buffer.getMappedRange()).set(data);
+        buffer.unmap();
+        return buffer;
+    }
+
+    function safeDestroy(buffer?: GPUBuffer): void {
+        if (!buffer) return;
+        try {
+            buffer.destroy();
+        } catch {
+            /* noop — buffer may already be destroyed */
+        }
     }
 
     const headsBuf = createMappedBuffer(heads, GPUBufferUsage.STORAGE);
@@ -93,19 +107,9 @@ export function createStreamBuffers(
     // pad left zeroed
     device.queue.writeBuffer(paramsBuf, 0, initParams);
 
-    function safeDestroy(buffer?: GPUBuffer) {
-        if (!buffer) return;
-        try {
-            buffer.destroy();
-        } catch {
-            /* noop — buffer may already be destroyed */
-        }
-    }
-
     return {
         cols,
         rows,
-        frame: frameUniforms,
         heads: headsBuf,
         speeds: speedsBuf,
         lengths: lengthsBuf,

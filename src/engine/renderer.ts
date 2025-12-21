@@ -40,7 +40,6 @@ export async function createRenderer(
         device,
         cols,
         rows,
-        frameUniforms.buffer,
         glyphCount,
         cellWidth,
         cellHeight
