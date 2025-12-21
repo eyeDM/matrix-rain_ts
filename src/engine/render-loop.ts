@@ -1,5 +1,5 @@
 /**
- * Render loop for Stage 2
+ * Render loop
  * - Issues per-frame command encoder and render pass
  * - Clears the canvas each frame (black)
  * - Minimizes per-frame JS allocations by reusing the pass descriptor
@@ -13,25 +13,10 @@ export type FrameCallback = (encoder: GPUCommandEncoder, currentView: GPUTexture
 export function startRenderLoop(
     device: GPUDevice,
     context: GPUCanvasContext,
-    format: GPUTextureFormat,
     frameCallback: FrameCallback
 ) {
     let rafId = 0;
     const queue = device.queue;
-
-    // Reusable clear color (black) and attachment descriptor template
-    const clearColor = { r: 0, g: 0, b: 0, a: 1 };
-
-    const colorAttachment = {
-        view: undefined as unknown as GPUTextureView,
-        clearValue: clearColor,
-        loadOp: 'clear' as const,
-        storeOp: 'store' as const
-    } as GPURenderPassColorAttachment;
-
-    const renderPassDesc: GPURenderPassDescriptor = {
-        colorAttachments: [colorAttachment]
-    };
 
     let lastTime = performance.now();
 
@@ -52,8 +37,6 @@ export function startRenderLoop(
             rafId = requestAnimationFrame(frame);
             return;
         }
-
-        colorAttachment.view = currentView;
 
         const commandEncoder = device.createCommandEncoder();
 
@@ -79,6 +62,10 @@ export function startRenderLoop(
 
     rafId = requestAnimationFrame(frame);
 
+    /**
+     * Stops the active render loop by cancelling the internally scheduled
+     * requestAnimationFrame callback.
+     */
     return function stop() {
         cancelAnimationFrame(rafId);
     };

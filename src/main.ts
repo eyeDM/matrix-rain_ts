@@ -20,7 +20,7 @@ export async function bootstrap(): Promise<void> {
         // Resource manager for long-lived resources (glyph atlas, samplers)
         const persistentRM = createResourceManager(device);
 
-        // Create a small glyph set and build an atlas (Stage 3 usage)
+        // Create a small glyph set and build an atlas
         const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
         const glyphCount = glyphs.length;
         const atlas = await createGlyphAtlas(
@@ -153,7 +153,7 @@ export async function bootstrap(): Promise<void> {
         // --- END INITIALIZATION ---
 
         // Start the main render loop
-        startRenderLoop(device, context, format, frameCallback);
+        startRenderLoop(device, context, frameCallback);
 
         // Debounced resize listener
         let resizeTimer: number | undefined;
