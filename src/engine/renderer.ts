@@ -1,5 +1,5 @@
 import { ScreenLayout } from '../gpu/layouts';
-import { updateParamsStatic, createStreamBuffers } from '../sim/streams';
+import { createStreamBuffers } from '../sim/streams';
 import { createSimulationGraph } from './simulation-graph';
 import { createFrameUniforms } from '../sim/frame-uniforms';
 import { RenderPass, PassKind } from './render-graph';
@@ -226,16 +226,8 @@ export async function createRenderer(
         deps: [],
         execute: (encoder: GPUCommandEncoder, _currentView: GPUTextureView, dt: number) => {
             frameUniforms.update(device.queue, dt);
-            updateParamsStatic(
-                device.queue,
-                streams.params,
-                streams.paramsStaging,
-                rows,
-                cols,
-                glyphCount,
-                cellWidth,
-                cellHeight
-            );
+            streams.paramsWriter.writeFrame(dt);
+            streams.paramsWriter.flush(device.queue, streams.params);
             simGraph.execute(encoder);
         }
     };

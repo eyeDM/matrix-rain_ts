@@ -1,4 +1,5 @@
 import { ParamsLayout } from '../gpu/layouts';
+import { ParamsWriter } from './params-writer';
 
 export type StreamBuffers = {
     cols: number;
@@ -11,7 +12,7 @@ export type StreamBuffers = {
     seeds: GPUBuffer;   // array<u32> length = cols
     columns: GPUBuffer; // array<u32> length = cols (optional index buffer)
     params: GPUBuffer;  // uniform buffer containing dt, rows, cols
-    paramsStaging: ArrayBuffer; // preallocated staging buffer for params (reuse to avoid per-frame alloc)
+    paramsWriter: ParamsWriter;
 
     destroy(): void;
 };
@@ -96,16 +97,10 @@ export function createStreamBuffers(
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
     });
 
-    const initParams = new ArrayBuffer(ParamsLayout.SIZE);
-    const view = new DataView(initParams);
-    view.setFloat32(ParamsLayout.offsets.dt, 0.0, true);
-    view.setUint32(ParamsLayout.offsets.rows, rows, true);
-    view.setUint32(ParamsLayout.offsets.cols, cols, true);
-    view.setUint32(ParamsLayout.offsets.glyphCount, glyphCount, true);
-    view.setFloat32(ParamsLayout.offsets.cellWidth, cellWidth, true);
-    view.setFloat32(ParamsLayout.offsets.cellHeight, cellHeight, true);
-    // pad left zeroed
-    device.queue.writeBuffer(paramsBuf, 0, initParams);
+    const paramsWriter = new ParamsWriter();
+    paramsWriter.writeStatic(rows, cols, glyphCount, cellWidth, cellHeight);
+    paramsWriter.writeFrame(0.0);
+    paramsWriter.flush(device.queue, paramsBuf);
 
     return {
         cols,
@@ -116,7 +111,7 @@ export function createStreamBuffers(
         seeds: seedsBuf,
         columns: columnsBuf,
         params: paramsBuf,
-        paramsStaging: initParams,
+        paramsWriter,
 
         destroy() {
             safeDestroy(headsBuf);
@@ -127,29 +122,4 @@ export function createStreamBuffers(
             safeDestroy(paramsBuf);
         },
     };
-}
-
-/**
- * Update the uniform params buffer with a new delta-time.
- * Call each frame before dispatching the compute pass to pass `dt`.
- */
-export function updateParamsStatic(
-    queue: GPUQueue,
-    paramsBuffer: GPUBuffer,
-    staging: ArrayBuffer,
-    rows: number,
-    cols: number,
-    glyphCount: number,
-    cellWidth: number,
-    cellHeight: number
-): void {
-    // Reuse provided staging ArrayBuffer to avoid per-frame allocations
-    const view = new DataView(staging);
-    view.setFloat32(ParamsLayout.offsets.dt, 0.0, true);
-    view.setUint32(ParamsLayout.offsets.rows, rows, true);
-    view.setUint32(ParamsLayout.offsets.cols, cols, true);
-    view.setUint32(ParamsLayout.offsets.glyphCount, glyphCount, true);
-    view.setFloat32(ParamsLayout.offsets.cellWidth, cellWidth, true);
-    view.setFloat32(ParamsLayout.offsets.cellHeight, cellHeight, true);
-    queue.writeBuffer(paramsBuffer, 0, staging);
 }
