@@ -15,22 +15,13 @@
 // - struct size = padded to struct alignment
 //
 
-export const FrameLayout = {
-    ALIGN: 16,
-    SIZE: 16,
-    offsets: {
-        time: 0,        // f32
-        dt: 4,          // f32
-        frameIndex: 8,  // u32
-        noisePhase: 12, // f32
-    },
-} as const;
-
-export const ParamsLayout = {
+// Unified simulation uniforms.
+// MUST match WGSL SimulationUniforms exactly.
+export const SimulationUniformLayout = {
     ALIGN: 16,
     SIZE: 32,
     offsets: {
-        dt: 0,          // f32 (unused)
+        dt: 0,          // f32
         rows: 4,        // u32
         cols: 8,        // u32
         glyphCount: 12, // u32
@@ -40,6 +31,7 @@ export const ParamsLayout = {
     },
 } as const;
 
+// MUST match WGSL InstanceOut exactly.
 export const InstanceLayout = {
     ALIGN: 16,
     SIZE: 48,
@@ -52,6 +44,7 @@ export const InstanceLayout = {
     },
 } as const;
 
+// MUST match WGSL Screen exactly.
 export const ScreenLayout = {
     ALIGN: 16,
     SIZE: 16,

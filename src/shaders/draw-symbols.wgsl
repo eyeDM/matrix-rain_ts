@@ -1,4 +1,4 @@
-// draw-symbols.wgsl
+// shaders/draw-symbols.wgsl
 // * Instanced symbol renderer *
 
 // Instance data layout (storage buffer) - InstanceData:

@@ -1,15 +1,15 @@
-import { ParamsLayout } from '../gpu/layouts';
+import { SimulationUniformLayout } from '../gpu/layouts';
 
 /**
- * CPU-side writer for Params uniform buffer.
- * Owns all knowledge about ParamsLayout packing.
+ * CPU-side writer for SimulationUniforms.
+ * Owns the full layout and guarantees a single upload per frame.
  */
-export class ParamsWriter {
+export class SimulationUniformWriter {
     private readonly staging: ArrayBuffer;
     private readonly view: DataView;
 
     constructor() {
-        this.staging = new ArrayBuffer(ParamsLayout.SIZE);
+        this.staging = new ArrayBuffer(SimulationUniformLayout.SIZE);
         this.view = new DataView(this.staging);
     }
 
@@ -24,11 +24,11 @@ export class ParamsWriter {
         cellWidth: number,
         cellHeight: number
     ): void {
-        this.view.setUint32(ParamsLayout.offsets.rows, rows, true);
-        this.view.setUint32(ParamsLayout.offsets.cols, cols, true);
-        this.view.setUint32(ParamsLayout.offsets.glyphCount, glyphCount, true);
-        this.view.setFloat32(ParamsLayout.offsets.cellWidth, cellWidth, true);
-        this.view.setFloat32(ParamsLayout.offsets.cellHeight, cellHeight, true);
+        this.view.setUint32(SimulationUniformLayout.offsets.rows, rows, true);
+        this.view.setUint32(SimulationUniformLayout.offsets.cols, cols, true);
+        this.view.setUint32(SimulationUniformLayout.offsets.glyphCount, glyphCount, true);
+        this.view.setFloat32(SimulationUniformLayout.offsets.cellWidth, cellWidth, true);
+        this.view.setFloat32(SimulationUniformLayout.offsets.cellHeight, cellHeight, true);
     }
 
     /**
@@ -36,7 +36,7 @@ export class ParamsWriter {
      * Intended to be called once per frame.
      */
     writeFrame(dt: number): void {
-        this.view.setFloat32(ParamsLayout.offsets.dt, dt, true);
+        this.view.setFloat32(SimulationUniformLayout.offsets.dt, dt, true);
     }
 
     /**

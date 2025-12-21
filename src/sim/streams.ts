@@ -1,5 +1,5 @@
-import { ParamsLayout } from '../gpu/layouts';
-import { ParamsWriter } from './params-writer';
+import { SimulationUniformLayout } from '../gpu/layouts';
+import { SimulationUniformWriter } from './simulation-uniform-writer';
 
 export type StreamBuffers = {
     cols: number;
@@ -11,8 +11,8 @@ export type StreamBuffers = {
     lengths: GPUBuffer; // array<u32> length = cols
     seeds: GPUBuffer;   // array<u32> length = cols
     columns: GPUBuffer; // array<u32> length = cols (optional index buffer)
-    params: GPUBuffer;  // uniform buffer containing dt, rows, cols
-    paramsWriter: ParamsWriter;
+    simulationUniforms: GPUBuffer;
+    simulationWriter: SimulationUniformWriter;
 
     destroy(): void;
 };
@@ -91,16 +91,16 @@ export function createStreamBuffers(
     const seedsBuf = createMappedBuffer(seeds, GPUBufferUsage.STORAGE);
     const columnsBuf = createMappedBuffer(columns, GPUBufferUsage.STORAGE);
 
-    // Uniform params buffer layout
-    const paramsBuf = device.createBuffer({
-        size: ParamsLayout.SIZE,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+    const simulationUniforms = device.createBuffer({
+        size: SimulationUniformLayout.SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'SimulationUniforms',
     });
 
-    const paramsWriter = new ParamsWriter();
-    paramsWriter.writeStatic(rows, cols, glyphCount, cellWidth, cellHeight);
-    paramsWriter.writeFrame(0.0);
-    paramsWriter.flush(device.queue, paramsBuf);
+    const simulationWriter = new SimulationUniformWriter();
+    simulationWriter.writeStatic(rows, cols, glyphCount, cellWidth, cellHeight);
+    simulationWriter.writeFrame(0.0);
+    simulationWriter.flush(device.queue, simulationUniforms);
 
     return {
         cols,
@@ -110,8 +110,8 @@ export function createStreamBuffers(
         lengths: lengthsBuf,
         seeds: seedsBuf,
         columns: columnsBuf,
-        params: paramsBuf,
-        paramsWriter,
+        simulationUniforms,
+        simulationWriter,
 
         destroy() {
             safeDestroy(headsBuf);
@@ -119,7 +119,7 @@ export function createStreamBuffers(
             safeDestroy(lengthsBuf);
             safeDestroy(seedsBuf);
             safeDestroy(columnsBuf);
-            safeDestroy(paramsBuf);
+            safeDestroy(simulationUniforms);
         },
     };
 }

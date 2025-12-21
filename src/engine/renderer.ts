@@ -1,7 +1,6 @@
 import { ScreenLayout } from '../gpu/layouts';
 import { createStreamBuffers } from '../sim/streams';
 import { createSimulationGraph } from './simulation-graph';
-import { createFrameUniforms } from '../sim/frame-uniforms';
 import { RenderPass, PassKind } from './render-graph';
 import { createResourceManager } from './resource-manager';
 
@@ -34,7 +33,7 @@ export async function createRenderer(
 ): Promise<Renderer> {
     const rm = createResourceManager(device);
 
-    const frameUniforms = createFrameUniforms(device);
+    //const frameUniforms = createFrameUniforms(device);
 
     const streams = createStreamBuffers(
         device,
@@ -70,16 +69,15 @@ export async function createRenderer(
     const computeBindGroupLayout = device.createBindGroupLayout({
         label: 'Compute BGL',
         entries: [
-            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },     // Frame
-            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },     // Params
-            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Heads
-            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Speeds
-            { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Lengths
-            { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Seeds
-            { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // Columns (read-only)
-            { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // GlyphUVs (read-only)
-            { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // InstancesOut
-        ]
+            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },     // SimulationUniforms
+            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Heads
+            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Speeds
+            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Lengths
+            { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Seeds
+            { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // Columns (read-only)
+            { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // GlyphUVs (read-only)
+            { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // InstancesOut
+        ],
     });
 
     /** Persistent GPU resource – destroyed only on app shutdown */
@@ -101,16 +99,15 @@ export async function createRenderer(
         label: 'Compute Bind Group',
         layout: computeBindGroupLayout,
         entries: [
-            { binding: 0, resource: { buffer: frameUniforms.buffer } },
-            { binding: 1, resource: { buffer: streams.params } },
-            { binding: 2, resource: { buffer: streams.heads } },
-            { binding: 3, resource: { buffer: streams.speeds } },
-            { binding: 4, resource: { buffer: streams.lengths } },
-            { binding: 5, resource: { buffer: streams.seeds } },
-            { binding: 6, resource: { buffer: streams.columns } },
-            { binding: 7, resource: { buffer: glyphUVsBuffer } },
-            { binding: 8, resource: { buffer: instancesBuffer } },
-        ]
+            { binding: 0, resource: { buffer: streams.simulationUniforms } },
+            { binding: 1, resource: { buffer: streams.heads } },
+            { binding: 2, resource: { buffer: streams.speeds } },
+            { binding: 3, resource: { buffer: streams.lengths } },
+            { binding: 4, resource: { buffer: streams.seeds } },
+            { binding: 5, resource: { buffer: streams.columns } },
+            { binding: 6, resource: { buffer: glyphUVsBuffer } },
+            { binding: 7, resource: { buffer: instancesBuffer } },
+        ],
     });
 
     // --- 3. Render Pipeline Setup ---
@@ -152,7 +149,7 @@ export async function createRenderer(
             { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Atlas Texture
             { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData (read-only)
             { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenUniform
-        ]
+        ],
     });
 
     const renderPipelineLayout = device.createPipelineLayout({
@@ -225,9 +222,11 @@ export async function createRenderer(
         kind: 'compute' as PassKind,
         deps: [],
         execute: (encoder: GPUCommandEncoder, _currentView: GPUTextureView, dt: number) => {
-            frameUniforms.update(device.queue, dt);
-            streams.paramsWriter.writeFrame(dt);
-            streams.paramsWriter.flush(device.queue, streams.params);
+            //frameUniforms.update(device.queue, dt);
+            //streams.paramsWriter.writeFrame(dt);
+            //streams.paramsWriter.flush(device.queue, streams.params);
+            streams.simulationWriter.writeFrame(dt);
+            streams.simulationWriter.flush(device.queue, streams.simulationUniforms);
             simGraph.execute(encoder);
         }
     };
@@ -270,7 +269,6 @@ export async function createRenderer(
 
     const destroy = () => {
         streams.destroy();
-        frameUniforms.buffer.destroy();
         rm.destroyAll();
     };
 
