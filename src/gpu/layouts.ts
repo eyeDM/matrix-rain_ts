@@ -18,13 +18,14 @@ export const SimulationUniformLayout = {
     ALIGN: 16,
     SIZE: 32,
     offsets: {
-        dt: 0,          // f32
-        rows: 4,        // u32
-        cols: 8,        // u32
-        glyphCount: 12, // u32
-        cellWidth: 16,  // f32
-        cellHeight: 20, // f32
-        _pad0: 24,      // vec2<f32>
+        dt: 0,           // f32
+        rows: 4,         // u32
+        cols: 8,         // u32
+        glyphCount: 12,  // u32
+        cellWidth: 16,   // f32
+        cellHeight: 20,  // f32
+        maxTrail: 24,    // u32
+        _pad0: 28,       // u32 (explicit padding to 32 bytes)
     },
 } as const;
 

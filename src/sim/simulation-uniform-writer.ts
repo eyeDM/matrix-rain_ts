@@ -22,13 +22,15 @@ export class SimulationUniformWriter {
         cols: number,
         glyphCount: number,
         cellWidth: number,
-        cellHeight: number
+        cellHeight: number,
+        maxTrail: number
     ): void {
         this.view.setUint32(SimulationUniformLayout.offsets.rows, rows, true);
         this.view.setUint32(SimulationUniformLayout.offsets.cols, cols, true);
         this.view.setUint32(SimulationUniformLayout.offsets.glyphCount, glyphCount, true);
         this.view.setFloat32(SimulationUniformLayout.offsets.cellWidth, cellWidth, true);
         this.view.setFloat32(SimulationUniformLayout.offsets.cellHeight, cellHeight, true);
+        this.view.setUint32(SimulationUniformLayout.offsets.maxTrail, maxTrail, true);
     }
 
     /**

@@ -27,7 +27,8 @@ export function createStreamBuffers(
     rows: number,
     glyphCount: number,
     cellWidth: number,
-    cellHeight: number
+    cellHeight: number,
+    maxTrail: number
 ): StreamBuffers {
     const MIN_SPEED_CELLS_PER_SEC = 6.0;
     const SPEED_VARIANCE = 40.0;
@@ -98,7 +99,14 @@ export function createStreamBuffers(
     });
 
     const simulationWriter = new SimulationUniformWriter();
-    simulationWriter.writeStatic(rows, cols, glyphCount, cellWidth, cellHeight);
+    simulationWriter.writeStatic(
+        rows,
+        cols,
+        glyphCount,
+        cellWidth,
+        cellHeight,
+        maxTrail
+    );
     simulationWriter.writeFrame(0.0);
     simulationWriter.flush(device.queue, simulationUniforms);
 

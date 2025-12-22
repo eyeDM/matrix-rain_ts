@@ -10,10 +10,12 @@ The project demonstrates how to design a **fully GPU-driven animation pipeline**
 It is designed as a reference-quality example of modern WebGPU architecture for real-time GPU-driven effects, suitable for both learning and portfolio presentation.
 
 ## Prerequisites
+
 - Node.js 18+
 - Browser with WebGPU support (Chrome/Edge Canary or recent stable with flag). See "Troubleshooting" below.
 
 ## Quick start (PowerShell)
+
 Install dependencies:
 ```bash
 npm install
@@ -67,7 +69,7 @@ GPU (WebGPU)
 
 - **Fixed-capacity buffers**
 
-    Each column reserves `MAX_TRAIL` slots. No compaction, no prefix sums, no readbacks.
+    Each column reserves a fixed-capacity trail segment (`maxTrail`), computed once from the visible row count and treated as immutable for the lifetime of the scene. No compaction, no prefix sums, no readbacks.
 
 - **Explicit memory layouts**
 
@@ -81,31 +83,40 @@ GPU (WebGPU)
 
 ## Project Structure
 ```
-src/
-├─ boot/
-│  └─ webgpu-init.ts        # Adapter/device/context initialization
+matrix-rain_ts/
+├─ public/
+│  └─ favicon.svg
 │
-├─ engine/
-│  ├─ render-loop.ts        # requestAnimationFrame loop
-│  ├─ render-graph.ts       # DAG-based render pass execution
-│  ├─ simulation-graph.ts   # Compute-only pass graph
-│  ├─ renderer.ts           # Pipelines, bind groups, passes
-│  ├─ resource-manager.ts   # Explicit GPU resource ownership
-│  └─ resources.ts          # Glyph atlas + instance buffer
+├─ src/
+│  ├─ boot/
+│  │  └─ webgpu-init.ts        # Adapter/device/context initialization
+│  │
+│  ├─ engine/
+│  │  ├─ render-loop.ts        # requestAnimationFrame loop
+│  │  ├─ render-graph.ts       # DAG-based render pass execution
+│  │  ├─ simulation-graph.ts   # Compute-only pass graph
+│  │  ├─ renderer.ts           # Pipelines, bind groups, passes
+│  │  ├─ resource-manager.ts   # Explicit GPU resource ownership
+│  │  └─ resources.ts          # Glyph atlas + instance buffer
+│  │
+│  ├─ gpu/
+│  │  └─ layouts.ts            # Canonical CPU↔GPU memory layouts
+│  │
+│  ├─ shaders/
+│  │  └─ draw-symbols.wgsl     # Instanced glyph rendering
+│  │
+│  ├─ sim/
+│  │  ├─ gpu-update.wgsl       # Compute shader (simulation)
+│  │  ├─ streams.ts            # Simulation buffers
+│  │  └─ simulation-uniform-writer.ts  # SimulationUniforms owner
+│  │
+│  └─ main.ts                  # Application bootstrap
 │
-├─ gpu/
-│  └─ layouts.ts            # Canonical CPU↔GPU memory layouts
-│
-├─ shaders/
-│  └─ draw-symbols.wgsl     # Instanced glyph rendering
-│
-├─ sim/
-│  ├─ gpu-update.wgsl       # Compute shader (simulation)
-│  ├─ streams.ts            # Simulation buffers
-│  └─ simulation-uniform-writer.ts  # SimulationUniforms owner
-│
-├─ main.ts                  # Application bootstrap
-index.html
+├─ README.md
+├─ index.html
+├─ package.json
+├─ tsconfig.json
+└─ vite.config.ts
 ```
 
 ### Core subsystems
@@ -150,10 +161,6 @@ index.html
 
 ## Important notes
 
-- The simulation emits a fixed number of trail slots per column (`MAX_TRAIL`). If you change `MAX_TRAIL` in `src/sim/gpu-update.wgsl`, update the corresponding value in `src/main.ts` to match.
-
-- If you see shader compilation errors in the browser, copy the full "WebGPU compilation info" message (it includes the WGSL line/column and message) and paste it into an issue — that info is necessary to pinpoint WGSL problems.
-
 - **No per-frame allocations**
 
     All buffers, pipelines, bind groups, and textures are created upfront or on resize only.
@@ -168,10 +175,13 @@ index.html
 
 - **Scalability**
 
-    Performance scales primarily with:
-    * Column count (`canvasWidth / cellWidth`)
-    * `MAX_TRAIL`
-    Both are GPU-bound, not CPU-bound.
+    Total instance count per frame is bounded by:
+    ```
+    instanceCount = columns × maxTrail
+                  ≈ (canvasWidth / cellWidth) × (canvasHeight / cellHeight)
+    ```
+
+    This bound is fixed per resize and fully GPU-driven.
 
 - **Extensibility**
 
@@ -181,9 +191,18 @@ index.html
     * Color variation per column
     * Bloom / glow via additional render passes
 
+- If you see shader compilation errors in the browser, copy the full "WebGPU compilation info" message (it includes the WGSL line/column and message) and paste it into an issue — that info is necessary to pinpoint WGSL problems.
+
+---
+
 ## Troubleshooting WebGPU
+
 - Chrome/Edge: enable the `chrome://flags/#enable-unsafe-webgpu` or run a Canary/Dev version with WebGPU support if your browser doesn't expose WebGPU yet.
+
 - If WebGPU is not available, the app will throw at startup — check the console for the adapter/device request errors.
 
+---
+
 ## License
+
 This repo is for learning and experimentation. No license specified.

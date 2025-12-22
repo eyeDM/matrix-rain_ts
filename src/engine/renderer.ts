@@ -20,6 +20,7 @@ export async function createRenderer(
     device: GPUDevice,
     cols: number,
     rows: number,
+    maxTrail: number,
     glyphUVsBuffer: GPUBuffer,
     instancesBuffer: GPUBuffer,
     instanceCount: number,
@@ -41,7 +42,8 @@ export async function createRenderer(
         rows,
         glyphCount,
         cellWidth,
-        cellHeight
+        cellHeight,
+        maxTrail
     );
 
     // --- 1. Load Shaders (Compute & Draw) ---
@@ -222,9 +224,6 @@ export async function createRenderer(
         kind: 'compute' as PassKind,
         deps: [],
         execute: (encoder: GPUCommandEncoder, _currentView: GPUTextureView, dt: number) => {
-            //frameUniforms.update(device.queue, dt);
-            //streams.paramsWriter.writeFrame(dt);
-            //streams.paramsWriter.flush(device.queue, streams.params);
             streams.simulationWriter.writeFrame(dt);
             streams.simulationWriter.flush(device.queue, streams.simulationUniforms);
             simGraph.execute(encoder);

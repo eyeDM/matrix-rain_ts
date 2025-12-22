@@ -290,7 +290,7 @@ export async function createGlyphAtlas(
  * for the Render (Draw) Shader.
  *
  * @param device - The WebGPU device.
- * @param instanceCount - Total number of symbol instances to allocate space for (cols * MAX_TRAIL).
+ * @param instanceCount - Total number of symbol instances to allocate space for (cols * maxTrail).
  * @returns The initialized GPUBuffer.
  */
 export function createInstanceBuffer(device: GPUDevice, instanceCount: number): GPUBuffer {

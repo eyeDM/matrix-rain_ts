@@ -45,7 +45,7 @@
 //      // per-glyph UV rectangles (u0, v0, u1, v1), normalized
 //
 //  - binding 7: storage, read_write instancesOut: array<InstanceOut>
-//      // fixed-size output instance slots (MAX_TRAIL per column)
+//      // fixed-size output instance slots (sim.maxTrail per column)
 //
 // Simulation behavior:
 // - Each column advances its head by `speed * sim.dt`.
@@ -65,7 +65,8 @@ struct SimulationUniforms  {
   glyphCount: u32,
   cellWidth: f32,
   cellHeight: f32,
-  pad0: vec2<f32>,
+  maxTrail: u32,
+  _pad0: u32,
 };
 
 // MUST match InstanceLayout (48 bytes, align 16)
@@ -89,9 +90,6 @@ struct InstanceOut {
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
 const LCG_C: u32 = 1013904223u;
-
-// Maximum trail samples per column. Must match JS `MAX_TRAIL`.
-const MAX_TRAIL: u32 = 250u;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -127,11 +125,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   heads[i] = head;
 
   // Emit trail instances for this column. We reserve a fixed maximum trail
-  // length per column and write instances at index = i * MAX_TRAIL + t
+  // length per column and write instances at index = i * sim.maxTrail + t
   // so the CPU does not need to compact results. This keeps the pipeline
   // simple and predictable.
   var len: u32 = lengths[i];
-  if (len > MAX_TRAIL) { len = MAX_TRAIL; }
+  if (len > sim.maxTrail) { len = sim.maxTrail; }
 
   // Emit entries: head (t==0) downwards; brightness decreases with t
   // Use a per-sample PRNG derived from the column seed so each sample can
@@ -144,7 +142,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (rowPos < 0) {
       rowPos = rowPos + i32(sim.rows);
     }
-    let idx: u32 = i * MAX_TRAIL + t;
+    let idx: u32 = i * sim.maxTrail + t;
     instancesOut[idx].offset = vec2<f32>(f32(i) * sim.cellWidth, f32(rowPos) * sim.cellHeight);
     instancesOut[idx].cellSize = vec2<f32>(sim.cellWidth, sim.cellHeight);
 

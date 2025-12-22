@@ -10,8 +10,6 @@ const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element `#canvas` not found');
 const canvasEl = canvas; // narrowed non-null reference for inner functions
 
-const MAX_TRAIL = 250;
-
 export async function bootstrap(): Promise<void> {
     try {
         const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
@@ -41,6 +39,7 @@ export async function bootstrap(): Promise<void> {
         let instancesBufRef: GPUBuffer;
         let currentCols: number;
         let currentRows: number;
+        let maxTrail: number;
         let renderGraphRef: RenderGraph;
 
         // Frame callback for the render loop
@@ -65,14 +64,27 @@ export async function bootstrap(): Promise<void> {
         };
 
         /**
+         * Max trail length is derived from visible rows.
+         * Rule:
+         *  - at least 4 symbols
+         *  - at most full column height
+         *  - visually stable across resolutions
+         */
+        const computeMaxTrail = (rows: number): number => {
+            const MIN_TRAIL = 4;
+            return Math.max(MIN_TRAIL, Math.floor(rows));
+        };
+
+        /**
          * Handles canvas resizing and re-initializes all size-dependent resources.
          */
         const handleResize = async () => {
             const newCanvasDims = calcCanvasDims(cellWidth, cellHeight);
             const newCols = newCanvasDims.cols;
             const newRows = newCanvasDims.rows;
+            const newMaxTrail = computeMaxTrail(newRows);
 
-            const newInstanceCount = newCols * MAX_TRAIL;
+            const newInstanceCount = newCols * newMaxTrail;
 
             if (newCols === currentCols && newRows === currentRows) return;
 
@@ -83,6 +95,7 @@ export async function bootstrap(): Promise<void> {
                 device,
                 newCols,
                 newRows,
+                newMaxTrail,
                 atlas.glyphUVsBuffer,
                 newInstances,
                 newInstanceCount,
@@ -111,6 +124,7 @@ export async function bootstrap(): Promise<void> {
             renderGraphRef = newRenderGraph;
             currentCols = newCols;
             currentRows = newRows;
+            maxTrail = newMaxTrail;
 
             // Wait for GPU to finish submitted work before destroying old buffers to avoid "buffer destroyed" errors
             try { await device.queue.onSubmittedWorkDone(); } catch (e) { /* ignore */ }
@@ -125,8 +139,9 @@ export async function bootstrap(): Promise<void> {
         const currentDims = calcCanvasDims(cellWidth, cellHeight);
         currentCols = currentDims.cols;
         currentRows = currentDims.rows;
+        maxTrail = computeMaxTrail(currentRows);
 
-        const instanceCount = currentCols * MAX_TRAIL;
+        const instanceCount = currentCols * maxTrail;
 
         instancesBufRef = createInstanceBuffer(device, instanceCount);
 
@@ -134,6 +149,7 @@ export async function bootstrap(): Promise<void> {
             device,
             currentCols,
             currentRows,
+            maxTrail,
             atlas.glyphUVsBuffer,
             instancesBufRef,
             instanceCount,
