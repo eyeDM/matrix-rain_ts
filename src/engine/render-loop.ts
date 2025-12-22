@@ -8,6 +8,7 @@
  * required each frame by the WebGPU model — we only avoid recreating
  * descriptor objects on the JS heap per-frame.
  */
+
 export type FrameCallback = (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
 
 export function startRenderLoop(

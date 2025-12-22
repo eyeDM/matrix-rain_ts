@@ -1,4 +1,4 @@
-// Stage 1 bootstrap entry (strict TypeScript) — initialize WebGPU
+// Bootstrap entry — initialize WebGPU
 import { initWebGPU } from './boot/webgpu-init';
 import { startRenderLoop } from './engine/render-loop';
 import { createGlyphAtlas, createInstanceBuffer } from './engine/resources';
@@ -10,7 +10,6 @@ const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas element `#canvas` not found');
 const canvasEl = canvas; // narrowed non-null reference for inner functions
 
-// Constants (Per audit, used in instance count calculation)
 const MAX_TRAIL = 250;
 
 export async function bootstrap(): Promise<void> {

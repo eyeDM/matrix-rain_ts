@@ -1,22 +1,19 @@
-// src/gpu/layouts.ts
-//
-// Canonical CPU ↔ GPU memory layout contracts.
-// This file is the ONLY place allowed to define buffer sizes, offsets, and alignment.
-//
-// WGSL structs MUST mirror these layouts exactly.
-
-//
-// Alignment rules (WGSL / std140-like):
-// - f32 / u32: 4
-// - vec2<f32>: 8
-// - vec3<f32>: 16 (size 12 + padding)
-// - vec4<f32>: 16
-// - struct alignment = max field alignment
-// - struct size = padded to struct alignment
-//
+/**
+ * Canonical CPU ↔ GPU memory layout contracts.
+ * This file is the ONLY place allowed to define buffer sizes, offsets, and alignment.
+ *
+ * WGSL structs MUST mirror these layouts exactly.
+ *
+ * Alignment rules (WGSL / std140-like):
+ * - f32 / u32: 4
+ * - vec2<f32>: 8
+ * - vec3<f32>: 16 (size 12 + padding)
+ * - vec4<f32>: 16
+ * - struct alignment = max field alignment
+ * - struct size = padded to struct alignment
+ */
 
 // Unified simulation uniforms.
-// MUST match WGSL SimulationUniforms exactly.
 export const SimulationUniformLayout = {
     ALIGN: 16,
     SIZE: 32,
@@ -31,7 +28,6 @@ export const SimulationUniformLayout = {
     },
 } as const;
 
-// MUST match WGSL InstanceOut exactly.
 export const InstanceLayout = {
     ALIGN: 16,
     SIZE: 48,
@@ -44,7 +40,6 @@ export const InstanceLayout = {
     },
 } as const;
 
-// MUST match WGSL Screen exactly.
 export const ScreenLayout = {
     ALIGN: 16,
     SIZE: 16,

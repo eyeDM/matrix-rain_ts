@@ -1,7 +1,7 @@
-// src/engine/resource-manager.ts
-//
-// Type-safe GPU resource ownership manager.
-// Separates ownership tracking from explicit GPU destruction.
+/**
+ * Type-safe GPU resource ownership manager.
+ * Separates ownership tracking from explicit GPU destruction.
+ */
 
 export type DestroyableResource = {
     destroy(): void;
