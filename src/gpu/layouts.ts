@@ -33,14 +33,15 @@ export const InstanceLayout = {
     ALIGN: 16,
     SIZE: 48,
     offsets: {
-        offset: 0,       // vec2<f32>
-        cellSize: 8,     // vec2<f32>
-        uvRect: 16,      // vec4<f32>
-        brightness: 32,  // f32
-        _pad0: 36,       // vec3<f32>
+        offset: 0,       // vec2<f32> - pixel-space offset of top-left of cell
+        cellSize: 8,     // vec2<f32> - pixel size (width, height) of cell
+        uvRect: 16,      // vec4<f32> - u0, v0, u1, v1 (normalized atlas UVs)
+        brightness: 32,  // f32  — final luminance scalar
+        _pad0: 36,       // vec3<f32>  — explicit padding
     },
 } as const;
 
+// Canvas size in pixels
 export const ScreenLayout = {
     ALIGN: 16,
     SIZE: 16,

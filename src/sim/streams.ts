@@ -11,6 +11,7 @@ export type StreamBuffers = {
     lengths: GPUBuffer; // array<u32> length = cols
     seeds: GPUBuffer;   // array<u32> length = cols
     columns: GPUBuffer; // array<u32> length = cols (optional index buffer)
+    energy: GPUBuffer;  // array<f32> length = cols
     simulationUniforms: GPUBuffer;
     simulationWriter: SimulationUniformWriter;
 
@@ -41,6 +42,7 @@ export function createStreamBuffers(
     const lengths = new Uint32Array(cols);
     const seeds = new Uint32Array(cols);
     const columns = new Uint32Array(cols);
+    const energy = new Float32Array(cols);
 
     // Populate with sensible defaults/random values
     const cryptoAvailable = typeof crypto !== 'undefined' && typeof (crypto as any).getRandomValues === 'function';
@@ -54,6 +56,7 @@ export function createStreamBuffers(
         lengths[i] = MIN_TRAIL_LENGTH + Math.floor(Math.random() * TRAIL_LENGTH_VARIANCE); // trail length
         seeds[i] = rndU32();
         columns[i] = i;
+        energy[i] = 0;
     }
 
     // WebGPU requires buffer sizes to be aligned to 4 bytes
@@ -91,6 +94,7 @@ export function createStreamBuffers(
     const lengthsBuf = createMappedBuffer(lengths, GPUBufferUsage.STORAGE);
     const seedsBuf = createMappedBuffer(seeds, GPUBufferUsage.STORAGE);
     const columnsBuf = createMappedBuffer(columns, GPUBufferUsage.STORAGE);
+    const energyBuf = createMappedBuffer(energy, GPUBufferUsage.STORAGE);
 
     const simulationUniforms = device.createBuffer({
         size: SimulationUniformLayout.SIZE,
@@ -118,6 +122,7 @@ export function createStreamBuffers(
         lengths: lengthsBuf,
         seeds: seedsBuf,
         columns: columnsBuf,
+        energy: energyBuf,
         simulationUniforms,
         simulationWriter,
 
@@ -127,6 +132,7 @@ export function createStreamBuffers(
             safeDestroy(lengthsBuf);
             safeDestroy(seedsBuf);
             safeDestroy(columnsBuf);
+            safeDestroy(energyBuf);
             safeDestroy(simulationUniforms);
         },
     };

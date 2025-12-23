@@ -22,10 +22,6 @@ export function startRenderLoop(
     let lastTime = performance.now();
 
     function frame(): void {
-        const now = performance.now();
-        const dt = (now - lastTime) / 1000.0;
-        lastTime = now;
-
         // Acquire the current texture view from the context (required per-frame)
         let currentView: GPUTextureView;
         try {
@@ -40,6 +36,10 @@ export function startRenderLoop(
         }
 
         const commandEncoder = device.createCommandEncoder();
+
+        const now = performance.now();
+        const dt = (now - lastTime) / 1000.0;
+        lastTime = now;
 
         // Let caller encode compute + render using the same encoder to guarantee ordering.
         // Protect against exceptions in the frame callback so the RAF loop continues.

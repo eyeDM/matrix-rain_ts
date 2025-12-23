@@ -1,4 +1,3 @@
-// sim/gpu-update.wgsl
 // -----------------------------------------------------------------------------
 // GPU Simulation Compute Shader (Unified SimulationUniforms)
 //
@@ -44,7 +43,7 @@
 //  - binding 6: storage, read glyphUVs: array<vec4<f32>>
 //      // per-glyph UV rectangles (u0, v0, u1, v1), normalized
 //
-//  - binding 7: storage, read_write instancesOut: array<InstanceOut>
+//  - binding 7: storage, read_write instances: array<InstanceData>
 //      // fixed-size output instance slots (sim.maxTrail per column)
 //
 // Simulation behavior:
@@ -56,7 +55,6 @@
 // - The CPU only updates SimulationUniforms; all animation logic lives here.
 // -----------------------------------------------------------------------------
 
-
 // MUST match SimulationUniformLayout (32 bytes, align 16)
 struct SimulationUniforms  {
   dt: f32,
@@ -66,11 +64,11 @@ struct SimulationUniforms  {
   cellWidth: f32,
   cellHeight: f32,
   maxTrail: u32,
-  _pad0: u32,
+  pad0: u32,
 };
 
 // MUST match InstanceLayout (48 bytes, align 16)
-struct InstanceOut {
+struct InstanceData {
   offset: vec2<f32>,
   cellSize: vec2<f32>,
   uvRect: vec4<f32>,
@@ -84,77 +82,142 @@ struct InstanceOut {
 @group(0) @binding(3) var<storage, read_write> lengths: array<u32>;
 @group(0) @binding(4) var<storage, read_write> seeds: array<u32>;
 @group(0) @binding(5) var<storage, read> columns: array<u32>;
-@group(0) @binding(6) var<storage, read> glyphUVs: array<vec4<f32>>;
-@group(0) @binding(7) var<storage, read_write> instancesOut: array<InstanceOut>;
+@group(0) @binding(6) var<storage, read_write> energies: array<f32>;
+@group(0) @binding(7) var<storage, read> glyphUVs: array<vec4<f32>>;
+@group(0) @binding(8) var<storage, read_write> instances: array<InstanceData>;
+
+const HEAD_ENERGY: f32 = 1.0; // physical impulse for brightness
 
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
 const LCG_C: u32 = 1013904223u;
 
+const HASH_MUL: u32 = 747796405u; // decorrelates glyphs along tail (PCG-style hash)
+
+// --- Energy model constants ---
+const ENERGY_BASE_MIN: f32 = 4.0;
+const ENERGY_BASE_MAX: f32 = 8.0;
+const ENERGY_PER_CELL: f32 = 1.25;
+
+const BASE_HALF_LIFE: f32 = 4.5;
+const ENERGY_SPEED_FACTOR: f32 = 0.35;
+const ENERGY_LENGTH_FACTOR: f32 = 0.06;
+
+const TRAIL_DECAY: f32 = 3.2;
+const HEAD_BRIGHTNESS_BOOST: f32 = 1.15;
+
+const LN2: f32 = 0.69314718056;
+
+fn approxNormal01(seed: u32) -> f32 {
+  var s: u32 = seed;
+  var acc: f32 = 0.0;
+  for (var i: u32 = 0u; i < 4u; i = i + 1u) {
+    s = s * LCG_A + LCG_C;
+    acc = acc + f32(s & 0xffffu) / 65536.0;
+  }
+  return acc * 0.25;
+}
+
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let i: u32 = gid.x;
-  if (i >= sim.cols) {
+  let columnIdx: u32 = gid.x;
+  if (columnIdx >= sim.cols) {
     return;
   }
 
-  var head: f32 = heads[i];
-  var speed: f32 = speeds[i];
+  var head: f32 = heads[columnIdx];
+  var speed: f32 = speeds[columnIdx];
+  var length: u32 = lengths[columnIdx];
+  var energy: f32 = energies[columnIdx];
 
-  // Advance head by speed * dt (cell units)
+  // Advance head
   head = head + speed * sim.dt;
 
+  let rowsF: f32 = f32(sim.rows);
+  let respawn: bool = head >= rowsF;
+
   // Wrap and respawn logic
-  if (head >= f32(sim.rows)) {
+  if (respawn) {
     // wrap-around
-    head = head - f32(sim.rows);
+    head = head - rowsF;
 
-    // update PRNG seed using LCG
-    var s: u32 = seeds[i];
+    // update PRNG seed
+    var s: u32 = seeds[columnIdx];
     s = s * LCG_A + LCG_C;
-    seeds[i] = s;
+    seeds[columnIdx] = s;
 
-    // derive pseudo-random value in [0,1)
-    let r: f32 = f32(s & 0xffffu) / 65536.0;
+    // Respawn parameters
+    let r: f32 = approxNormal01(s);
+    length = 3u + u32(r * 20.0);  // length in cells
+    speed = 3.5 + r * 24.0;       // speed (cells/sec)
 
-    // choose a new length and speed based on pseudo-random
-    lengths[i] = 3u + u32(r * 20.0);  // length in cells
-    speeds[i] = 6.0 + r * 40.0;       // speed (cells/sec)
+    let energyBase: f32 =
+      ENERGY_BASE_MIN + (ENERGY_BASE_MAX - ENERGY_BASE_MIN) * r;
+
+    let energyMax: f32 = f32(length) * ENERGY_PER_CELL;
+    energy = min(energyBase, energyMax);
+
+    lengths[columnIdx] = length;
+    speeds[columnIdx] = speed;
+  } else {
+    // Energy decay
+    let halfLife: f32 =
+      BASE_HALF_LIFE /
+      (1.0 + ENERGY_SPEED_FACTOR * speed) /
+      (1.0 + ENERGY_LENGTH_FACTOR * f32(length));
+
+    let lambda: f32 = LN2 / halfLife;
+    energy = energy * exp(-lambda * sim.dt);
+
+    let energyMax: f32 = f32(length) * ENERGY_PER_CELL;
+    energy = clamp(energy, 0.0, energyMax);
   }
 
-  heads[i] = head;
+  heads[columnIdx] = head;
+  energies[columnIdx] = energy;
 
-  // Emit trail instances for this column. We reserve a fixed maximum trail
-  // length per column and write instances at index = i * sim.maxTrail + t
-  // so the CPU does not need to compact results. This keeps the pipeline
-  // simple and predictable.
-  var len: u32 = lengths[i];
-  if (len > sim.maxTrail) { len = sim.maxTrail; }
-
-  // Emit entries: head (t==0) downwards; brightness decreases with t
-  // Use a per-sample PRNG derived from the column seed so each sample can
-  // pick a different glyph without modifying the column's persistent seed.
+  // Emit instances
+  let maxLen: u32 = min(length, sim.maxTrail);
   var t: u32 = 0u;
+
   loop {
-    if (t >= len) { break; }
+    if (t >= maxLen) { break; }
+
+    let idx: u32 = columnIdx * sim.maxTrail + t;
+
     // compute row position for this trail sample (wrap negative)
     var rowPos: i32 = i32(floor(head)) - i32(t);
     if (rowPos < 0) {
       rowPos = rowPos + i32(sim.rows);
     }
-    let idx: u32 = i * sim.maxTrail + t;
-    instancesOut[idx].offset = vec2<f32>(f32(i) * sim.cellWidth, f32(rowPos) * sim.cellHeight);
-    instancesOut[idx].cellSize = vec2<f32>(sim.cellWidth, sim.cellHeight);
 
-    // Per-sample PRNG: mix column seed with sample index, run one LCG step
-    var s: u32 = seeds[i] + t * 747796405u;
-    s = s * LCG_A + LCG_C;
-    let glyphIdx: u32 = s % sim.glyphCount;
-    instancesOut[idx].uvRect = glyphUVs[glyphIdx];
+    instances[idx].offset = vec2<f32>(
+        f32(columnIdx) * sim.cellWidth,
+        f32(rowPos) * sim.cellHeight
+    );
+    instances[idx].cellSize = vec2<f32>(sim.cellWidth, sim.cellHeight);
 
-    // brightness: 1.0 for head, decreasing to ~0 for tail
-    instancesOut[idx].brightness = 1.0 - (f32(t) / f32(max(1u, len - 1u)));
-    // pad left unchanged
+    // Glyph selection.
+    // Per-sample PRNG: mix column seed with sample index, run one LCG step.
+    var gs: u32 = seeds[columnIdx] + t * HASH_MUL;
+    gs = gs * LCG_A + LCG_C;
+    let glyphIdx: u32 = gs % sim.glyphCount;
+    instances[idx].uvRect = glyphUVs[glyphIdx];
+
+    // Brightness
+    let x: f32 = select(
+      0.0,
+      f32(t) / max(1.0, f32(length - 1u)),
+      length > 1u
+    );
+
+    var brightness: f32 = energy * exp(-TRAIL_DECAY * x);
+    if (t == 0u) {
+      brightness = brightness * HEAD_BRIGHTNESS_BOOST;
+    }
+
+    instances[idx].brightness = brightness;
+
     t = t + 1u;
   }
 }

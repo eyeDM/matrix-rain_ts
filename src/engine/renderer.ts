@@ -67,18 +67,18 @@ export async function createRenderer(
     // --- 2. Compute Pipeline Setup ---
 
     /** Persistent GPU resource – destroyed only on app shutdown */
-    // Layout for: Params, Heads, Speeds, Lengths, Seeds, Columns, GlyphUVs, InstancesOut
     const computeBindGroupLayout = device.createBindGroupLayout({
         label: 'Compute BGL',
         entries: [
-            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },     // SimulationUniforms
-            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Heads
-            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Speeds
-            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Lengths
-            { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // Seeds
-            { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // Columns (read-only)
-            { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } }, // GlyphUVs (read-only)
-            { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },     // InstancesOut
+            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },  // SimulationUniforms
+            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Heads
+            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Speeds
+            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Lengths
+            { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Seeds
+            { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // Columns
+            { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Energy
+            { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // GlyphUVs
+            { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // InstanceData
         ],
     });
 
@@ -107,8 +107,9 @@ export async function createRenderer(
             { binding: 3, resource: { buffer: streams.lengths } },
             { binding: 4, resource: { buffer: streams.seeds } },
             { binding: 5, resource: { buffer: streams.columns } },
-            { binding: 6, resource: { buffer: glyphUVsBuffer } },
-            { binding: 7, resource: { buffer: instancesBuffer } },
+            { binding: 6, resource: { buffer: streams.energy } },
+            { binding: 7, resource: { buffer: glyphUVsBuffer } },
+            { binding: 8, resource: { buffer: instancesBuffer } },
         ],
     });
 
@@ -143,14 +144,13 @@ export async function createRenderer(
         label: 'Screen Uniform Buffer',
     });
 
-    // Layout for: Sampler, Texture, Instances, ScreenUniform
     const renderBindGroupLayout = device.createBindGroupLayout({
         label: 'Render BGL',
         entries: [
             { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Atlas Sampler
             { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Atlas Texture
-            { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData (read-only)
-            { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenUniform
+            { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData
+            { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenLayout
         ],
     });
 
