@@ -1,4 +1,4 @@
-# Matrix Rain Visualization (TypeScript + WebGPU)
+# Matrix Rain Visualization (AI + TypeScript + WebGPU)
 
 **Matrix Rain Visualization** is a portfolio-grade, GPU-first implementation of the iconic “Matrix digital rain” effect, built entirely on **WebGPU** using **vanilla TypeScript (strict)** and **WGSL**.
 

@@ -1,59 +1,56 @@
-// -----------------------------------------------------------------------------
-// GPU Simulation Compute Shader (Unified SimulationUniforms)
+// ============================================================================
+// Matrix-style column simulation compute shader.
 //
-// This compute shader performs the per-column simulation step for Matrix streams.
-// It is fully GPU-driven and operates on persistent buffers with no per-frame
-// allocations. All simulation parameters and temporal data are provided through
-// a single uniform block: `SimulationUniforms`.
+// Purpose:
+//   This shader is the SINGLE source of truth for the simulation.
+//   It updates the per-column state and emits per-symbol instance data
+//   entirely on the GPU, with no CPU-side simulation logic.
 //
-// Design principles:
-// - Single authoritative uniform block (SimulationUniforms)
-// - One CPU → GPU uniform upload per frame
-// - Deterministic, column-local simulation
-// - No frame orchestration or control flow on the CPU
+// Core responsibilities:
+//   1. Column kinematics:
+//      - vertical head position (head)
+//      - falling speed (speed)
+//      - trail length (length)
 //
-// Buffers layout (group 0):
+//   2. Column energy model:
+//      - energy is initialized on respawn
+//      - energy decays exponentially over time
+//      - decay rate increases with column speed and length
+//      - energy is clamped by a physically motivated upper bound
+//        (energyMax = length * ENERGY_PER_CELL)
 //
-//  - binding 0: uniform SimulationUniforms
-//      {
-//        dt: f32;           // delta time for the current frame (seconds)
-//        rows: u32;         // number of rows in the grid
-//        cols: u32;         // number of columns (stream count)
-//        glyphCount: u32;   // total glyphs in the atlas
-//        cellWidth: f32;    // glyph cell width in pixels
-//        cellHeight: f32;   // glyph cell height in pixels
-//        pad0: vec2<f32>;   // explicit padding (16-byte alignment)
-//      }
+//   3. Instance generation (per symbol):
+//      - symbol position in the grid
+//      - cell size
+//      - glyph atlas UV coordinates
+//      - symbol brightness
 //
-//  - binding 1: storage, read_write heads: array<f32>
-//      // current head Y position per column (in cell units)
+// Architectural principles:
+//   - GPU-first: all simulation runs in a compute pass
+//   - Frame-rate independent: all time evolution uses dt
+//   - Deterministic per column: PRNG driven by per-column seed
+//   - Render pass is completely decoupled from simulation and physics
 //
-//  - binding 2: storage, read_write speeds: array<f32>
-//      // fall speed in cells per second per column
+// Respawn logic:
+//   When a column head exits the bottom of the screen:
+//     - the head position wraps around
+//     - the PRNG seed is advanced
+//     - column length and speed are re-sampled
+//     - column energy is re-initialized
 //
-//  - binding 3: storage, read_write lengths: array<u32>
-//      // trail length in cells per column
+// Invariants and guarantees:
+//   - length >= LENGTH_MIN (never zero)
+//   - 0 <= energy <= energyMax
+//   - no division by zero or NaNs
+//   - one dispatch corresponds to one simulation step
 //
-//  - binding 4: storage, read_write seeds: array<u32>
-//      // deterministic PRNG seed per column
+// Performance characteristics:
+//   - O(cols * maxTrail)
+//   - one exp() per column (energy decay)
+//   - one exp() per instance (trail falloff)
+//   - no atomics or inter-thread synchronization
 //
-//  - binding 5: storage, read columns: array<u32>
-//      // column indices (optional indirection / index buffer)
-//
-//  - binding 6: storage, read glyphUVs: array<vec4<f32>>
-//      // per-glyph UV rectangles (u0, v0, u1, v1), normalized
-//
-//  - binding 7: storage, read_write instances: array<InstanceData>
-//      // fixed-size output instance slots (sim.maxTrail per column)
-//
-// Simulation behavior:
-// - Each column advances its head by `speed * sim.dt`.
-// - When the head wraps past `rows`, a new speed and trail length are derived
-//   from a deterministic LCG-based PRNG.
-// - Trail instances are emitted into preallocated slots without compaction.
-// - All randomness is deterministic and column-local.
-// - The CPU only updates SimulationUniforms; all animation logic lives here.
-// -----------------------------------------------------------------------------
+// ============================================================================`
 
 // MUST match SimulationUniformLayout (32 bytes, align 16)
 struct SimulationUniforms  {
@@ -86,20 +83,26 @@ struct InstanceData {
 @group(0) @binding(7) var<storage, read> glyphUVs: array<vec4<f32>>;
 @group(0) @binding(8) var<storage, read_write> instances: array<InstanceData>;
 
-const HEAD_ENERGY: f32 = 1.0; // physical impulse for brightness
-
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
 const LCG_C: u32 = 1013904223u;
 
-const HASH_MUL: u32 = 747796405u; // decorrelates glyphs along tail (PCG-style hash)
+// --- Respawn distribution ---
+
+const LENGTH_MIN: u32 = 3u;
+const LENGTH_RANGE: f32 = 20.0;
+
+const SPEED_MIN: f32 = 2.0;
+const SPEED_RANGE: f32 = 32.0;
 
 // --- Energy model constants ---
+
 const ENERGY_BASE_MIN: f32 = 4.0;
 const ENERGY_BASE_MAX: f32 = 8.0;
 const ENERGY_PER_CELL: f32 = 1.25;
 
-const BASE_HALF_LIFE: f32 = 4.5;
+const BASE_HALF_LIFE: f32 = 5.0;
+const MIN_HALF_LIFE: f32 = 0.15;
 const ENERGY_SPEED_FACTOR: f32 = 0.35;
 const ENERGY_LENGTH_FACTOR: f32 = 0.06;
 
@@ -116,6 +119,23 @@ fn approxNormal01(seed: u32) -> f32 {
     acc = acc + f32(s & 0xffffu) / 65536.0;
   }
   return acc * 0.25;
+}
+
+// --- Hash utilities (PCG-style, stateless) ---
+
+fn hashU32(x: u32) -> u32 {
+  var v = x;
+  v ^= v >> 16u;
+  v *= 0x7feb352du;
+  v ^= v >> 15u;
+  v *= 0x846ca68bu;
+  v ^= v >> 16u;
+  return v;
+}
+
+fn glyphHash(seed: u32, t: u32) -> u32 {
+  // t + 1 to avoid identical hash for head across frames
+  return hashU32(seed ^ (t + 1u));
 }
 
 @compute @workgroup_size(64)
@@ -142,17 +162,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     head = head - rowsF;
 
     // update PRNG seed
-    var s: u32 = seeds[columnIdx];
-    s = s * LCG_A + LCG_C;
-    seeds[columnIdx] = s;
+    var seed: u32 = seeds[columnIdx];
+    seed = seed * LCG_A + LCG_C;
+    seeds[columnIdx] = seed;
 
     // Respawn parameters
-    let r: f32 = approxNormal01(s);
-    length = 3u + u32(r * 20.0);  // length in cells
-    speed = 3.5 + r * 24.0;       // speed (cells/sec)
+    let spawnIntensity: f32 = approxNormal01(seed);
+
+    length = LENGTH_MIN + u32(spawnIntensity * LENGTH_RANGE);  // length in cells
+    speed = SPEED_MIN + spawnIntensity * SPEED_RANGE;  // speed (cells/sec)
 
     let energyBase: f32 =
-      ENERGY_BASE_MIN + (ENERGY_BASE_MAX - ENERGY_BASE_MIN) * r;
+      ENERGY_BASE_MIN + (ENERGY_BASE_MAX - ENERGY_BASE_MIN) * spawnIntensity;
 
     let energyMax: f32 = f32(length) * ENERGY_PER_CELL;
     energy = min(energyBase, energyMax);
@@ -161,10 +182,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     speeds[columnIdx] = speed;
   } else {
     // Energy decay
-    let halfLife: f32 =
+    let halfLife: f32 = max(
+      MIN_HALF_LIFE,
       BASE_HALF_LIFE /
       (1.0 + ENERGY_SPEED_FACTOR * speed) /
-      (1.0 + ENERGY_LENGTH_FACTOR * f32(length));
+      (1.0 + ENERGY_LENGTH_FACTOR * f32(length))
+    );
 
     let lambda: f32 = LN2 / halfLife;
     energy = energy * exp(-lambda * sim.dt);
@@ -192,16 +215,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     instances[idx].offset = vec2<f32>(
-        f32(columnIdx) * sim.cellWidth,
-        f32(rowPos) * sim.cellHeight
+      f32(columnIdx) * sim.cellWidth,
+      f32(rowPos) * sim.cellHeight
     );
     instances[idx].cellSize = vec2<f32>(sim.cellWidth, sim.cellHeight);
 
-    // Glyph selection.
-    // Per-sample PRNG: mix column seed with sample index, run one LCG step.
-    var gs: u32 = seeds[columnIdx] + t * HASH_MUL;
-    gs = gs * LCG_A + LCG_C;
-    let glyphIdx: u32 = gs % sim.glyphCount;
+    // Glyph selection
+    let gh: u32 = glyphHash(seeds[columnIdx], t);
+    let glyphIdx: u32 = gh % sim.glyphCount;
     instances[idx].uvRect = glyphUVs[glyphIdx];
 
     // Brightness
