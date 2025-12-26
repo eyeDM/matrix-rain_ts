@@ -14,7 +14,7 @@ It is designed as a reference-quality example of modern WebGPU architecture for 
 - Node.js 18+
 - Browser with WebGPU support (Chrome/Edge Canary or recent stable with flag). See "Troubleshooting" below.
 
-## Quick start (PowerShell)
+## Quick start
 
 Install dependencies:
 ```bash

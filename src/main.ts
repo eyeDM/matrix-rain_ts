@@ -1,189 +1,227 @@
 // Bootstrap entry — initialize WebGPU
-import { initWebGPU } from './boot/webgpu-init';
+import { WebGPUInitExtended, initWebGPU } from './boot/webgpu-init';
 import { startRenderLoop } from './engine/render-loop';
 import { createGlyphAtlas, createInstanceBuffer } from './engine/resources';
 import { Renderer, createRenderer } from './engine/renderer';
 import { RenderGraph, createRenderGraph } from './engine/render-graph';
 import { createResourceManager } from './engine/resource-manager';
 
-const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
-if (!canvas) throw new Error('Canvas element `#canvas` not found');
-const canvasEl = canvas; // narrowed non-null reference for inner functions
+/**
+ * Immutable grid layout derived from canvas size.
+ */
+type GridLayout = {
+    cols: number;
+    rows: number;
+    maxTrail: number;
+    instanceCount: number;
+};
+
+/**
+ * Authoritative runtime state container.
+ */
+type AppState = {
+    gpu: WebGPUInitExtended;
+    renderer: Renderer;
+    instances: GPUBuffer;
+    renderGraph: RenderGraph;
+    layout: GridLayout;
+};
+
+/**
+ * Compute grid layout from physical canvas size.
+ * This function is PURE and side-effect free.
+ */
+function computeGridLayout(
+    canvasWidth: number,
+    canvasHeight: number,
+    devicePixelRatio: number,
+    cellWidth: number,
+    cellHeight: number,
+): GridLayout {
+    const widthCSS = canvasWidth * devicePixelRatio;
+    const heightCSS = canvasHeight * devicePixelRatio;
+
+    const cols = Math.floor(widthCSS / cellWidth);
+    const rows = Math.ceil(heightCSS / cellHeight);
+
+    const MIN_TRAIL = 4;
+    const maxTrail = Math.max(MIN_TRAIL, rows);
+
+    return {
+        cols,
+        rows,
+        maxTrail,
+        instanceCount: cols * maxTrail,
+    };
+}
+
+/**
+ * Create renderer + buffers + render graph as a single disposable unit.
+ */
+async function createRenderBundle(
+    device: GPUDevice,
+    layout: GridLayout,
+    atlas: Awaited<ReturnType<typeof createGlyphAtlas>>,
+    glyphCount: number,
+    canvas: HTMLCanvasElement,
+    format: GPUTextureFormat,
+): Promise<{ renderer: Renderer; instances: GPUBuffer; graph: RenderGraph }> {
+    const instances = createInstanceBuffer(device, layout.instanceCount);
+
+    const renderer = await createRenderer(
+        device,
+        layout.cols,
+        layout.rows,
+        layout.maxTrail,
+        atlas.glyphUVsBuffer,
+        instances,
+        layout.instanceCount,
+        glyphCount,
+        atlas.cellWidth,
+        atlas.cellHeight,
+        atlas.texture,
+        atlas.sampler,
+        canvas,
+        format,
+    );
+
+    const graph = createRenderGraph();
+    graph.addPass(renderer.computePass);
+    graph.addPass(renderer.drawPass);
+
+    return { renderer, instances, graph };
+}
 
 export async function bootstrap(): Promise<void> {
-    try {
-        const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
+    const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
+    if (!canvas) throw new Error('Canvas element `#canvas` not found');
 
-        // Resource manager for long-lived resources (glyph atlas, samplers)
-        const persistentRM = createResourceManager(device);
+    const gpu = await initWebGPU(canvas);
 
-        // Create a small glyph set and build an atlas
-        const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
-        const glyphCount = glyphs.length;
-        const atlas = await createGlyphAtlas(
-            device,
-            glyphs,
-            { font: '32px monospace', padding: 8 }
+    // Resource manager for long-lived resources (glyph atlas, samplers)
+    const persistentRM = createResourceManager(gpu.device);
+
+    //const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
+
+    // ─────────────────────────────────────────────────────────────
+    // Glyph Atlas (long-lived)
+    // ─────────────────────────────────────────────────────────────
+
+    const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
+    const atlas = await createGlyphAtlas(
+        gpu.device,
+        glyphs,
+        { font: '32px monospace', padding: 8 }
+    );
+
+    // Tracking long-lived resources
+    persistentRM.track(atlas.texture);
+    persistentRM.track(atlas.sampler);
+    persistentRM.track(atlas.glyphUVsBuffer);
+
+    // ─────────────────────────────────────────────────────────────
+    // Initial Layout & Renderer
+    // ─────────────────────────────────────────────────────────────
+
+    const dims = gpu.configureCanvas();
+    let layout = computeGridLayout(
+        dims.width,
+        dims.height,
+        dims.dpr,
+        atlas.cellWidth,
+        atlas.cellHeight
+    );
+
+    const bundle = await createRenderBundle(
+        gpu.device,
+        layout,
+        atlas,
+        glyphs.length,
+        canvas!,
+        gpu.format,
+    );
+    let app: AppState = {
+        gpu,
+        layout: layout,
+        renderer: bundle.renderer,
+        instances: bundle.instances,
+        renderGraph: bundle.graph,
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Render Loop
+    // ─────────────────────────────────────────────────────────────
+
+    const frameCallback = (
+        encoder: GPUCommandEncoder,
+        view: GPUTextureView,
+        dt: number
+    ): void => {
+        app.renderGraph.execute(encoder, view, dt);
+    };
+
+    startRenderLoop(gpu.device, gpu.context, frameCallback);
+
+    // ─────────────────────────────────────────────────────────────
+    // Resize Handling (serialized)
+    // ─────────────────────────────────────────────────────────────
+
+    let resizeInProgress = false;
+
+    async function handleResize(): Promise<void> {
+        if (resizeInProgress) return;
+        resizeInProgress = true;
+
+        const dims = gpu.configureCanvas();
+        const newLayout = computeGridLayout(
+            dims.width,
+            dims.height,
+            dims.dpr,
+            atlas.cellWidth,
+            atlas.cellHeight
         );
 
-        // Tracking long-lived resources
-        persistentRM.track(atlas.texture);
-        persistentRM.track(atlas.sampler);
-        persistentRM.track(atlas.glyphUVsBuffer);
+        if (
+            newLayout.cols === app.layout.cols &&
+            newLayout.rows === app.layout.rows
+        ) {
+            resizeInProgress = false;
+            return;
+        }
 
-        // Extract cell size from atlas
-        const { cellWidth, cellHeight } = atlas;
+        const old = app;
 
-        // Mutable state references
-        let rendererRef: Renderer;
-        let instancesBufRef: GPUBuffer;
-        let currentCols: number;
-        let currentRows: number;
-        let maxTrail: number;
-        let renderGraphRef: RenderGraph;
-
-        // Frame callback for the render loop
-        const frameCallback = (
-            commandEncoder: GPUCommandEncoder,
-            currentView: GPUTextureView,
-            dt: number
-        ) => {
-            renderGraphRef.execute(commandEncoder, currentView, dt);
-        };
-
-        const calcCanvasDims = (cellWidth: number, cellHeight: number) => {
-            const dims = configureCanvas();
-
-            const widthCSS = dims.width * dims.dpr;
-            const heightCSS = dims.height * dims.dpr;
-
-            return {
-                cols: Math.floor(widthCSS / cellWidth),
-                rows: Math.ceil(heightCSS / cellHeight),
-            };
-        };
-
-        /**
-         * Max trail length is derived from visible rows.
-         * Rule:
-         *  - at least 4 symbols
-         *  - at most full column height
-         *  - visually stable across resolutions
-         */
-        const computeMaxTrail = (rows: number): number => {
-            const MIN_TRAIL = 4;
-            return Math.max(MIN_TRAIL, Math.floor(rows));
-        };
-
-        /**
-         * Handles canvas resizing and re-initializes all size-dependent resources.
-         */
-        const handleResize = async () => {
-            const newCanvasDims = calcCanvasDims(cellWidth, cellHeight);
-            const newCols = newCanvasDims.cols;
-            const newRows = newCanvasDims.rows;
-            const newMaxTrail = computeMaxTrail(newRows);
-
-            const newInstanceCount = newCols * newMaxTrail;
-
-            if (newCols === currentCols && newRows === currentRows) return;
-
-            // 1. Create NEW resources
-            const newInstances = createInstanceBuffer(device, newInstanceCount);
-
-            const newRenderer = await createRenderer(
-                device,
-                newCols,
-                newRows,
-                newMaxTrail,
-                atlas.glyphUVsBuffer,
-                newInstances,
-                newInstanceCount,
-                glyphCount,
-                cellWidth,
-                cellHeight,
-                atlas.texture,
-                atlas.sampler,
-                canvasEl,
-                format
-            );
-
-            // 2. Configure NEW Render Graph
-            const newRenderGraph = createRenderGraph();
-            newRenderGraph.addPass(newRenderer.computePass);
-            newRenderGraph.addPass(newRenderer.drawPass);
-
-            // 3. Save old references
-            const oldRenderer = rendererRef!;
-            const oldInstances = instancesBufRef!;
-            // oldRenderGraph does not need to be destroyed since it does not own GPU resources
-
-            // 4. Assign new references
-            rendererRef = newRenderer;
-            instancesBufRef = newInstances;
-            renderGraphRef = newRenderGraph;
-            currentCols = newCols;
-            currentRows = newRows;
-            maxTrail = newMaxTrail;
-
-            // Wait for GPU to finish submitted work before destroying old buffers to avoid "buffer destroyed" errors
-            try { await device.queue.onSubmittedWorkDone(); } catch (e) { /* ignore */ }
-
-            // Now safe to destroy old resources
-            try { oldInstances.destroy(); } catch (e) {}
-            // Destroy renderer-owned GPU objects via the old renderer resource manager
-            try { oldRenderer.destroy(); } catch (e) {}
-        };
-
-        // --- INITIALIZATION ---
-        const currentDims = calcCanvasDims(cellWidth, cellHeight);
-        currentCols = currentDims.cols;
-        currentRows = currentDims.rows;
-        maxTrail = computeMaxTrail(currentRows);
-
-        const instanceCount = currentCols * maxTrail;
-
-        instancesBufRef = createInstanceBuffer(device, instanceCount);
-
-        rendererRef = await createRenderer(
-            device,
-            currentCols,
-            currentRows,
-            maxTrail,
-            atlas.glyphUVsBuffer,
-            instancesBufRef,
-            instanceCount,
-            glyphCount,
-            cellWidth,
-            cellHeight,
-            atlas.texture,
-            atlas.sampler,
-            canvasEl,
-            format
+        const bundle = await createRenderBundle(
+            gpu.device,
+            newLayout,
+            atlas,
+            glyphs.length,
+            canvas!,
+            gpu.format,
         );
 
-        renderGraphRef = createRenderGraph();
-        renderGraphRef.addPass(rendererRef.computePass);
-        renderGraphRef.addPass(rendererRef.drawPass);
-        // --- END INITIALIZATION ---
+        app = {
+            gpu,
+            layout: newLayout,
+            renderer: bundle.renderer,
+            instances: bundle.instances,
+            renderGraph: bundle.graph,
+        };
 
-        // Start the main render loop
-        startRenderLoop(device, context, frameCallback);
+        await gpu.device.queue.onSubmittedWorkDone();
 
-        // Debounced resize listener
-        let resizeTimer: number | undefined;
-        window.addEventListener('resize', () => {
-            if (resizeTimer) cancelAnimationFrame(resizeTimer);
-            // Use requestAnimationFrame for a safe debounced resize
-            resizeTimer = requestAnimationFrame(() => { void handleResize(); resizeTimer = undefined; });
-        });
-    } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to initialize WebGPU:', err);
+        old.instances.destroy();
+        old.renderer.destroy();
+
+        resizeInProgress = false;
     }
+
+    window.addEventListener('resize', () => {
+        void handleResize();
+    });
 }
 
 bootstrap().catch((err) => {
     // eslint-disable-next-line no-console
-    console.error('Fatal initialization error in bootstrap:', err);
+    console.error('Fatal initialization error:', err);
 });
