@@ -114,13 +114,13 @@ export async function createGlyphAtlas(
 ): Promise<AtlasResult> {
     // --- 1. Canvas Setup and Measurement ---
 
-    const canUseOffscreen = typeof OffscreenCanvas !== 'undefined';
-
     const FONT_SIZE = options.fontSize ?? 32;
     const FONT = options.font ?? `${FONT_SIZE}px monospace`;
     const BASE_PADDING = options.padding ?? 8;
 
     const ATLAS_MAX_SIZE = computeMaxAtlasSize(device);
+
+    const canUseOffscreen = typeof OffscreenCanvas !== 'undefined';
 
     const tempCanvas = canUseOffscreen
         ? new OffscreenCanvas(1, 1)
@@ -137,20 +137,24 @@ export async function createGlyphAtlas(
 
     ctx.font = FONT;
 
-    // Measure glyph content width once
-    const glyphMetrics = ctx.measureText(glyphs[0] ?? 'A');
-    const glyphContentWidth = glyphMetrics.width;
+    // --- Measure glyphs ---
+    let maxGlyphWidth = 0;
+
+    for (const ch of glyphs) {
+        const w = ctx.measureText(ch).width; // physical px
+        if (w > maxGlyphWidth) maxGlyphWidth = w;
+    }
 
     // Adaptive padding calculation
     const PADDING = computeAdaptivePadding(
         BASE_PADDING,
         glyphs.length,
-        glyphContentWidth,
+        maxGlyphWidth,
         ATLAS_MAX_SIZE,
     );
 
     // Calculate cell dimensions based on the first glyph
-    const cellWidth = Math.ceil(glyphContentWidth) + PADDING * 2;
+    const cellWidth = Math.ceil(maxGlyphWidth) + PADDING * 2;
     const cellHeight = FONT_SIZE + PADDING * 2;
 
     // --- 2. Minimal Atlas Layout Calculation ---
@@ -294,10 +298,8 @@ export async function createGlyphAtlas(
  * @returns The initialized GPUBuffer.
  */
 export function createInstanceBuffer(device: GPUDevice, instanceCount: number): GPUBuffer {
-    const totalSize = instanceCount * InstanceLayout.SIZE;
-
     // Ensure minimum buffer size to avoid WebGPU validation errors if instanceCount is 0
-    const size = Math.max(4, totalSize);
+    const size = Math.max(4, instanceCount * InstanceLayout.SIZE);
 
     // Must be STORAGE for compute (output) and STORAGE for render (input)
     return device.createBuffer({

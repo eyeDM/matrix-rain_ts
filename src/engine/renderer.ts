@@ -10,6 +10,8 @@ export type Renderer = {
     destroy: () => void; // Destroy internally created GPU resources
 };
 
+const WORKGROUP_SIZE_X = 64; // Must match compute shader @workgroup_size
+
 /**
  * Create renderer that runs a compute pass (simulation) then a render pass.
  * - Loads WGSL compute shader at runtime.
@@ -214,7 +216,7 @@ export async function createRenderer(
             const pass = encoder.beginComputePass();
             pass.setPipeline(computePipeline);
             pass.setBindGroup(0, computeBindGroup);
-            pass.dispatchWorkgroups(Math.ceil(cols / 64));
+            pass.dispatchWorkgroups(Math.ceil(cols / WORKGROUP_SIZE_X));
             pass.end();
         }
     });
