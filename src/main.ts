@@ -1,5 +1,7 @@
 // Bootstrap entry — initialize WebGPU
-import { WebGPUInitExtended, initWebGPU } from './boot/webgpu-init';
+import { WebGPUContext, initWebGPU } from './boot/webgpu-init';
+import { CanvasSize } from './boot/canvas-resizer';
+import { SwapChainController } from './gpu/swap-chain';
 import { startRenderLoop } from './engine/render-loop';
 import { createGlyphAtlas, createInstanceBuffer } from './engine/resources';
 import { Renderer, createRenderer } from './engine/renderer';
@@ -20,7 +22,7 @@ type GridLayout = {
  * Authoritative runtime state container.
  */
 type AppState = {
-    gpu: WebGPUInitExtended;
+    gpu: WebGPUContext;
     renderer: Renderer;
     instances: GPUBuffer;
     renderGraph: RenderGraph;
@@ -29,7 +31,7 @@ type AppState = {
 
 /**
  * Compute grid layout from physical canvas size.
- * This function is PURE and side-effect free.
+ * This function is PURE and side effect free.
  */
 function computeGridLayout(
     canvasWidth: number,
@@ -97,11 +99,15 @@ export async function bootstrap(): Promise<void> {
     if (!canvas) throw new Error('Canvas element `#canvas` not found');
 
     const gpu = await initWebGPU(canvas);
+    const swapChain = new SwapChainController(
+        canvas,
+        gpu.context,
+        gpu.device,
+        gpu.format,
+    );
 
     // Resource manager for long-lived resources (glyph atlas, samplers)
     const persistentRM = createResourceManager(gpu.device);
-
-    //const { device, context, format, configureCanvas } = await initWebGPU(canvasEl);
 
     // ─────────────────────────────────────────────────────────────
     // Glyph Atlas (long-lived)
@@ -123,11 +129,12 @@ export async function bootstrap(): Promise<void> {
     // Initial Layout & Renderer
     // ─────────────────────────────────────────────────────────────
 
-    const dims = gpu.configureCanvas();
-    let layout = computeGridLayout(
-        dims.width,
-        dims.height,
-        dims.dpr,
+    //const dims = gpu.configureCanvas();
+    const size: CanvasSize = swapChain.resize();
+    let layout: GridLayout = computeGridLayout(
+        size.width,
+        size.height,
+        size.dpr,
         atlas.cellWidth,
         atlas.cellHeight
     );
@@ -152,15 +159,20 @@ export async function bootstrap(): Promise<void> {
     // Render Loop
     // ─────────────────────────────────────────────────────────────
 
-    const frameCallback = (
-        encoder: GPUCommandEncoder,
-        view: GPUTextureView,
-        dt: number
-    ): void => {
-        app.renderGraph.execute(encoder, view, dt);
-    };
+    startRenderLoop(
+        gpu.device,
+        (encoder, dt) => ({
+            encoder,
+            dt,
+            acquireView: () => swapChain.getCurrentView(),
+        }),
+        (frame) => {
+            const view = frame.acquireView();
+            if (!view) return;
 
-    startRenderLoop(gpu.device, gpu.context, frameCallback);
+            app.renderGraph.execute(frame.encoder, view, frame.dt);
+        },
+    );
 
     // ─────────────────────────────────────────────────────────────
     // Resize Handling (serialized)
@@ -172,11 +184,11 @@ export async function bootstrap(): Promise<void> {
         if (resizeInProgress) return;
         resizeInProgress = true;
 
-        const dims = gpu.configureCanvas();
-        const newLayout = computeGridLayout(
-            dims.width,
-            dims.height,
-            dims.dpr,
+        const size: CanvasSize = swapChain.resize();
+        const newLayout: GridLayout = computeGridLayout(
+            size.width,
+            size.height,
+            size.dpr,
             atlas.cellWidth,
             atlas.cellHeight
         );

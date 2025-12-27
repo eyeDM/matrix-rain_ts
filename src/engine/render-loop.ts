@@ -1,77 +1,74 @@
 /**
- * Render loop
- * - Issues per-frame command encoder and render pass
- * - Clears the canvas each frame (black)
- * - Minimizes per-frame JS allocations by reusing the pass descriptor
+ * Render loop infrastructure.
  *
- * Note: acquiring the current swap-chain texture and creating a view is
- * required each frame by the WebGPU model — we only avoid recreating
- * descriptor objects on the JS heap per-frame.
+ * Responsibilities:
+ * - Drives the RAF-based frame lifecycle
+ * - Issues exactly one GPUCommandEncoder per frame
+ * - Submits command buffers to the device queue
+ * - Provides a per-frame context object via dependency injection
+ *
+ * Design notes:
+ * - The render loop is intentionally unaware of canvas, swap chain,
+ *   or framebuffer concepts.
+ * - Framebuffer acquisition is delegated to FrameContext.acquireView(),
+ *   allowing different backends (canvas, offscreen, XR).
+ * - A frame may be intentionally skipped by returning `null` from
+ *   acquireView(); the loop continues without interruption.
+ *
+ * Timing:
+ * - `dt` is computed using `performance.now()` and expressed in seconds.
+ *
+ * WebGPU-specific notes:
+ * - Acquiring the current swap-chain texture and creating a view is
+ *   required every frame by the WebGPU model.
+ * - Per-frame GPU objects (encoder, texture view) are recreated as required,
+ *   while higher-level JS descriptor objects should be reused externally
+ *   to minimize GC pressure.
+ *
+ * Invariants:
+ * - The render loop always schedules the next RAF tick.
+ * - Submitting an empty command buffer is valid and expected.
  */
 
-export type FrameCallback = (
+/**
+ * TODO:
+ * - stop() / dispose()
+ * - optional FPS limiting / fixed timestep
+ * - device.lost integration
+ */
+
+export interface FrameContext {
+    readonly encoder: GPUCommandEncoder;
+    readonly dt: number;
+
+    /** Framebuffer acquisition */
+    acquireView(): GPUTextureView | null;
+}
+
+export type FrameContextFactory = (
     encoder: GPUCommandEncoder,
-    view: GPUTextureView,
     dt: number
-) => void;
+) => FrameContext;
 
 export function startRenderLoop(
     device: GPUDevice,
-    context: GPUCanvasContext,
-    frameCallback: FrameCallback
-) {
-    let rafId = 0;
-    const queue = device.queue;
-
+    makeContext: FrameContextFactory,
+    frame: (ctx: FrameContext) => void,
+): void {
     let lastTime = performance.now();
 
-    function frame(): void {
-        // Acquire the current texture view from the context (required per-frame)
-        let currentView: GPUTextureView;
-        try {
-            currentView = context.getCurrentTexture().createView();
-        } catch (e) {
-            // If we fail to acquire a view (platform/browser timing), skip this frame but keep the loop alive
-            // This avoids uncaught exceptions that would stop the RAF loop entirely.
-            // eslint-disable-next-line no-console
-            console.warn('Could not acquire current swap-chain texture, skipping frame', e);
-            rafId = requestAnimationFrame(frame);
-            return;
-        }
-
-        const commandEncoder = device.createCommandEncoder();
-
+    function tick(): void {
         const now = performance.now();
         const dt = (now - lastTime) / 1000.0;
         lastTime = now;
 
-        // Let caller encode compute + render using the same encoder to guarantee ordering.
-        // Protect against exceptions in the frame callback so the RAF loop continues.
-        try {
-            frameCallback(commandEncoder, currentView, dt);
-        } catch (err) {
-            // Log and continue — we still attempt to finish/submit whatever was encoded.
-            // eslint-disable-next-line no-console
-            console.error('Error in frame callback:', err);
-        }
+        const commandEncoder = device.createCommandEncoder();
+        const ctx = makeContext(commandEncoder, dt);
 
-        try {
-            queue.submit([commandEncoder.finish()]);
-        } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error('Failed to submit GPU commands for frame:', err);
-        }
-
-        rafId = requestAnimationFrame(frame);
+        frame(ctx);
+        device.queue.submit([commandEncoder.finish()]);
+        requestAnimationFrame(tick);
     }
 
-    rafId = requestAnimationFrame(frame);
-
-    /**
-     * Stops the active render loop by cancelling the internally scheduled
-     * requestAnimationFrame callback.
-     */
-    return function stop() {
-        cancelAnimationFrame(rafId);
-    };
+    requestAnimationFrame(tick);
 }
