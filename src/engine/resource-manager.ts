@@ -1,6 +1,19 @@
 /**
- * Type-safe GPU resource ownership manager.
- * Separates ownership tracking from explicit GPU destruction.
+ * Deterministic lifetime manager for explicit-destroy WebGPU resources.
+ *
+ * Responsibilities:
+ * - Owns GPU resources that require manual `.destroy()` (e.g. GPUBuffer, GPUTexture)
+ * - Provides a single, explicit teardown point via `destroyAll()`
+ * - Enforces a clear ownership scope for GPU memory allocations
+ *
+ * Non-responsibilities:
+ * - Does NOT manage logical lifetime or usage of resources
+ * - Does NOT track non-destroyable GPU objects (pipelines, bind groups, shader modules)
+ * - Does NOT guarantee cleanup on browser tab close (best-effort only)
+ *
+ * Intended usage:
+ * - Scene-level or subsystem-level GPU memory ownership
+ * - Explicit teardown during controlled application shutdown, hot-reload, or scene reset
  */
 
 export type DestroyableResource = {
@@ -8,8 +21,7 @@ export type DestroyableResource = {
 };
 
 export class ResourceManager {
-    private readonly destroyables: DestroyableResource[] = [];
-    private readonly tracked: unknown[] = [];
+    private readonly tracked: DestroyableResource[] = [];
     private destroyed = false;
 
     constructor(private readonly device: GPUDevice) {}
@@ -25,18 +37,7 @@ export class ResourceManager {
      * Track a GPU resource that requires explicit .destroy().
      * Typical examples: GPUBuffer, GPUTexture, GPUSampler.
      */
-    trackDestroyable<T extends DestroyableResource>(resource: T): T {
-        this.assertAlive();
-        this.destroyables.push(resource);
-        this.tracked.push(resource);
-        return resource;
-    }
-
-    /**
-     * Track an owned GPU object that does NOT require explicit destruction.
-     * Typical examples: pipelines, bind groups, shader modules.
-     */
-    track<T>(resource: T): T {
+    track<T extends DestroyableResource>(resource: T): T {
         this.assertAlive();
         this.tracked.push(resource);
         return resource;
@@ -47,44 +48,14 @@ export class ResourceManager {
     // ─────────────────────────────────────────────────────────────
 
     createBuffer(desc: GPUBufferDescriptor): GPUBuffer {
-        return this.trackDestroyable(
+        return this.track(
             this.device.createBuffer(desc)
         );
     }
 
     createTexture(desc: GPUTextureDescriptor): GPUTexture {
-        return this.trackDestroyable(
+        return this.track(
             this.device.createTexture(desc)
-        );
-    }
-
-    createSampler(desc: GPUSamplerDescriptor): GPUSampler {
-        return this.track(
-            this.device.createSampler(desc)
-        );
-    }
-
-    createShaderModule(desc: GPUShaderModuleDescriptor): GPUShaderModule {
-        return this.track(
-            this.device.createShaderModule(desc)
-        );
-    }
-
-    createBindGroup(desc: GPUBindGroupDescriptor): GPUBindGroup {
-        return this.track(
-            this.device.createBindGroup(desc)
-        );
-    }
-
-    createComputePipeline(desc: GPUComputePipelineDescriptor): GPUComputePipeline {
-        return this.track(
-            this.device.createComputePipeline(desc)
-        );
-    }
-
-    createRenderPipeline(desc: GPURenderPipelineDescriptor): GPURenderPipeline {
-        return this.track(
-            this.device.createRenderPipeline(desc)
         );
     }
 
@@ -96,11 +67,10 @@ export class ResourceManager {
     destroyAll(): void {
         if (this.destroyed) return;
 
-        for (const r of this.destroyables) {
+        for (const r of this.tracked) {
             r.destroy();
         }
 
-        this.destroyables.length = 0;
         this.tracked.length = 0;
         this.destroyed = true;
     }

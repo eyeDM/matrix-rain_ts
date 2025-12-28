@@ -80,7 +80,7 @@ export function createRenderer(
         bindGroupLayouts: [computeBindGroupLayout],
     });
 
-    const computePipeline = rm.createComputePipeline({
+    const computePipeline = device.createComputePipeline({
         label: 'Matrix Compute Pipeline',
         layout: computePipelineLayout,
         compute: {
@@ -89,7 +89,7 @@ export function createRenderer(
         },
     });
 
-    const computeBindGroup = rm.createBindGroup({
+    const computeBindGroup = device.createBindGroup({
         label: 'Compute Bind Group',
         layout: computeBindGroupLayout,
         entries: [
@@ -151,7 +151,7 @@ export function createRenderer(
         bindGroupLayouts: [renderBindGroupLayout],
     });
 
-    const renderPipeline = rm.createRenderPipeline({
+    const renderPipeline = device.createRenderPipeline({
         label: 'Matrix Rain Render Pipeline',
         layout: renderPipelineLayout,
         vertex: {
@@ -185,7 +185,7 @@ export function createRenderer(
     // Create and reuse a single texture view for the atlas (no need to recreate per-frame)
     const atlasView = atlasTexture.createView();
 
-    const renderBindGroup = rm.createBindGroup({
+    const renderBindGroup = device.createBindGroup({
         label: 'Render Bind Group',
         layout: renderBindGroupLayout,
         entries: [

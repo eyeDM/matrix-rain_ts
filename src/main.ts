@@ -7,7 +7,6 @@ import { startRenderLoop } from './engine/render-loop';
 import { createGlyphAtlas, createInstanceBuffer } from './engine/resources';
 import { Renderer, createRenderer } from './engine/renderer';
 import { RenderGraph, createRenderGraph } from './engine/render-graph';
-import { createResourceManager } from './engine/resource-manager';
 
 /**
  * Immutable grid layout derived from canvas size.
@@ -112,9 +111,6 @@ export async function bootstrap(): Promise<void> {
         gpu.format,
     );
 
-    // Resource manager for long-lived resources (glyph atlas, samplers)
-    const persistentRM = createResourceManager(gpu.device);
-
     // ─────────────────────────────────────────────────────────────
     // Shader Library (long-lived, global)
     // ─────────────────────────────────────────────────────────────
@@ -143,11 +139,6 @@ export async function bootstrap(): Promise<void> {
         glyphs,
         { font: '32px monospace', padding: 8 }
     );
-
-    // Tracking long-lived resources
-    persistentRM.track(atlas.texture);
-    persistentRM.track(atlas.sampler);
-    persistentRM.track(atlas.glyphUVsBuffer);
 
     // ─────────────────────────────────────────────────────────────
     // Initial Layout & Renderer
