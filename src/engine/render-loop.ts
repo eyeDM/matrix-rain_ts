@@ -54,21 +54,24 @@ export function startRenderLoop(
     device: GPUDevice,
     makeContext: FrameContextFactory,
     frame: (ctx: FrameContext) => void,
-): void {
-    let lastTime = performance.now();
+): () => void {
+    let lastTime: number | null = null;
+    let isActive = true;
 
-    function tick(): void {
-        const now = performance.now();
-        const dt = (now - lastTime) / 1000.0;
+    function tick(now: DOMHighResTimeStamp): void {
+        if (!isActive) return;
+
+        const dt = lastTime === null ? 0 : (now - lastTime) / 1000;
         lastTime = now;
 
-        const commandEncoder = device.createCommandEncoder();
-        const ctx = makeContext(commandEncoder, dt);
-
+        const encoder = device.createCommandEncoder();
+        const ctx = makeContext(encoder, dt);
         frame(ctx);
-        device.queue.submit([commandEncoder.finish()]);
+        device.queue.submit([encoder.finish()]);
+
         requestAnimationFrame(tick);
     }
 
     requestAnimationFrame(tick);
+    return () => { isActive = false; };
 }
