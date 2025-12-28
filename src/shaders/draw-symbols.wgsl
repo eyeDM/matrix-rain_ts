@@ -21,7 +21,6 @@ struct VertexOut {
   @location(1) v_brightness: f32,
 };
 
-// Buffer / bind group layout:
 @group(0) @binding(0) var atlasSampler: sampler; // sampler for atlas texture
 @group(0) @binding(1) var atlasTexture: texture_2d<f32>; // rgba8unorm
 @group(0) @binding(2) var<storage, read> instances: array<InstanceData>; // per-instance data

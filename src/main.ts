@@ -1,5 +1,6 @@
 // Bootstrap entry — initialize WebGPU
 import { WebGPUContext, initWebGPU } from './boot/webgpu-init';
+import { ShaderLoader, createShaderLoader} from './boot/shader-loader';
 import { CanvasSize } from './boot/canvas-resizer';
 import { SwapChainController } from './gpu/swap-chain';
 import { startRenderLoop } from './engine/render-loop';
@@ -62,29 +63,34 @@ function computeGridLayout(
  */
 async function createRenderBundle(
     device: GPUDevice,
-    layout: GridLayout,
-    atlas: Awaited<ReturnType<typeof createGlyphAtlas>>,
-    glyphCount: number,
     canvas: HTMLCanvasElement,
     format: GPUTextureFormat,
+    shaderLoader: ShaderLoader,
+    atlas: Awaited<ReturnType<typeof createGlyphAtlas>>,
+    glyphCount: number,
+    layout: GridLayout,
 ): Promise<{ renderer: Renderer; instances: GPUBuffer; graph: RenderGraph }> {
     const instances = createInstanceBuffer(device, layout.instanceCount);
 
-    const renderer = await createRenderer(
+    const renderer = createRenderer(
         device,
+        canvas,
+        format,
+        {
+            compute: shaderLoader.get('matrix-compute'),
+            draw: shaderLoader.get('matrix-draw'),
+        },
+        atlas.texture,
+        atlas.sampler,
+        atlas.glyphUVsBuffer,
+        atlas.cellWidth,
+        atlas.cellHeight,
+        glyphCount,
         layout.cols,
         layout.rows,
         layout.maxTrail,
-        atlas.glyphUVsBuffer,
-        instances,
         layout.instanceCount,
-        glyphCount,
-        atlas.cellWidth,
-        atlas.cellHeight,
-        atlas.texture,
-        atlas.sampler,
-        canvas,
-        format,
+        instances,
     );
 
     const graph = createRenderGraph();
@@ -108,6 +114,24 @@ export async function bootstrap(): Promise<void> {
 
     // Resource manager for long-lived resources (glyph atlas, samplers)
     const persistentRM = createResourceManager(gpu.device);
+
+    // ─────────────────────────────────────────────────────────────
+    // Shader Library (long-lived, global)
+    // ─────────────────────────────────────────────────────────────
+    const shaderLoader = createShaderLoader(gpu.device);
+
+    await Promise.all([
+        // Load compute WGSL
+        shaderLoader.load(
+            'matrix-compute',
+            new URL('./sim/gpu-update.wgsl', import.meta.url).href
+        ),
+        // Load draw shader
+        shaderLoader.load(
+            'matrix-draw',
+            new URL('./shaders/draw-symbols.wgsl', import.meta.url).href
+        ),
+    ]);
 
     // ─────────────────────────────────────────────────────────────
     // Glyph Atlas (long-lived)
@@ -141,11 +165,12 @@ export async function bootstrap(): Promise<void> {
 
     const bundle = await createRenderBundle(
         gpu.device,
-        layout,
-        atlas,
-        glyphs.length,
         canvas!,
         gpu.format,
+        shaderLoader,
+        atlas,
+        glyphs.length,
+        layout,
     );
     let app: AppState = {
         gpu,
@@ -205,11 +230,12 @@ export async function bootstrap(): Promise<void> {
 
         const bundle = await createRenderBundle(
             gpu.device,
-            newLayout,
-            atlas,
-            glyphs.length,
             canvas!,
             gpu.format,
+            shaderLoader,
+            atlas,
+            glyphs.length,
+            newLayout,
         );
 
         app = {

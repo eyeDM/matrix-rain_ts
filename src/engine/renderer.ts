@@ -4,6 +4,11 @@ import { createSimulationGraph } from './simulation-graph';
 import { RenderPass, PassKind } from './render-graph';
 import { createResourceManager } from './resource-manager';
 
+export type ShadersBundle = {
+    compute: GPUShaderModule;
+    draw: GPUShaderModule;
+};
+
 export type Renderer = {
     computePass: RenderPass;
     drawPass: RenderPass;
@@ -18,25 +23,24 @@ const WORKGROUP_SIZE_X = 64; // Must match compute shader @workgroup_size
  * - Creates compute pipeline & bind groups once and reuses them.
  * - The returned object exposes RenderPasses that can be integrated into a RenderGraph.
  */
-export async function createRenderer(
+export function createRenderer(
     device: GPUDevice,
+    canvasEl: HTMLCanvasElement,
+    format: GPUTextureFormat,
+    shaders: ShadersBundle,
+    atlasTexture: GPUTexture,
+    atlasSampler: GPUSampler,
+    glyphUVsBuffer: GPUBuffer,
+    cellWidth: number,
+    cellHeight: number,
+    glyphCount: number,
     cols: number,
     rows: number,
     maxTrail: number,
-    glyphUVsBuffer: GPUBuffer,
-    instancesBuffer: GPUBuffer,
     instanceCount: number,
-    glyphCount: number,
-    cellWidth: number,
-    cellHeight: number,
-    atlasTexture: GPUTexture,
-    atlasSampler: GPUSampler,
-    canvasEl: HTMLCanvasElement,
-    format: GPUTextureFormat
-): Promise<Renderer> {
+    instancesBuffer: GPUBuffer,
+): Renderer {
     const rm = createResourceManager(device);
-
-    //const frameUniforms = createFrameUniforms(device);
 
     const streams = createStreamBuffers(
         device,
@@ -48,25 +52,11 @@ export async function createRenderer(
         maxTrail
     );
 
-    // --- 1. Load Shaders (Compute & Draw) ---
+    const computeModule = shaders.compute;
 
-    // Load compute WGSL (use URL relative to this module so bundlers/dev-servers resolve correctly)
-    const computeShaderUrl = new URL('../sim/gpu-update.wgsl', import.meta.url).href;
-    const computeCode = await fetch(computeShaderUrl).then(res => res.text());
-    const computeModule = rm.createShaderModule({
-        code: computeCode,
-        label: 'Matrix Compute Shader Module',
-    });
+    const drawModule = shaders.draw;
 
-    // Load draw shader (URL relative to this module)
-    const drawShaderUrl = new URL('../shaders/draw-symbols.wgsl', import.meta.url).href;
-    const drawCode = await fetch(drawShaderUrl).then(res => res.text());
-    const drawModule = rm.createShaderModule({
-        code: drawCode,
-        label: 'Matrix Draw Shader Module',
-    });
-
-    // --- 2. Compute Pipeline Setup ---
+    // --- Compute Pipeline Setup ---
 
     /** Persistent GPU resource – destroyed only on app shutdown */
     const computeBindGroupLayout = device.createBindGroupLayout({
@@ -115,7 +105,7 @@ export async function createRenderer(
         ],
     });
 
-    // --- 3. Render Pipeline Setup ---
+    // --- Render Pipeline Setup ---
 
     // Quad Vertex Buffer (a simple quad that covers one cell space [-0.5, 0.5])
     // Data: position (vec2f), uv (vec2f)
@@ -206,7 +196,7 @@ export async function createRenderer(
         ],
     });
 
-    // --- 4. Pass Definitions (RenderPass objects for RenderGraph) ---
+    // --- Pass Definitions (RenderPass objects for RenderGraph) ---
 
     const simGraph = createSimulationGraph();
 
@@ -266,7 +256,7 @@ export async function createRenderer(
         }
     };
 
-    // --- 5. Destruction Logic ---
+    // --- Destruction Logic ---
 
     const destroy = () => {
         streams.destroy();
