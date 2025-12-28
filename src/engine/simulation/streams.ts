@@ -1,5 +1,6 @@
-import { SimulationUniformLayout } from '../gpu/layouts';
-import { SimulationUniformWriter } from './simulation-uniform-writer';
+import { SimulationUniformWriter } from '@engine/simulation/simulation-uniform-writer';
+
+import { SimulationUniformLayout } from '@platform/webgpu/layouts';
 
 export type StreamBuffers = {
     cols: number;

@@ -1,4 +1,4 @@
-import { SimulationUniformLayout } from '../gpu/layouts';
+import { SimulationUniformLayout } from '@platform/webgpu/layouts';
 
 /**
  * CPU-side writer for SimulationUniforms.

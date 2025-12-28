@@ -1,4 +1,4 @@
-import { CanvasSize, CanvasResizer } from '../boot/canvas-resizer';
+import { CanvasSize, CanvasResizer } from '@runtime/canvas-resizer';
 
 export interface SwapChain {
     /** Resize backing buffer and reconfigure if needed */

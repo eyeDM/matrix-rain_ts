@@ -88,35 +88,56 @@ matrix-rain_ts/
 │  └─ favicon.svg
 │
 ├─ src/
-│  ├─ boot/
-│  │  └─ webgpu-init.ts        # Adapter/device/context initialization
+│  ├─ app/
+│  │  └─ main.ts                # Application bootstrap
 │  │
-│  ├─ engine/
-│  │  ├─ render-loop.ts        # requestAnimationFrame loop
-│  │  ├─ render-graph.ts       # DAG-based render pass execution
-│  │  ├─ simulation-graph.ts   # Compute-only pass graph
-│  │  ├─ renderer.ts           # Pipelines, bind groups, passes
-│  │  ├─ resource-manager.ts   # Explicit GPU resource ownership
-│  │  └─ resources.ts          # Glyph atlas + instance buffer
+│  ├─ runtime/                  # Long-lived runtime infrastructure
+│  │  ├─ render-loop.ts         # requestAnimationFrame loop
+│  │  ├─ swap-chain.ts          # (перенос из gpu/)
+│  │  └─ canvas-resizer.ts
 │  │
-│  ├─ gpu/
-│  │  └─ layouts.ts            # Canonical CPU↔GPU memory layouts
+│  ├─ platform/                 # WebGPU platform abstractions
+│  │  └─ webgpu/
+│  │     ├─ init.ts             # Adapter/device/context initialization
+│  │     ├─ shader-library.ts
+│  │     ├─ layouts.ts          # Canonical CPU↔GPU memory layouts
+│  │     └─ resource-manager.ts # Explicit GPU resource ownership
 │  │
-│  ├─ shaders/
-│  │  └─ draw-symbols.wgsl     # Instanced glyph rendering
+│  ├─ engine/                   # Domain logic (GPU-agnostic where possible)
+│  │  ├─ render/
+│  │  │  ├─ renderer.ts         # Pipelines, bind groups, passes
+│  │  │  ├─ render-graph.ts     # DAG-based render pass execution
+│  │  │  └─ resources.ts        # Glyph atlas + instance buffer
+│  │  │
+│  │  └─ simulation/
+│  │     ├─ simulation-graph.ts # Compute-only pass graph
+│  │     ├─ streams.ts          # Simulation buffers
+│  │     └─ simulation-uniform-writer.ts    # SimulationUniforms owner
 │  │
-│  ├─ sim/
-│  │  ├─ gpu-update.wgsl       # Compute shader (simulation)
-│  │  ├─ streams.ts            # Simulation buffers
-│  │  └─ simulation-uniform-writer.ts  # SimulationUniforms owner
-│  │
-│  └─ main.ts                  # Application bootstrap
+│  └─ assets/                   # Static GPU assets
+│     └─ shaders/
+│        ├─ draw-symbols.wgsl   # Instanced glyph rendering
+│        └─ gpu-update.wgsl     # Compute shader (simulation)
 │
 ├─ README.md
 ├─ index.html
 ├─ package.json
 ├─ tsconfig.json
 └─ vite.config.ts
+```
+
+### Dependency flow
+
+```
+main.ts
+ ↓
+runtime (loop, swap-chain)
+ ↓
+engine (renderer / simulation)
+ ↓
+platform/webgpu (device, shaders, layouts)
+ ↓
+assets (wgsl)
 ```
 
 ### Core subsystems

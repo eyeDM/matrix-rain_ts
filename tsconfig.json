@@ -1,18 +1,41 @@
 {
   "compilerOptions": {
+    /* Language & emit */
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "noEmit": true,
+
+    /* Strictness */
     "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "useDefineForClassFields": true,
+
+    /* Interop */
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "sourceMap": true,
-    "outDir": "dist",
+
+    /* Environment */
     "lib": ["DOM", "ES2022"],
     "types": ["@webgpu/types"],
+
+    /* Tooling */
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+
+    /* Path aliases */
+    "baseUrl": ".",
+    "paths": {
+      "@app/*": ["src/app/*"],
+      "@runtime/*": ["src/runtime/*"],
+      "@engine/*": ["src/engine/*"],
+      "@platform/*": ["src/platform/*"],
+      "@assets/*": ["src/assets/*"],
+      "@shared/*": ["src/shared/*"]
+    }
   },
   "include": ["src"]
 }

@@ -1,4 +1,4 @@
-import { InstanceLayout } from '../gpu/layouts';
+import { InstanceLayout } from '@platform/webgpu/layouts';
 
 /**
  * Resources: Symbol texture atlas
@@ -194,7 +194,7 @@ export async function createGlyphAtlas(
     ctx.font = FONT;
 
     // Draw all glyphs
-    for (let i = 0; i < glyphs.length; i++) {
+    for (const [i, glyph] of glyphs.entries()) {
         const col = i % glyphsPerRow;
         const row = Math.floor(i / glyphsPerRow);
 
@@ -204,7 +204,7 @@ export async function createGlyphAtlas(
         // Draw glyph centered in the cell
         const drawX = x + cellWidth / 2;
         const drawY = y + cellHeight / 2;
-        ctx.fillText(glyphs[i], drawX, drawY);
+        ctx.fillText(glyph, drawX, drawY);
 
         // Calculate normalized UV rects
         const u0 = x / atlasWidth;
@@ -212,7 +212,7 @@ export async function createGlyphAtlas(
         const u1 = (x + cellWidth) / atlasWidth;
         const v1 = (y + cellHeight) / atlasHeight;
 
-        glyphMap.set(glyphs[i], {
+        glyphMap.set(glyph, {
             u0,
             v0,
             u1,
@@ -222,7 +222,7 @@ export async function createGlyphAtlas(
         });
 
         const bufferOffset = i * GLYPH_UV_RECT_SIZE;
-        uvRects[bufferOffset + 0] = u0;
+        uvRects[bufferOffset] = u0;
         uvRects[bufferOffset + 1] = v0;
         uvRects[bufferOffset + 2] = u1;
         uvRects[bufferOffset + 3] = v1;

@@ -1,8 +1,9 @@
-import { ScreenLayout } from '../gpu/layouts';
-import { createStreamBuffers } from '../sim/streams';
-import { createSimulationGraph } from './simulation-graph';
-import { RenderPass, PassKind } from './render-graph';
-import { createResourceManager } from './resource-manager';
+import { createStreamBuffers } from '@engine/simulation/streams';
+import { createSimulationGraph } from '@engine/simulation/simulation-graph';
+import { RenderPass, PassKind } from '@engine/render/render-graph';
+
+import { ScreenLayout } from '@platform/webgpu/layouts';
+import { createResourceManager } from '@platform/webgpu/resource-manager';
 
 export type ShadersBundle = {
     compute: GPUShaderModule;

@@ -1,12 +1,15 @@
 // Bootstrap entry — initialize WebGPU
-import { WebGPUContext, initWebGPU } from './boot/webgpu-init';
-import { ShaderLoader, createShaderLoader} from './boot/shader-loader';
-import { CanvasSize } from './boot/canvas-resizer';
-import { SwapChainController } from './gpu/swap-chain';
-import { startRenderLoop } from './engine/render-loop';
-import { createGlyphAtlas, createInstanceBuffer } from './engine/resources';
-import { Renderer, createRenderer } from './engine/renderer';
-import { RenderGraph, createRenderGraph } from './engine/render-graph';
+
+import { SwapChainController } from '@runtime/swap-chain';
+import { startRenderLoop } from '@runtime/render-loop';
+import { CanvasSize } from '@runtime/canvas-resizer';
+
+import { createGlyphAtlas, createInstanceBuffer } from '@engine/render/resources';
+import { Renderer, createRenderer } from '@engine/render/renderer';
+import { RenderGraph, createRenderGraph } from '@engine/render/render-graph';
+
+import { WebGPUContext, initWebGPU } from '@platform/webgpu/init';
+import { ShaderLoader, createShaderLoader} from '@platform/webgpu/shader-loader';
 
 /**
  * Immutable grid layout derived from canvas size.
@@ -120,12 +123,12 @@ export async function bootstrap(): Promise<void> {
         // Load compute WGSL
         shaderLoader.load(
             'matrix-compute',
-            new URL('./sim/gpu-update.wgsl', import.meta.url).href
+            new URL('./../assets/shaders/gpu-update.wgsl', import.meta.url).href
         ),
         // Load draw shader
         shaderLoader.load(
             'matrix-draw',
-            new URL('./shaders/draw-symbols.wgsl', import.meta.url).href
+            new URL('./../assets/shaders/draw-symbols.wgsl', import.meta.url).href
         ),
     ]);
 
