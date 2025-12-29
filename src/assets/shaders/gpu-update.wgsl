@@ -93,7 +93,7 @@ const LENGTH_MIN: u32 = 3u;
 const LENGTH_RANGE: f32 = 20.0;
 
 const SPEED_MIN: f32 = 2.0;
-const SPEED_RANGE: f32 = 32.0;
+const SPEED_RANGE: f32 = 16.0;
 
 // --- Energy model constants ---
 
@@ -101,10 +101,10 @@ const ENERGY_BASE_MIN: f32 = 4.0;
 const ENERGY_BASE_MAX: f32 = 8.0;
 const ENERGY_PER_CELL: f32 = 1.25;
 
-const BASE_HALF_LIFE: f32 = 5.0;
-const MIN_HALF_LIFE: f32 = 0.15;
-const ENERGY_SPEED_FACTOR: f32 = 0.35;
-const ENERGY_LENGTH_FACTOR: f32 = 0.06;
+const BASE_HALF_LIFE: f32 = 8.0;
+const MIN_HALF_LIFE: f32 = 1.0;
+const ENERGY_SPEED_FACTOR: f32 = 0.25;
+const ENERGY_LENGTH_FACTOR: f32 = 0.05;
 
 const TRAIL_DECAY: f32 = 3.2;
 const HEAD_BRIGHTNESS_BOOST: f32 = 1.15;
