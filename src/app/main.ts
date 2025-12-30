@@ -4,6 +4,7 @@ import { SwapChainController } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 import { CanvasSize } from '@runtime/canvas-resizer';
 
+import { createSimulationEngine } from '@engine/simulation/simulation-engine';
 import { createGlyphAtlas, createInstanceBuffer } from '@engine/render/resources';
 import { Renderer, createRenderer } from '@engine/render/renderer';
 import { RenderGraph, createRenderGraph } from '@engine/render/render-graph';
@@ -25,7 +26,6 @@ type GridLayout = {
  * Authoritative runtime state container.
  */
 type AppState = {
-    gpu: WebGPUContext;
     renderer: Renderer;
     instances: GPUBuffer;
     renderGraph: RenderGraph;
@@ -74,25 +74,29 @@ async function createRenderBundle(
 ): Promise<{ renderer: Renderer; instances: GPUBuffer; graph: RenderGraph }> {
     const instances = createInstanceBuffer(device, layout.instanceCount);
 
+    const simulation = createSimulationEngine({
+        device: device,
+        shader: shaderLoader.get('matrix-compute'),
+        glyphUVsBuffer: atlas.glyphUVsBuffer,
+        instanceBuffer: instances,
+        cols: layout.cols,
+        rows: layout.rows,
+        glyphCount: glyphCount,
+        cellWidth: atlas.cellWidth,
+        cellHeight: atlas.cellHeight,
+        maxTrail: layout.maxTrail,
+    });
+
     const renderer = createRenderer(
         device,
         canvas,
         format,
-        {
-            compute: shaderLoader.get('matrix-compute'),
-            draw: shaderLoader.get('matrix-draw'),
-        },
+        shaderLoader.get('matrix-draw'),
         atlas.texture,
         atlas.sampler,
-        atlas.glyphUVsBuffer,
-        atlas.cellWidth,
-        atlas.cellHeight,
-        glyphCount,
-        layout.cols,
-        layout.rows,
-        layout.maxTrail,
-        layout.instanceCount,
         instances,
+        layout.instanceCount,
+        simulation.computePass,
     );
 
     const graph = createRenderGraph();
@@ -106,7 +110,7 @@ export async function bootstrap(): Promise<void> {
     const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
     if (!canvas) throw new Error('Canvas element `#canvas` not found');
 
-    const gpu = await initWebGPU(canvas);
+    const gpu: WebGPUContext = await initWebGPU(canvas);
     const swapChain = new SwapChainController(
         canvas,
         gpu.context,
@@ -136,7 +140,7 @@ export async function bootstrap(): Promise<void> {
     // Glyph Atlas (long-lived)
     // ─────────────────────────────────────────────────────────────
 
-    const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@$%&*()'.split('');
+    const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*+/?;'.split('');
     const atlas = await createGlyphAtlas(
         gpu.device,
         glyphs,
@@ -167,7 +171,6 @@ export async function bootstrap(): Promise<void> {
         layout,
     );
     let app: AppState = {
-        gpu,
         layout: layout,
         renderer: bundle.renderer,
         instances: bundle.instances,
@@ -233,7 +236,6 @@ export async function bootstrap(): Promise<void> {
         );
 
         app = {
-            gpu,
             layout: newLayout,
             renderer: bundle.renderer,
             instances: bundle.instances,

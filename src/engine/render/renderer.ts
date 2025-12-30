@@ -1,22 +1,13 @@
-import { createStreamBuffers } from '@engine/simulation/streams';
-import { createSimulationGraph } from '@engine/simulation/simulation-graph';
 import { RenderPass, PassKind } from '@engine/render/render-graph';
 
 import { ScreenLayout } from '@platform/webgpu/layouts';
 import { createResourceManager } from '@platform/webgpu/resource-manager';
 
-export type ShadersBundle = {
-    compute: GPUShaderModule;
-    draw: GPUShaderModule;
-};
-
 export type Renderer = {
-    computePass: RenderPass;
-    drawPass: RenderPass;
+    readonly computePass: RenderPass;
+    readonly drawPass: RenderPass;
     destroy: () => void; // Destroy internally created GPU resources
 };
-
-const WORKGROUP_SIZE_X = 64; // Must match compute shader @workgroup_size
 
 /**
  * Create renderer that runs a compute pass (simulation) then a render pass.
@@ -28,83 +19,14 @@ export function createRenderer(
     device: GPUDevice,
     canvasEl: HTMLCanvasElement,
     format: GPUTextureFormat,
-    shaders: ShadersBundle,
+    shader: GPUShaderModule,
     atlasTexture: GPUTexture,
     atlasSampler: GPUSampler,
-    glyphUVsBuffer: GPUBuffer,
-    cellWidth: number,
-    cellHeight: number,
-    glyphCount: number,
-    cols: number,
-    rows: number,
-    maxTrail: number,
-    instanceCount: number,
     instancesBuffer: GPUBuffer,
+    instanceCount: number,
+    computePass: RenderPass,
 ): Renderer {
     const rm = createResourceManager(device);
-
-    const streams = createStreamBuffers(
-        device,
-        cols,
-        rows,
-        glyphCount,
-        cellWidth,
-        cellHeight,
-        maxTrail
-    );
-
-    const computeModule = shaders.compute;
-
-    const drawModule = shaders.draw;
-
-    // --- Compute Pipeline Setup ---
-
-    /** Persistent GPU resource – destroyed only on app shutdown */
-    const computeBindGroupLayout = device.createBindGroupLayout({
-        label: 'Compute BGL',
-        entries: [
-            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },  // SimulationUniforms
-            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Heads
-            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Speeds
-            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Lengths
-            { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Seeds
-            { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // Columns
-            { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Energy
-            { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // GlyphUVs
-            { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // InstanceData
-        ],
-    });
-
-    /** Persistent GPU resource – destroyed only on app shutdown */
-    const computePipelineLayout = device.createPipelineLayout({
-        label: 'Compute Pipeline Layout',
-        bindGroupLayouts: [computeBindGroupLayout],
-    });
-
-    const computePipeline = device.createComputePipeline({
-        label: 'Matrix Compute Pipeline',
-        layout: computePipelineLayout,
-        compute: {
-            module: computeModule,
-            entryPoint: 'main',
-        },
-    });
-
-    const computeBindGroup = device.createBindGroup({
-        label: 'Compute Bind Group',
-        layout: computeBindGroupLayout,
-        entries: [
-            { binding: 0, resource: { buffer: streams.simulationUniforms } },
-            { binding: 1, resource: { buffer: streams.heads } },
-            { binding: 2, resource: { buffer: streams.speeds } },
-            { binding: 3, resource: { buffer: streams.lengths } },
-            { binding: 4, resource: { buffer: streams.seeds } },
-            { binding: 5, resource: { buffer: streams.columns } },
-            { binding: 6, resource: { buffer: streams.energy } },
-            { binding: 7, resource: { buffer: glyphUVsBuffer } },
-            { binding: 8, resource: { buffer: instancesBuffer } },
-        ],
-    });
 
     // --- Render Pipeline Setup ---
 
@@ -156,7 +78,7 @@ export function createRenderer(
         label: 'Matrix Rain Render Pipeline',
         layout: renderPipelineLayout,
         vertex: {
-            module: drawModule,
+            module: shader,
             entryPoint: 'vs_main',
             buffers: [
                 {
@@ -169,7 +91,7 @@ export function createRenderer(
             ],
         },
         fragment: {
-            module: drawModule,
+            module: shader,
             entryPoint: 'fs_main',
             targets: [{
                 format: format,
@@ -198,30 +120,6 @@ export function createRenderer(
     });
 
     // --- Pass Definitions (RenderPass objects for RenderGraph) ---
-
-    const simGraph = createSimulationGraph();
-
-    simGraph.addPass({
-        name: 'stream-update',
-        execute(encoder) {
-            const pass = encoder.beginComputePass();
-            pass.setPipeline(computePipeline);
-            pass.setBindGroup(0, computeBindGroup);
-            pass.dispatchWorkgroups(Math.ceil(cols / WORKGROUP_SIZE_X));
-            pass.end();
-        }
-    });
-
-    const computePass: RenderPass = {
-        name: 'matrix-compute',
-        kind: 'compute' as PassKind,
-        deps: [],
-        execute: (encoder: GPUCommandEncoder, _currentView: GPUTextureView, dt: number) => {
-            streams.simulationWriter.writeFrame(dt);
-            streams.simulationWriter.flush(device.queue, streams.simulationUniforms);
-            simGraph.execute(encoder);
-        }
-    };
 
     const drawPass: RenderPass = {
         name: 'matrix-draw',
@@ -257,12 +155,11 @@ export function createRenderer(
         }
     };
 
-    // --- Destruction Logic ---
-
-    const destroy = () => {
-        streams.destroy();
-        rm.destroyAll();
+    return {
+        computePass,
+        drawPass,
+        destroy(): void {
+            rm.destroyAll();
+        }
     };
-
-    return { computePass, drawPass, destroy };
 }
