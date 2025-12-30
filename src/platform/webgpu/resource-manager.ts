@@ -75,7 +75,3 @@ export class ResourceManager {
         this.destroyed = true;
     }
 }
-
-export function createResourceManager(device: GPUDevice): ResourceManager {
-    return new ResourceManager(device);
-}

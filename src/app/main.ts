@@ -6,12 +6,12 @@ import { CanvasSize } from '@runtime/canvas-resizer';
 
 import { SimulationEngine, createSimulationEngine } from '@engine/simulation/simulation-engine';
 import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
-import { createGlyphAtlas, createInstanceBuffer } from '@engine/render/resources';
-import { Renderer, createRenderer } from '@engine/render/renderer';
+import { createGlyphAtlas } from '@engine/render/resources';
+import { Renderer, createRenderer} from '@engine/render/renderer';
 import { RenderGraph, createRenderGraph } from '@engine/render/render-graph';
 
 import { WebGPUContext, initWebGPU } from '@platform/webgpu/init';
-import { ShaderLoader, createShaderLoader} from '@platform/webgpu/shader-loader';
+import { ShaderLoader } from '@platform/webgpu/shader-loader';
 
 /**
  * Immutable grid layout derived from canvas size.
@@ -63,31 +63,19 @@ function computeGridLayout(
     };
 }
 
-/**
- * Create simulation + renderer + render graph as a single bundle.
- */
-async function createAppBundle(
+function makeAppBundle(
     gpu: WebGPUContext,
     shaderLoader: ShaderLoader,
     atlas: Awaited<ReturnType<typeof createGlyphAtlas>>,
-    glyphCount: number,
     layout: GridLayout,
-): Promise<{
-    simulation: SimulationEngine;
-    renderer: Renderer;
-    screen: ScreenUniformController;
-    graph: RenderGraph;
-}> {
-    const instances = createInstanceBuffer(gpu.device, layout.instanceCount);
-
+): AppState {
     const simulation = createSimulationEngine({
         device: gpu.device,
         shader: shaderLoader.get('matrix-compute'),
         glyphUVsBuffer: atlas.glyphUVsBuffer,
-        instanceBuffer: instances,
         cols: layout.cols,
         rows: layout.rows,
-        glyphCount: glyphCount,
+        glyphCount: atlas.glyphCount,
         cellWidth: atlas.cellWidth,
         cellHeight: atlas.cellHeight,
         maxTrail: layout.maxTrail,
@@ -98,19 +86,26 @@ async function createAppBundle(
     const renderer = createRenderer(
         gpu.device,
         gpu.format,
-        { draw: shaderLoader.get('matrix-draw') },
+        shaderLoader.get('matrix-draw'),
         atlas.texture,
         atlas.sampler,
-        instances,
+        simulation.instances,
         layout.instanceCount,
         screen.buffer
     );
 
-    const graph = createRenderGraph();
-    graph.addPass(simulation.computePass);
-    graph.addPass(renderer.drawPass);
+    const renderGraph = createRenderGraph();
+    renderGraph.addPass(simulation.computePass);
+    renderGraph.addPass(renderer.drawPass);
 
-    return { simulation, renderer, screen, graph };
+    return {
+        gpu,
+        layout,
+        simulation,
+        renderer,
+        screen,
+        renderGraph,
+    };
 }
 
 export async function bootstrap(): Promise<void> {
@@ -128,7 +123,7 @@ export async function bootstrap(): Promise<void> {
     );
 
     // --- Shader library (long-lived, global) ---------------------
-    const shaderLoader = createShaderLoader(gpu.device);
+    const shaderLoader = new ShaderLoader(gpu.device);
 
     await Promise.all([
         // Load compute WGSL
@@ -161,21 +156,12 @@ export async function bootstrap(): Promise<void> {
         atlas.cellHeight
     );
 
-    const bundle = await createAppBundle(
+    let app: AppState = makeAppBundle(
         gpu,
         shaderLoader,
         atlas,
-        glyphs.length,
         layout,
     );
-    let app: AppState = {
-        gpu,
-        layout,
-        simulation: bundle.simulation,
-        renderer: bundle.renderer,
-        screen: bundle.screen,
-        renderGraph: bundle.graph,
-    };
 
     // --- Render loop ---------------------------------------------
     startRenderLoop(
@@ -188,6 +174,9 @@ export async function bootstrap(): Promise<void> {
         (frame) => {
             const view = frame.acquireView();
             if (!view) return;
+
+            // Update screen uniforms (CPU → GPU, persistent buffer)
+            app.screen.update(gpu.device, canvas.width, canvas.height);
 
             app.renderGraph.execute(frame.encoder, view, frame.dt);
         },
@@ -217,46 +206,20 @@ export async function bootstrap(): Promise<void> {
             return;
         }
 
-        const old = app;
+        const oldApp = app;
 
-        /*const bundle = await createAppBundle(
+        app = makeAppBundle(
             gpu,
             shaderLoader,
             atlas,
-            glyphs.length,
-            layout,
-        );
-        let app: AppState = {
-            gpu,
-            layout,
-            simulation: bundle.simulation,
-            renderer: bundle.renderer,
-            screen: bundle.screen,
-            renderGraph: bundle.graph,
-        };*/
-
-        const bundle = await createAppBundle(
-            gpu,
-            shaderLoader,
-            atlas,
-            glyphs.length,
             newLayout,
         );
 
-        app = {
-            gpu: gpu,
-            layout: newLayout,
-            simulation: bundle.simulation,
-            renderer: bundle.renderer,
-            screen: bundle.screen,
-            renderGraph: bundle.graph,
-        };
-
         await gpu.device.queue.onSubmittedWorkDone();
 
-        old.screen.destroy();
-        old.renderer.destroy();
-        old.simulation.destroy();
+        oldApp.screen.destroy();
+        oldApp.renderer.destroy();
+        oldApp.simulation.destroy();
 
         resizeInProgress = false;
     }

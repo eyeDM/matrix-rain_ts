@@ -65,6 +65,7 @@ Your responsibility:
 You must strictly adhere to these restrictions:
 
 * Preserve strict TypeScript typing.
+* Respect strictness from `tsconfig.json`: `{"strict": true,"exactOptionalPropertyTypes": true,"noUncheckedIndexedAccess": true,"useDefineForClassFields": true}`.
 * Store shaders in `.wgsl` files.
 * It is **prohibited** to read or analyze any files and directories whose paths correspond to the patterns listed in the `.aiignore` file (the same syntax and pattern format as the `.gitignore` file).
 * It is forbidden to enter magic numbers without explanation.

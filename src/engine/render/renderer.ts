@@ -1,15 +1,10 @@
+import { ResourceManager } from '@platform/webgpu/resource-manager';
+
 import { RenderPass, PassKind } from '@engine/render/render-graph';
-
-import { ScreenLayout } from '@platform/webgpu/layouts';
-import { createResourceManager } from '@platform/webgpu/resource-manager';
-
-export type DrawShaders = {
-    draw: GPUShaderModule;
-};
 
 export type Renderer = {
     readonly drawPass: RenderPass;
-    destroy: () => void; // Destroy internally created GPU resources
+    destroy(): void; // Destroy internally created GPU resources
 };
 
 /**
@@ -20,14 +15,14 @@ export type Renderer = {
 export function createRenderer(
     device: GPUDevice,
     format: GPUTextureFormat,
-    shaders: DrawShaders,
+    shader: GPUShaderModule,
     atlasTexture: GPUTexture,
     atlasSampler: GPUSampler,
     instancesBuffer: GPUBuffer,
     instanceCount: number,
     screenBuffer: GPUBuffer,
 ): Renderer {
-    const rm = createResourceManager(device);
+    const rm = new ResourceManager(device);
 
     // ─────────────────────────────────────────────────────────────
     // Static quad geometry (cell-local space)
@@ -76,9 +71,10 @@ export function createRenderer(
         label: 'Matrix Rain Render Pipeline',
         layout: pipelineLayout,
         vertex: {
-            module: shaders.draw,
+            module: shader,
             entryPoint: 'vs_main',
             buffers: [
+                // Quad
                 {
                     arrayStride: 4 * 4, // 4 floats (pos, uv) * 4 bytes/float
                     attributes: [
@@ -89,7 +85,7 @@ export function createRenderer(
             ],
         },
         fragment: {
-            module: shaders.draw,
+            module: shader,
             entryPoint: 'fs_main',
             targets: [{
                 format: format,
@@ -106,13 +102,6 @@ export function createRenderer(
     // Create and reuse a single texture view for the atlas (no need to recreate per-frame)
     const atlasView = atlasTexture.createView();
 
-    // Screen uniform buffer
-    /*const screenBuffer = rm.createBuffer({
-        size: ScreenLayout.SIZE,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        label: 'Screen Uniform Buffer',
-    });*/
-
     const bindGroup = device.createBindGroup({
         label: 'Render Bind Group',
         layout: bindGroupLayout,
@@ -128,8 +117,6 @@ export function createRenderer(
     // Draw pass
     // ─────────────────────────────────────────────────────────────
 
-    // --- Pass Definitions (RenderPass objects for RenderGraph) ---
-
     const drawPass: RenderPass = {
         name: 'matrix-draw',
         kind: 'draw' as PassKind,
@@ -138,25 +125,15 @@ export function createRenderer(
             encoder: GPUCommandEncoder,
             currentView: GPUTextureView
         ): void => {
-            // 1. Update Screen Uniforms (must be done before render pass)
-            //const staging = new ArrayBuffer(ScreenLayout.SIZE);
-            //const view = new DataView(staging);
-            //view.setFloat32(ScreenLayout.offsets.width, canvasEl.width, true);
-            //view.setFloat32(ScreenLayout.offsets.height, canvasEl.height, true);
-            //device.queue.writeBuffer(screenBuffer, 0, staging);
-
-            // Prepare Render Pass Descriptor
-            const renderPassDesc: GPURenderPassDescriptor = {
+            // Encode the Render Pass
+            const pass = encoder.beginRenderPass({
                 colorAttachments: [{
                     view: currentView,
                     clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
                     loadOp: 'clear' as const,
                     storeOp: 'store' as const,
                 }],
-            };
-
-            // Encode the Render Pass
-            const pass = encoder.beginRenderPass(renderPassDesc);
+            });
 
             pass.setPipeline(renderPipeline);
             pass.setVertexBuffer(0, vertexBuffer);

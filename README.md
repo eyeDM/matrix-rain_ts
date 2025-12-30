@@ -192,7 +192,7 @@ assets (wgsl)
 
 - **Strict layout contracts**
 
-    Any change in gpu/layouts.ts must be mirrored in WGSL structs. This is intentional and enforced by design.
+    Any change in `gpu/layouts.ts` must be mirrored in WGSL structs. This is intentional and enforced by design.
 
 - **Scalability**
 

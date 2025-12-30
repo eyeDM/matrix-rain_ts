@@ -1,11 +1,12 @@
 import { RenderPass, PassKind } from '@engine/render/render-graph';
+import { createInstanceBuffer } from '@engine/render/resources';
 import { createStreamBuffers, StreamBuffers } from '@engine/simulation/streams';
 import { createSimulationGraph } from '@engine/simulation/simulation-graph';
 
 const WORKGROUP_SIZE_X = 64; // must match WGSL @workgroup_size
 
 export type SimulationEngine = {
-    readonly instanceBuffer: GPUBuffer;
+    readonly instances: GPUBuffer;
     readonly computePass: {
         name: string;
         kind: PassKind;
@@ -19,47 +20,33 @@ export type SimulationEngine = {
     destroy(): void;
 };
 
-type Params = {
+export function createSimulationEngine(params: {
     device: GPUDevice;
     shader: GPUShaderModule;
     glyphUVsBuffer: GPUBuffer;
-    instanceBuffer: GPUBuffer;
     cols: number;
     rows: number;
     glyphCount: number;
     cellWidth: number;
     cellHeight: number;
     maxTrail: number;
-};
-
-export function createSimulationEngine(params: Params): SimulationEngine {
-    const {
-        device,
-        shader,
-        glyphUVsBuffer,
-        instanceBuffer,
-        cols,
-        rows,
-        glyphCount,
-        cellWidth,
-        cellHeight,
-        maxTrail,
-    } = params;
-
+}): SimulationEngine {
     const streams: StreamBuffers = createStreamBuffers(
-        device,
-        cols,
-        rows,
-        glyphCount,
-        cellWidth,
-        cellHeight,
-        maxTrail
+        params.device,
+        params.cols,
+        params.rows,
+        params.glyphCount,
+        params.cellWidth,
+        params.cellHeight,
+        params.maxTrail
     );
+
+    const instances = createInstanceBuffer(params.device, params.cols * params.maxTrail);
 
     /** Persistent GPU resource – destroyed only on app shutdown */
 
     // --- Compute pipeline ---
-    const bindGroupLayout = device.createBindGroupLayout({
+    const bindGroupLayout = params.device.createBindGroupLayout({
         label: 'Simulation BGL',
         entries: [
             { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },  // SimulationUniforms
@@ -74,19 +61,19 @@ export function createSimulationEngine(params: Params): SimulationEngine {
         ],
     });
 
-    const pipeline = device.createComputePipeline({
+    const pipeline = params.device.createComputePipeline({
         label: 'Matrix Simulation Pipeline',
-        layout: device.createPipelineLayout({
+        layout: params.device.createPipelineLayout({
             label: 'Simulation Pipeline Layout',
             bindGroupLayouts: [bindGroupLayout],
         }),
         compute: {
-            module: shader,
+            module: params.shader,
             entryPoint: 'main',
         },
     });
 
-    const bindGroup = device.createBindGroup({
+    const bindGroup = params.device.createBindGroup({
         label: 'Simulation Bind Group',
         layout: bindGroupLayout,
         entries: [
@@ -97,8 +84,8 @@ export function createSimulationEngine(params: Params): SimulationEngine {
             { binding: 4, resource: { buffer: streams.seeds } },
             { binding: 5, resource: { buffer: streams.columns } },
             { binding: 6, resource: { buffer: streams.energy } },
-            { binding: 7, resource: { buffer: glyphUVsBuffer } },
-            { binding: 8, resource: { buffer: instanceBuffer } },
+            { binding: 7, resource: { buffer: params.glyphUVsBuffer } },
+            { binding: 8, resource: { buffer: instances } },
         ],
     });
 
@@ -110,7 +97,7 @@ export function createSimulationEngine(params: Params): SimulationEngine {
             const pass = encoder.beginComputePass();
             pass.setPipeline(pipeline);
             pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(Math.ceil(cols / WORKGROUP_SIZE_X));
+            pass.dispatchWorkgroups(Math.ceil(params.cols / WORKGROUP_SIZE_X));
             pass.end();
         },
     });
@@ -125,15 +112,16 @@ export function createSimulationEngine(params: Params): SimulationEngine {
             dt: number
         ): void {
             streams.simulationWriter.writeFrame(dt);
-            streams.simulationWriter.flush(device.queue, streams.simulationUniforms);
+            streams.simulationWriter.flush(params.device.queue, streams.simulationUniforms);
             simGraph.execute(encoder);
         },
     };
 
     return {
-        instanceBuffer,
+        instances,
         computePass,
         destroy(): void {
+            instances.destroy();
             streams.destroy();
         },
     };

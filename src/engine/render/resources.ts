@@ -7,13 +7,6 @@ import { InstanceLayout } from '@platform/webgpu/layouts';
  * - Render a set of glyphs into an offscreen canvas atlas (offscreen when available)
  * - Upload the atlas to a GPU texture (no per-frame allocations)
  * - Return a sampler and a UV lookup map for each glyph
- *
- * Return shape (Stage 3 acceptance):
- * {
- *   texture: GPUTexture,
- *   sampler: GPUSampler,
- *   glyphMap: Map<string, UVRect>
- * }
  */
 
 /**
@@ -37,6 +30,7 @@ export type AtlasResult = {
     texture: GPUTexture;
     sampler: GPUSampler;
     glyphMap: Map<string, UVRect>;
+    glyphCount: number;
     glyphUVsBuffer: GPUBuffer; // Storage buffer for compute shader lookups
     cellWidth: number; // Final calculated cell dimensions
     cellHeight: number;
@@ -282,6 +276,7 @@ export async function createGlyphAtlas(
         texture,
         sampler,
         glyphMap,
+        glyphCount: glyphs.length,
         glyphUVsBuffer,
         cellWidth,
         cellHeight,

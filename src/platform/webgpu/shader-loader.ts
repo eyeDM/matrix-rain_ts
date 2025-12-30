@@ -119,7 +119,3 @@ export class ShaderLoader {
         return module;
     }
 }
-
-export function createShaderLoader(device: GPUDevice): ShaderLoader {
-    return new ShaderLoader(device);
-}

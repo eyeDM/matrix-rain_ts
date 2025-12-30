@@ -1,7 +1,7 @@
 import { ScreenLayout } from '@platform/webgpu/layouts';
 
 export class ScreenUniformController {
-    readonly buffer: GPUBuffer;
+    readonly buffer: GPUBuffer; // Screen uniform buffer
 
     private readonly staging: ArrayBuffer;
     private readonly view: DataView;
