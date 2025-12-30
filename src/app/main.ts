@@ -4,7 +4,8 @@ import { SwapChainController } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 import { CanvasSize } from '@runtime/canvas-resizer';
 
-import { createSimulationEngine } from '@engine/simulation/simulation-engine';
+import { SimulationEngine, createSimulationEngine } from '@engine/simulation/simulation-engine';
+import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
 import { createGlyphAtlas, createInstanceBuffer } from '@engine/render/resources';
 import { Renderer, createRenderer } from '@engine/render/renderer';
 import { RenderGraph, createRenderGraph } from '@engine/render/render-graph';
@@ -26,10 +27,12 @@ type GridLayout = {
  * Authoritative runtime state container.
  */
 type AppState = {
-    renderer: Renderer;
-    instances: GPUBuffer;
-    renderGraph: RenderGraph;
+    gpu: WebGPUContext;
     layout: GridLayout;
+    simulation: SimulationEngine;
+    renderer: Renderer;
+    screen: ScreenUniformController;
+    renderGraph: RenderGraph;
 };
 
 /**
@@ -61,21 +64,24 @@ function computeGridLayout(
 }
 
 /**
- * Create renderer + buffers + render graph as a single disposable unit.
+ * Create simulation + renderer + render graph as a single bundle.
  */
-async function createRenderBundle(
-    device: GPUDevice,
-    canvas: HTMLCanvasElement,
-    format: GPUTextureFormat,
+async function createAppBundle(
+    gpu: WebGPUContext,
     shaderLoader: ShaderLoader,
     atlas: Awaited<ReturnType<typeof createGlyphAtlas>>,
     glyphCount: number,
     layout: GridLayout,
-): Promise<{ renderer: Renderer; instances: GPUBuffer; graph: RenderGraph }> {
-    const instances = createInstanceBuffer(device, layout.instanceCount);
+): Promise<{
+    simulation: SimulationEngine;
+    renderer: Renderer;
+    screen: ScreenUniformController;
+    graph: RenderGraph;
+}> {
+    const instances = createInstanceBuffer(gpu.device, layout.instanceCount);
 
     const simulation = createSimulationEngine({
-        device: device,
+        device: gpu.device,
         shader: shaderLoader.get('matrix-compute'),
         glyphUVsBuffer: atlas.glyphUVsBuffer,
         instanceBuffer: instances,
@@ -87,30 +93,33 @@ async function createRenderBundle(
         maxTrail: layout.maxTrail,
     });
 
+    const screen = new ScreenUniformController(gpu.device);
+
     const renderer = createRenderer(
-        device,
-        canvas,
-        format,
-        shaderLoader.get('matrix-draw'),
+        gpu.device,
+        gpu.format,
+        { draw: shaderLoader.get('matrix-draw') },
         atlas.texture,
         atlas.sampler,
         instances,
         layout.instanceCount,
-        simulation.computePass,
+        screen.buffer
     );
 
     const graph = createRenderGraph();
-    graph.addPass(renderer.computePass);
+    graph.addPass(simulation.computePass);
     graph.addPass(renderer.drawPass);
 
-    return { renderer, instances, graph };
+    return { simulation, renderer, screen, graph };
 }
 
 export async function bootstrap(): Promise<void> {
     const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
     if (!canvas) throw new Error('Canvas element `#canvas` not found');
 
+    // --- WebGPU --------------------------------------------------
     const gpu: WebGPUContext = await initWebGPU(canvas);
+
     const swapChain = new SwapChainController(
         canvas,
         gpu.context,
@@ -118,9 +127,7 @@ export async function bootstrap(): Promise<void> {
         gpu.format,
     );
 
-    // ─────────────────────────────────────────────────────────────
-    // Shader Library (long-lived, global)
-    // ─────────────────────────────────────────────────────────────
+    // --- Shader library (long-lived, global) ---------------------
     const shaderLoader = createShaderLoader(gpu.device);
 
     await Promise.all([
@@ -136,10 +143,7 @@ export async function bootstrap(): Promise<void> {
         ),
     ]);
 
-    // ─────────────────────────────────────────────────────────────
-    // Glyph Atlas (long-lived)
-    // ─────────────────────────────────────────────────────────────
-
+    // --- Glyph atlas (long-lived) --------------------------------
     const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*+/?;'.split('');
     const atlas = await createGlyphAtlas(
         gpu.device,
@@ -147,11 +151,7 @@ export async function bootstrap(): Promise<void> {
         { font: '32px monospace', padding: 8 }
     );
 
-    // ─────────────────────────────────────────────────────────────
-    // Initial Layout & Renderer
-    // ─────────────────────────────────────────────────────────────
-
-    //const dims = gpu.configureCanvas();
+    // --- Initial layout ------------------------------------------
     const size: CanvasSize = swapChain.resize();
     let layout: GridLayout = computeGridLayout(
         size.width,
@@ -161,26 +161,23 @@ export async function bootstrap(): Promise<void> {
         atlas.cellHeight
     );
 
-    const bundle = await createRenderBundle(
-        gpu.device,
-        canvas!,
-        gpu.format,
+    const bundle = await createAppBundle(
+        gpu,
         shaderLoader,
         atlas,
         glyphs.length,
         layout,
     );
     let app: AppState = {
-        layout: layout,
+        gpu,
+        layout,
+        simulation: bundle.simulation,
         renderer: bundle.renderer,
-        instances: bundle.instances,
+        screen: bundle.screen,
         renderGraph: bundle.graph,
     };
 
-    // ─────────────────────────────────────────────────────────────
-    // Render Loop
-    // ─────────────────────────────────────────────────────────────
-
+    // --- Render loop ---------------------------------------------
     startRenderLoop(
         gpu.device,
         (encoder, dt) => ({
@@ -196,10 +193,7 @@ export async function bootstrap(): Promise<void> {
         },
     );
 
-    // ─────────────────────────────────────────────────────────────
-    // Resize Handling (serialized)
-    // ─────────────────────────────────────────────────────────────
-
+    // --- Resize handling (coarse, to be optimized later) ---------
     let resizeInProgress = false;
 
     async function handleResize(): Promise<void> {
@@ -225,10 +219,24 @@ export async function bootstrap(): Promise<void> {
 
         const old = app;
 
-        const bundle = await createRenderBundle(
-            gpu.device,
-            canvas!,
-            gpu.format,
+        /*const bundle = await createAppBundle(
+            gpu,
+            shaderLoader,
+            atlas,
+            glyphs.length,
+            layout,
+        );
+        let app: AppState = {
+            gpu,
+            layout,
+            simulation: bundle.simulation,
+            renderer: bundle.renderer,
+            screen: bundle.screen,
+            renderGraph: bundle.graph,
+        };*/
+
+        const bundle = await createAppBundle(
+            gpu,
             shaderLoader,
             atlas,
             glyphs.length,
@@ -236,16 +244,19 @@ export async function bootstrap(): Promise<void> {
         );
 
         app = {
+            gpu: gpu,
             layout: newLayout,
+            simulation: bundle.simulation,
             renderer: bundle.renderer,
-            instances: bundle.instances,
+            screen: bundle.screen,
             renderGraph: bundle.graph,
         };
 
         await gpu.device.queue.onSubmittedWorkDone();
 
-        old.instances.destroy();
+        old.screen.destroy();
         old.renderer.destroy();
+        old.simulation.destroy();
 
         resizeInProgress = false;
     }

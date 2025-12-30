@@ -3,63 +3,61 @@ import { RenderPass, PassKind } from '@engine/render/render-graph';
 import { ScreenLayout } from '@platform/webgpu/layouts';
 import { createResourceManager } from '@platform/webgpu/resource-manager';
 
+export type DrawShaders = {
+    draw: GPUShaderModule;
+};
+
 export type Renderer = {
-    readonly computePass: RenderPass;
     readonly drawPass: RenderPass;
     destroy: () => void; // Destroy internally created GPU resources
 };
 
 /**
- * Create renderer that runs a compute pass (simulation) then a render pass.
- * - Loads WGSL compute shader at runtime.
- * - Creates compute pipeline & bind groups once and reuses them.
- * - The returned object exposes RenderPasses that can be integrated into a RenderGraph.
+ * Draw-only renderer.
+ * Owns render pipeline, vertex buffers and bind groups.
+ * Does NOT know about simulation, time, canvas resize logic.
  */
 export function createRenderer(
     device: GPUDevice,
-    canvasEl: HTMLCanvasElement,
     format: GPUTextureFormat,
-    shader: GPUShaderModule,
+    shaders: DrawShaders,
     atlasTexture: GPUTexture,
     atlasSampler: GPUSampler,
     instancesBuffer: GPUBuffer,
     instanceCount: number,
-    computePass: RenderPass,
+    screenBuffer: GPUBuffer,
 ): Renderer {
     const rm = createResourceManager(device);
 
-    // --- Render Pipeline Setup ---
-
-    // Quad Vertex Buffer (a simple quad that covers one cell space [-0.5, 0.5])
-    // Data: position (vec2f), uv (vec2f)
+    // ─────────────────────────────────────────────────────────────
+    // Static quad geometry (cell-local space)
+    // ─────────────────────────────────────────────────────────────
     const vertexData = new Float32Array([
         // posX, posY, uvU, uvV
         -0.5, -0.5, 0.0, 0.0,
-        0.5, -0.5, 1.0, 0.0,
+         0.5, -0.5, 1.0, 0.0,
         -0.5,  0.5, 0.0, 1.0,
 
-        0.5, -0.5, 1.0, 0.0,
-        0.5,  0.5, 1.0, 1.0,
-        -0.5,  0.5, 0.0, 1.0
+         0.5, -0.5, 1.0, 0.0,
+         0.5,  0.5, 1.0, 1.0,
+        -0.5,  0.5, 0.0, 1.0,
     ]);
 
     const vertexBuffer = rm.createBuffer({
         label: 'Quad Vertex Buffer',
         size: vertexData.byteLength,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-        mappedAtCreation: true, // ?
-    });
-    new Float32Array(vertexBuffer.getMappedRange()).set(vertexData); // ?
-    vertexBuffer.unmap(); // ?
-
-    // Screen uniform buffer
-    const screenBuffer = rm.createBuffer({
-        size: ScreenLayout.SIZE,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        label: 'Screen Uniform Buffer',
+        mappedAtCreation: true,
     });
 
-    const renderBindGroupLayout = device.createBindGroupLayout({
+    new Float32Array(vertexBuffer.getMappedRange()).set(vertexData);
+    vertexBuffer.unmap();
+
+    // ─────────────────────────────────────────────────────────────
+    // Bind group layout & pipeline
+    // ─────────────────────────────────────────────────────────────
+
+    const bindGroupLayout = device.createBindGroupLayout({
         label: 'Render BGL',
         entries: [
             { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Atlas Sampler
@@ -69,16 +67,16 @@ export function createRenderer(
         ],
     });
 
-    const renderPipelineLayout = device.createPipelineLayout({
+    const pipelineLayout = device.createPipelineLayout({
         label: 'Render Pipeline Layout',
-        bindGroupLayouts: [renderBindGroupLayout],
+        bindGroupLayouts: [bindGroupLayout],
     });
 
     const renderPipeline = device.createRenderPipeline({
         label: 'Matrix Rain Render Pipeline',
-        layout: renderPipelineLayout,
+        layout: pipelineLayout,
         vertex: {
-            module: shader,
+            module: shaders.draw,
             entryPoint: 'vs_main',
             buffers: [
                 {
@@ -91,7 +89,7 @@ export function createRenderer(
             ],
         },
         fragment: {
-            module: shader,
+            module: shaders.draw,
             entryPoint: 'fs_main',
             targets: [{
                 format: format,
@@ -108,9 +106,16 @@ export function createRenderer(
     // Create and reuse a single texture view for the atlas (no need to recreate per-frame)
     const atlasView = atlasTexture.createView();
 
-    const renderBindGroup = device.createBindGroup({
+    // Screen uniform buffer
+    /*const screenBuffer = rm.createBuffer({
+        size: ScreenLayout.SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'Screen Uniform Buffer',
+    });*/
+
+    const bindGroup = device.createBindGroup({
         label: 'Render Bind Group',
-        layout: renderBindGroupLayout,
+        layout: bindGroupLayout,
         entries: [
             { binding: 0, resource: atlasSampler },
             { binding: 1, resource: atlasView },
@@ -119,44 +124,51 @@ export function createRenderer(
         ],
     });
 
+    // ─────────────────────────────────────────────────────────────
+    // Draw pass
+    // ─────────────────────────────────────────────────────────────
+
     // --- Pass Definitions (RenderPass objects for RenderGraph) ---
 
     const drawPass: RenderPass = {
         name: 'matrix-draw',
         kind: 'draw' as PassKind,
-        deps: ['matrix-compute'], // Depends on compute simulation finishing
-        execute: (encoder: GPUCommandEncoder, currentView: GPUTextureView, _dt: number) => {
+        deps: ['matrix-compute'], // explicit dependency, simulation is external
+        execute: (
+            encoder: GPUCommandEncoder,
+            currentView: GPUTextureView
+        ): void => {
             // 1. Update Screen Uniforms (must be done before render pass)
-            const staging = new ArrayBuffer(ScreenLayout.SIZE);
-            const view = new DataView(staging);
-            view.setFloat32(ScreenLayout.offsets.width, canvasEl.width, true);
-            view.setFloat32(ScreenLayout.offsets.height, canvasEl.height, true);
-            device.queue.writeBuffer(screenBuffer, 0, staging);
+            //const staging = new ArrayBuffer(ScreenLayout.SIZE);
+            //const view = new DataView(staging);
+            //view.setFloat32(ScreenLayout.offsets.width, canvasEl.width, true);
+            //view.setFloat32(ScreenLayout.offsets.height, canvasEl.height, true);
+            //device.queue.writeBuffer(screenBuffer, 0, staging);
 
-            // 2. Prepare Render Pass Descriptor
+            // Prepare Render Pass Descriptor
             const renderPassDesc: GPURenderPassDescriptor = {
                 colorAttachments: [{
                     view: currentView,
                     clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
                     loadOp: 'clear' as const,
                     storeOp: 'store' as const,
-                }]
+                }],
             };
 
-            // 3. Encode the Render Pass
-            const rpass = encoder.beginRenderPass(renderPassDesc);
-            rpass.setPipeline(renderPipeline);
-            rpass.setVertexBuffer(0, vertexBuffer);
-            rpass.setBindGroup(0, renderBindGroup);
+            // Encode the Render Pass
+            const pass = encoder.beginRenderPass(renderPassDesc);
+
+            pass.setPipeline(renderPipeline);
+            pass.setVertexBuffer(0, vertexBuffer);
+            pass.setBindGroup(0, bindGroup);
 
             // Draw 6 vertices (quad) per instance (total instanceCount symbols)
-            rpass.draw(6, instanceCount);
-            rpass.end();
+            pass.draw(6, instanceCount);
+            pass.end();
         }
     };
 
     return {
-        computePass,
         drawPass,
         destroy(): void {
             rm.destroyAll();
