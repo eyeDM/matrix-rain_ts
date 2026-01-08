@@ -1,18 +1,29 @@
 export type PassKind = 'compute' | 'draw' | 'post';
 
+/**
+ * Single frame execution context.
+ * GPUTextureView is retrieved lazily.
+ */
+export type RenderContext = {
+    readonly encoder: GPUCommandEncoder;
+    readonly dt: number;
+    /**
+     * Current output view (usually it's swapchain).
+     */
+    acquireView(): GPUTextureView | null;
+};
+
 export type RenderPass = {
     name: string;
     kind: PassKind;
-    deps?: string[]; // names of passes this pass depends on
-    // Optional list of resource keys this pass owns (informational)
-    resources?: string[];
-    execute: (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
+    deps?: readonly string[]; // names of passes this pass depends on
+    execute(ctx: RenderContext): void;
 };
 
 export type RenderGraph = {
     addPass: (pass: RenderPass) => void;
     removePass: (name: string) => void;
-    execute: (encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) => void;
+    execute(ctx: RenderContext): void;
 };
 
 function topoSort(passes: Map<string, RenderPass>): RenderPass[] {
@@ -20,40 +31,45 @@ function topoSort(passes: Map<string, RenderPass>): RenderPass[] {
     const inDegree = new Map<string, number>();
     const adj = new Map<string, string[]>();
 
-    for (const [name, pass] of passes) {
+    for (const [name] of passes) {
         inDegree.set(name, 0);
         adj.set(name, []);
     }
 
     for (const [name, pass] of passes) {
-        const deps = pass.deps ?? [];
-        for (const d of deps) {
-            if (!passes.has(d)) throw new Error(`RenderGraph: pass '${name}' depends on unknown pass '${d}'`);
+        for (const dep of pass.deps ?? []) {
+            if (!passes.has(dep)) {
+                throw new Error(
+                    `RenderGraph: pass '${name}' depends on unknown pass '${dep}'`,
+                );
+            }
+
             inDegree.set(name, (inDegree.get(name) ?? 0) + 1);
-            const list = adj.get(d)!;
-            list.push(name);
+            adj.get(dep)!.push(name);
         }
     }
 
     const queue: string[] = [];
-    for (const [k, v] of inDegree) if (v === 0) queue.push(k);
+    for (const [k, v] of inDegree) {
+        if (v === 0) queue.push(k);
+    }
 
-    const out: RenderPass[] = [];
-    while (queue.length) {
+    const ordered: RenderPass[] = [];
+    while (queue.length > 0) {
         const n = queue.shift()!;
-        out.push(passes.get(n)!);
-        const neighbors = adj.get(n)!;
-        for (const m of neighbors) {
-            inDegree.set(m, (inDegree.get(m) ?? 0) - 1);
-            if (inDegree.get(m) === 0) queue.push(m);
+        ordered.push(passes.get(n)!);
+        for (const m of adj.get(n)!) {
+            const d = (inDegree.get(m) ?? 0) - 1;
+            inDegree.set(m, d);
+            if (d === 0) queue.push(m);
         }
     }
 
-    if (out.length !== passes.size) {
+    if (ordered.length !== passes.size) {
         throw new Error('RenderGraph: cyclic or missing dependencies detected');
     }
 
-    return out;
+    return ordered;
 }
 
 export function createRenderGraph(): RenderGraph {
@@ -61,21 +77,27 @@ export function createRenderGraph(): RenderGraph {
 
     return {
         addPass(pass: RenderPass) {
-            if (passes.has(pass.name)) throw new Error(`RenderGraph: pass with name '${pass.name}' already exists`);
+            if (passes.has(pass.name)) {
+                throw new Error(
+                    `RenderGraph: pass '${pass.name}' already exists`,
+                );
+            }
             passes.set(pass.name, pass);
         },
+
         removePass(name: string) {
             passes.delete(name);
         },
-        execute(encoder: GPUCommandEncoder, currentView: GPUTextureView, dt: number) {
+
+        execute(ctx: RenderContext) {
             const ordered = topoSort(passes);
-            for (const p of ordered) {
+
+            for (const pass of ordered) {
                 try {
-                    p.execute(encoder, currentView, dt);
+                    pass.execute(ctx);
                 } catch (e) {
-                    // Keep render loop resilient: log and continue executing remaining passes
                     // eslint-disable-next-line no-console
-                    console.error(`RenderGraph: error executing pass '${p.name}':`, e);
+                    console.error(`RenderGraph: error executing pass '${pass.name}':`, e);
                 }
             }
         }

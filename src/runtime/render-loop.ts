@@ -1,3 +1,5 @@
+import type { RenderContext } from '@engine/render/render-graph';
+
 /**
  * Render loop infrastructure.
  *
@@ -37,23 +39,15 @@
  * - device.lost integration
  */
 
-export interface FrameContext {
-    readonly encoder: GPUCommandEncoder;
-    readonly dt: number;
-
-    /** Framebuffer acquisition */
-    acquireView(): GPUTextureView | null;
-}
-
 export type FrameContextFactory = (
     encoder: GPUCommandEncoder,
     dt: number
-) => FrameContext;
+) => RenderContext;
 
 export function startRenderLoop(
     device: GPUDevice,
     makeContext: FrameContextFactory,
-    frame: (ctx: FrameContext) => void,
+    frame: (ctx: RenderContext) => void,
 ): () => void {
     let lastTime: number | null = null;
     let isActive = true;
@@ -66,9 +60,9 @@ export function startRenderLoop(
 
         const encoder = device.createCommandEncoder();
         const ctx = makeContext(encoder, dt);
+
         frame(ctx);
         device.queue.submit([encoder.finish()]);
-
         requestAnimationFrame(tick);
     }
 

@@ -171,14 +171,11 @@ export async function bootstrap(): Promise<void> {
             dt,
             acquireView: () => swapChain.getCurrentView(),
         }),
-        (frame) => {
-            const view = frame.acquireView();
-            if (!view) return;
-
+        (ctx) => {
             // Update screen uniforms (CPU → GPU, persistent buffer)
             app.screen.update(gpu.device, canvas.width, canvas.height);
 
-            app.renderGraph.execute(frame.encoder, view, frame.dt);
+            app.renderGraph.execute(ctx);
         },
     );
 

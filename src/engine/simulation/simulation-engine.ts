@@ -1,4 +1,4 @@
-import { RenderPass, PassKind } from '@engine/render/render-graph';
+import { PassKind, RenderContext, RenderPass } from '@engine/render/render-graph';
 import { createInstanceBuffer } from '@engine/render/resources';
 import { createStreamBuffers, StreamBuffers } from '@engine/simulation/streams';
 import { createSimulationGraph } from '@engine/simulation/simulation-graph';
@@ -7,16 +7,7 @@ const WORKGROUP_SIZE_X = 64; // must match WGSL @workgroup_size
 
 export type SimulationEngine = {
     readonly instances: GPUBuffer;
-    readonly computePass: {
-        name: string;
-        kind: PassKind;
-        deps?: string[];
-        execute(
-            encoder: GPUCommandEncoder,
-            _view: GPUTextureView,
-            dt: number
-        ): void;
-    };
+    readonly computePass: RenderPass;
     destroy(): void;
 };
 
@@ -106,14 +97,10 @@ export function createSimulationEngine(params: {
         name: 'matrix-compute',
         kind: 'compute' as PassKind,
         deps: [],
-        execute(
-            encoder: GPUCommandEncoder,
-            _view: GPUTextureView,
-            dt: number
-        ): void {
-            streams.simulationWriter.writeFrame(dt);
+        execute(ctx: RenderContext): void {
+            streams.simulationWriter.writeFrame(ctx.dt);
             streams.simulationWriter.flush(params.device.queue, streams.simulationUniforms);
-            simGraph.execute(encoder);
+            simGraph.execute(ctx.encoder);
         },
     };
 

@@ -1,6 +1,6 @@
 import { ResourceManager } from '@platform/webgpu/resource-manager';
 
-import { RenderPass, PassKind } from '@engine/render/render-graph';
+import { PassKind, RenderContext, RenderPass } from '@engine/render/render-graph';
 
 export type Renderer = {
     readonly drawPass: RenderPass;
@@ -121,14 +121,14 @@ export function createRenderer(
         name: 'matrix-draw',
         kind: 'draw' as PassKind,
         deps: ['matrix-compute'], // explicit dependency, simulation is external
-        execute: (
-            encoder: GPUCommandEncoder,
-            currentView: GPUTextureView
-        ): void => {
+        execute: (ctx: RenderContext): void => {
+            const view = ctx.acquireView();
+            if (!view) return;
+
             // Encode the Render Pass
-            const pass = encoder.beginRenderPass({
+            const pass = ctx.encoder.beginRenderPass({
                 colorAttachments: [{
-                    view: currentView,
+                    view: view,
                     clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
                     loadOp: 'clear' as const,
                     storeOp: 'store' as const,
