@@ -1,5 +1,6 @@
 import { ResourceManager } from '@platform/webgpu/resource-manager';
 
+import type { RenderTargetDescriptor } from '@engine/render/render-target-registry';
 import { PassKind, RenderContext, RenderPass } from '@engine/render/render-graph';
 
 export type Renderer = {
@@ -14,7 +15,8 @@ export type Renderer = {
  */
 export function createRenderer(
     device: GPUDevice,
-    format: GPUTextureFormat,
+    colorFormat: GPUTextureFormat,
+    depthFormat: GPUTextureFormat,
     shader: GPUShaderModule,
     atlasTexture: GPUTexture,
     atlasSampler: GPUSampler,
@@ -24,9 +26,8 @@ export function createRenderer(
 ): Renderer {
     const rm = new ResourceManager(device);
 
-    // ─────────────────────────────────────────────────────────────
-    // Static quad geometry (cell-local space)
-    // ─────────────────────────────────────────────────────────────
+    // --- Static quad geometry (cell-local space) ---
+
     const vertexData = new Float32Array([
         // posX, posY, uvU, uvV
         -0.5, -0.5, 0.0, 0.0,
@@ -48,9 +49,7 @@ export function createRenderer(
     new Float32Array(vertexBuffer.getMappedRange()).set(vertexData);
     vertexBuffer.unmap();
 
-    // ─────────────────────────────────────────────────────────────
-    // Bind group layout & pipeline
-    // ─────────────────────────────────────────────────────────────
+    // --- Bind group layout & pipeline ---
 
     const bindGroupLayout = device.createBindGroupLayout({
         label: 'Render BGL',
@@ -88,12 +87,17 @@ export function createRenderer(
             module: shader,
             entryPoint: 'fs_main',
             targets: [{
-                format: format,
+                format: colorFormat,
                 blend: {
                     color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
                     alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
                 },
             }],
+        },
+        depthStencil: {
+            format: depthFormat,
+            depthWriteEnabled: true,
+            depthCompare: 'less',
         },
         primitive: { topology: 'triangle-list' },
     });
@@ -113,26 +117,40 @@ export function createRenderer(
         ],
     });
 
-    // ─────────────────────────────────────────────────────────────
-    // Draw pass
-    // ─────────────────────────────────────────────────────────────
+    // --- Draw pass ---
 
     const drawPass: RenderPass = {
         name: 'matrix-draw',
         kind: 'draw' as PassKind,
         deps: ['matrix-compute'], // explicit dependency, simulation is external
-        execute: (ctx: RenderContext): void => {
-            const view = ctx.acquireView();
-            if (!view) return;
+        execute(ctx: RenderContext): void {
+            const colorDesc: RenderTargetDescriptor = {
+                size: 'screen',
+                format: 'rgba16float',
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            };
+
+            const colorView = ctx.resources.getColor(
+                'sceneColor',
+                colorDesc
+            );
+
+            const depthView = ctx.resources.getDepth('sceneDepth');
 
             // Encode the Render Pass
             const pass = ctx.encoder.beginRenderPass({
                 colorAttachments: [{
-                    view: view,
+                    view: colorView,
                     clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
                     loadOp: 'clear' as const,
                     storeOp: 'store' as const,
                 }],
+                depthStencilAttachment: {
+                    view: depthView,
+                    depthClearValue: 1.0,
+                    depthLoadOp: 'clear',
+                    depthStoreOp: 'store',
+                },
             });
 
             pass.setPipeline(renderPipeline);

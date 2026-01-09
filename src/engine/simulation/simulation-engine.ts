@@ -37,6 +37,7 @@ export function createSimulationEngine(params: {
     /** Persistent GPU resource – destroyed only on app shutdown */
 
     // --- Compute pipeline ---
+
     const bindGroupLayout = params.device.createBindGroupLayout({
         label: 'Simulation BGL',
         entries: [

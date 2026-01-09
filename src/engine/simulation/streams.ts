@@ -30,7 +30,7 @@ export function createStreamBuffers(
     glyphCount: number,
     cellWidth: number,
     cellHeight: number,
-    maxTrail: number
+    maxTrail: number,
 ): StreamBuffers {
     const MIN_SPEED_CELLS_PER_SEC = 6.0;
     const SPEED_VARIANCE = 40.0;

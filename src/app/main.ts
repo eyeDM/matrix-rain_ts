@@ -8,6 +8,8 @@ import { SimulationEngine, createSimulationEngine } from '@engine/simulation/sim
 import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
 import { createGlyphAtlas } from '@engine/render/resources';
 import { Renderer, createRenderer} from '@engine/render/renderer';
+import { createRenderTargetRegistry } from '@engine/render/render-target-registry';
+import { createPresentPass } from '@engine/render/present-pass';
 import { RenderGraph, createRenderGraph } from '@engine/render/render-graph';
 
 import { WebGPUContext, initWebGPU } from '@platform/webgpu/init';
@@ -85,7 +87,8 @@ function makeAppBundle(
 
     const renderer = createRenderer(
         gpu.device,
-        gpu.format,
+        'rgba16float',
+        'depth24plus',
         shaderLoader.get('matrix-draw'),
         atlas.texture,
         atlas.sampler,
@@ -94,9 +97,17 @@ function makeAppBundle(
         screen.buffer
     );
 
+    const presentPass = createPresentPass(
+        gpu.device,
+        gpu.format,
+        shaderLoader.get('matrix-present'),
+        'sceneColor'
+    );
+
     const renderGraph = createRenderGraph();
     renderGraph.addPass(simulation.computePass);
     renderGraph.addPass(renderer.drawPass);
+    renderGraph.addPass(presentPass);
 
     return {
         gpu,
@@ -112,7 +123,8 @@ export async function bootstrap(): Promise<void> {
     const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
     if (!canvas) throw new Error('Canvas element `#canvas` not found');
 
-    // --- WebGPU --------------------------------------------------
+    // --- WebGPU ---
+
     const gpu: WebGPUContext = await initWebGPU(canvas);
 
     const swapChain = new SwapChainController(
@@ -122,7 +134,8 @@ export async function bootstrap(): Promise<void> {
         gpu.format,
     );
 
-    // --- Shader library (long-lived, global) ---------------------
+    // --- Shader library (long-lived, global) ---
+
     const shaderLoader = new ShaderLoader(gpu.device);
 
     await Promise.all([
@@ -136,9 +149,15 @@ export async function bootstrap(): Promise<void> {
             'matrix-draw',
             new URL('./../assets/shaders/draw-symbols.wgsl', import.meta.url).href
         ),
+        // Load present shader
+        shaderLoader.load(
+            'matrix-present',
+            new URL('./../assets/shaders/present.wgsl', import.meta.url).href
+        ),
     ]);
 
-    // --- Glyph atlas (long-lived) --------------------------------
+    // --- Glyph atlas (long-lived) ---
+
     const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*+/?;'.split('');
     const atlas = await createGlyphAtlas(
         gpu.device,
@@ -146,7 +165,8 @@ export async function bootstrap(): Promise<void> {
         { font: '32px monospace', padding: 8 }
     );
 
-    // --- Initial layout ------------------------------------------
+    // --- Initial layout ---
+
     const size: CanvasSize = swapChain.resize();
     let layout: GridLayout = computeGridLayout(
         size.width,
@@ -163,12 +183,20 @@ export async function bootstrap(): Promise<void> {
         layout,
     );
 
-    // --- Render loop ---------------------------------------------
+    // --- Render loop ---
+
+    const renderTargets = createRenderTargetRegistry(
+        gpu.device,
+        size.width,
+        size.height
+    );
+
     startRenderLoop(
         gpu.device,
         (encoder, dt) => ({
             encoder,
             dt,
+            resources: renderTargets,
             acquireView: () => swapChain.getCurrentView(),
         }),
         (ctx) => {
@@ -179,7 +207,8 @@ export async function bootstrap(): Promise<void> {
         },
     );
 
-    // --- Resize handling (coarse, to be optimized later) ---------
+    // --- Resize handling (coarse, to be optimized later) ---
+
     let resizeInProgress = false;
 
     async function handleResize(): Promise<void> {
@@ -194,6 +223,8 @@ export async function bootstrap(): Promise<void> {
             atlas.cellWidth,
             atlas.cellHeight
         );
+
+        renderTargets.resize(size.width, size.height);
 
         if (
             newLayout.cols === app.layout.cols &&

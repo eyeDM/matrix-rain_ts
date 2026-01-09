@@ -49,6 +49,7 @@ export type AtlasOptions = {
 };
 
 // --- CONSTANTS ---
+
 const DEFAULT_ATLAS_CAP = 8192; // Max size for texture atlas
 const MIN_PADDING = 2;
 const GLYPH_UV_RECT_SIZE = 4; // vec4<f32> for u0, v0, u1, v1
@@ -132,6 +133,7 @@ export async function createGlyphAtlas(
     ctx.font = FONT;
 
     // --- Measure glyphs ---
+
     let maxGlyphWidth = 0;
 
     for (const ch of glyphs) {
@@ -292,7 +294,10 @@ export async function createGlyphAtlas(
  * @param instanceCount - Total number of symbol instances to allocate space for (cols * maxTrail).
  * @returns The initialized GPUBuffer.
  */
-export function createInstanceBuffer(device: GPUDevice, instanceCount: number): GPUBuffer {
+export function createInstanceBuffer(
+    device: GPUDevice,
+    instanceCount: number,
+): GPUBuffer {
     // Ensure minimum buffer size to avoid WebGPU validation errors if instanceCount is 0
     const size = Math.max(4, instanceCount * InstanceLayout.SIZE);
 

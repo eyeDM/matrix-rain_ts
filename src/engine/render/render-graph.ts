@@ -1,3 +1,5 @@
+import { RenderTargetRegistry } from '@engine/render/render-target-registry';
+
 export type PassKind = 'compute' | 'draw' | 'post';
 
 /**
@@ -7,9 +9,8 @@ export type PassKind = 'compute' | 'draw' | 'post';
 export type RenderContext = {
     readonly encoder: GPUCommandEncoder;
     readonly dt: number;
-    /**
-     * Current output view (usually it's swapchain).
-     */
+    resources: RenderTargetRegistry;
+    // Current output view (usually it's swapchain)
     acquireView(): GPUTextureView | null;
 };
 

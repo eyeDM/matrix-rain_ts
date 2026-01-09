@@ -6,7 +6,7 @@
 * **Goal:** Create a visually striking, portfolio-grade Matrix Rain effect using a **GPU-first** approach via **WebGPU**.
 * **Target Aesthetics:** High-quality, authentic, and performant Matrix-style visuals.
 * **Runtime Compatibility:** Firefox 145+, Chrome 142+; Windows 10+.
-* **Stack:** **Vanilla TypeScript (strict)**, **WebGPU**, **WGSL** (WebGPU Shading Language), Vite.
+* **Stack:** ES2022, **Vanilla TypeScript (strict)**, **WebGPU**, **WGSL** (WebGPU Shading Language), Vite.
 
 ---
 
@@ -45,11 +45,12 @@ Your responsibility:
 ### 3.1. Coding Standards
 
 * **Language:** Strictly use **TypeScript** in **strict mode**. All public interfaces, classes, and functions must have explicit and accurate type annotations.
+* **Code style**: Write consistent, uniform code.
 * **WebGPU & WGSL Focus:**
     * Prioritize **Compute Shaders** for all data manipulation, state updates (e.g., column position, character life cycles), and complex physics/logic to ensure the architecture is genuinely GPU-first.
     * Shaders must be written in **WGSL**. Use memory layout conventions (e.g., alignment) strictly.
     * Manage the entire lifecycle of WebGPU resources (buffers, pipelines, bind groups) explicitly and professionally.
-* **Architecture:** Use Object-Oriented principles where appropriate to manage complexity (e.g., dedicated classes for `WebGPUDeviceManager`, `MatrixComputeEngine`, `RainRenderer`).
+* **Architecture:** Use Object-Oriented principles where appropriate to manage complexity.
 
 ### 3.2. Workflow and Deliverables
 
