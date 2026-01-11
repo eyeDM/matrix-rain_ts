@@ -1,10 +1,9 @@
 import { ResourceManager } from '@platform/webgpu/resource-manager';
 
-import type { RenderTargetDescriptor } from '@engine/render/render-target-registry';
-import { PassKind, RenderContext, RenderPass } from '@engine/render/render-graph';
+import { RenderContext } from '@engine/render/render-graph';
 
 export type Renderer = {
-    readonly drawPass: RenderPass;
+    execute(ctx: RenderContext): void;
     destroy(): void; // Destroy internally created GPU resources
 };
 
@@ -16,7 +15,7 @@ export type Renderer = {
 export function createRenderer(
     device: GPUDevice,
     colorFormat: GPUTextureFormat,
-    depthFormat: GPUTextureFormat,
+    //depthFormat: GPUTextureFormat,
     shader: GPUShaderModule,
     atlasTexture: GPUTexture,
     atlasSampler: GPUSampler,
@@ -94,11 +93,11 @@ export function createRenderer(
                 },
             }],
         },
-        depthStencil: {
+        /*depthStencil: {
             format: depthFormat,
             depthWriteEnabled: true,
             depthCompare: 'less',
-        },
+        },*/
         primitive: { topology: 'triangle-list' },
     });
 
@@ -117,54 +116,37 @@ export function createRenderer(
         ],
     });
 
-    // --- Draw pass ---
+    function execute(ctx: RenderContext): void {
+        const colorView = ctx.resources.getTexture('sceneColor');
+        //const depthView = ctx.resources.getTexture('sceneDepth');
 
-    const drawPass: RenderPass = {
-        name: 'matrix-draw',
-        kind: 'draw' as PassKind,
-        deps: ['matrix-compute'], // explicit dependency, simulation is external
-        execute(ctx: RenderContext): void {
-            const colorDesc: RenderTargetDescriptor = {
-                size: 'screen',
-                format: 'rgba16float',
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-            };
+        const pass = ctx.encoder.beginRenderPass({
+            colorAttachments: [{
+                view: colorView,
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            }],
+            /*depthStencilAttachment: {
+                view: depthView,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+                depthClearValue: 1.0,
+            },*/
+        });
 
-            const colorView = ctx.resources.getColor(
-                'sceneColor',
-                colorDesc
-            );
+        pass.setPipeline(renderPipeline);
+        pass.setVertexBuffer(0, vertexBuffer);
+        pass.setBindGroup(0, bindGroup);
+        // 6 vertices = 2 triangles forming a quad;
+        // instanced `instanceCount` times (one instance per glyph)
+        pass.draw(6, instanceCount);
 
-            const depthView = ctx.resources.getDepth('sceneDepth');
-
-            // Encode the Render Pass
-            const pass = ctx.encoder.beginRenderPass({
-                colorAttachments: [{
-                    view: colorView,
-                    clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-                    loadOp: 'clear' as const,
-                    storeOp: 'store' as const,
-                }],
-                depthStencilAttachment: {
-                    view: depthView,
-                    depthClearValue: 1.0,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store',
-                },
-            });
-
-            pass.setPipeline(renderPipeline);
-            pass.setVertexBuffer(0, vertexBuffer);
-            pass.setBindGroup(0, bindGroup);
-
-            // Draw 6 vertices (quad) per instance (total instanceCount symbols)
-            pass.draw(6, instanceCount);
-            pass.end();
-        }
-    };
+        pass.end();
+    }
 
     return {
-        drawPass,
+        execute,
         destroy(): void {
             rm.destroyAll();
         }

@@ -8,12 +8,13 @@ import { SimulationEngine, createSimulationEngine } from '@engine/simulation/sim
 import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
 import { createGlyphAtlas } from '@engine/render/resources';
 import { Renderer, createRenderer} from '@engine/render/renderer';
-import { createRenderTargetRegistry } from '@engine/render/render-target-registry';
-import { createPresentPass } from '@engine/render/present-pass';
-import { RenderGraph, createRenderGraph } from '@engine/render/render-graph';
+import { RenderTargetRegistry } from '@engine/render/render-target-registry';
+import { PresentPass, createPresentPass } from '@engine/render/present-pass';
+import { CompiledRenderGraph, RenderGraphBuilder } from '@engine/render/render-graph';
 
 import { WebGPUContext, initWebGPU } from '@platform/webgpu/init';
 import { ShaderLoader } from '@platform/webgpu/shader-loader';
+import {InstanceLayout} from '@platform/webgpu/layouts';
 
 /**
  * Immutable grid layout derived from canvas size.
@@ -23,18 +24,6 @@ type GridLayout = {
     rows: number;
     maxTrail: number;
     instanceCount: number;
-};
-
-/**
- * Authoritative runtime state container.
- */
-type AppState = {
-    gpu: WebGPUContext;
-    layout: GridLayout;
-    simulation: SimulationEngine;
-    renderer: Renderer;
-    screen: ScreenUniformController;
-    renderGraph: RenderGraph;
 };
 
 /**
@@ -65,63 +54,11 @@ function computeGridLayout(
     };
 }
 
-function makeAppBundle(
-    gpu: WebGPUContext,
-    shaderLoader: ShaderLoader,
-    atlas: Awaited<ReturnType<typeof createGlyphAtlas>>,
-    layout: GridLayout,
-): AppState {
-    const simulation = createSimulationEngine({
-        device: gpu.device,
-        shader: shaderLoader.get('matrix-compute'),
-        glyphUVsBuffer: atlas.glyphUVsBuffer,
-        cols: layout.cols,
-        rows: layout.rows,
-        glyphCount: atlas.glyphCount,
-        cellWidth: atlas.cellWidth,
-        cellHeight: atlas.cellHeight,
-        maxTrail: layout.maxTrail,
-    });
-
-    const screen = new ScreenUniformController(gpu.device);
-
-    const renderer = createRenderer(
-        gpu.device,
-        'rgba16float',
-        'depth24plus',
-        shaderLoader.get('matrix-draw'),
-        atlas.texture,
-        atlas.sampler,
-        simulation.instances,
-        layout.instanceCount,
-        screen.buffer
-    );
-
-    const presentPass = createPresentPass(
-        gpu.device,
-        gpu.format,
-        shaderLoader.get('matrix-present'),
-        'sceneColor'
-    );
-
-    const renderGraph = createRenderGraph();
-    renderGraph.addPass(simulation.computePass);
-    renderGraph.addPass(renderer.drawPass);
-    renderGraph.addPass(presentPass);
-
-    return {
-        gpu,
-        layout,
-        simulation,
-        renderer,
-        screen,
-        renderGraph,
-    };
-}
-
 export async function bootstrap(): Promise<void> {
     const canvas = document.getElementById('canvas') as HTMLCanvasElement | null;
-    if (!canvas) throw new Error('Canvas element `#canvas` not found');
+    if (!canvas) {
+        throw new Error('Canvas element `#canvas` not found');
+    }
 
     // --- WebGPU ---
 
@@ -162,12 +99,13 @@ export async function bootstrap(): Promise<void> {
     const atlas = await createGlyphAtlas(
         gpu.device,
         glyphs,
-        { font: '32px monospace', padding: 8 }
+        { font: '32px monospace', padding: 8 },
     );
 
     // --- Initial layout ---
 
     const size: CanvasSize = swapChain.resize();
+
     let layout: GridLayout = computeGridLayout(
         size.width,
         size.height,
@@ -176,20 +114,92 @@ export async function bootstrap(): Promise<void> {
         atlas.cellHeight
     );
 
-    let app: AppState = makeAppBundle(
-        gpu,
-        shaderLoader,
-        atlas,
-        layout,
+    // --- Screen uniforms ---
+
+    const screen = new ScreenUniformController(gpu.device);
+
+    // --- RenderGraph: build phase ---
+
+    const graphBuilder = new RenderGraphBuilder();
+
+    // Resources (authoritative)
+    const instanceBuffer = graphBuilder.createBuffer('InstanceBuffer', {
+        size: layout.instanceCount * InstanceLayout.SIZE,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
+    });
+
+    const sceneColor = graphBuilder.createTexture('sceneColor', {
+        format: 'rgba16float',
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        size: 'screen',
+    });
+
+    // --- Engines ---
+
+    const simulation: SimulationEngine = createSimulationEngine({
+        device: gpu.device,
+        shader: shaderLoader.get('matrix-compute'),
+        glyphUVsBuffer: atlas.glyphUVsBuffer,
+        cols: layout.cols,
+        rows: layout.rows,
+        glyphCount: atlas.glyphCount,
+        cellWidth: atlas.cellWidth,
+        cellHeight: atlas.cellHeight,
+        maxTrail: layout.maxTrail,
+    });
+
+    const renderer: Renderer = createRenderer(
+        gpu.device,
+        'rgba16float',
+        //'depth24plus',
+        shaderLoader.get('matrix-draw'),
+        atlas.texture,
+        atlas.sampler,
+        simulation.instances,
+        layout.instanceCount,
+        screen.buffer,
     );
+
+    const present: PresentPass = createPresentPass(
+        gpu.device,
+        gpu.format,
+        shaderLoader.get('matrix-present'),
+        'sceneColor'
+    );
+
+    // --- Pass declarations ---
+
+    graphBuilder.addPass({
+        name: 'simulation',
+        writes: [instanceBuffer],
+        execute: simulation.execute,
+    });
+
+    graphBuilder.addPass({
+        name: 'draw',
+        reads: [instanceBuffer],
+        writes: [sceneColor],
+        execute: renderer.execute,
+    });
+
+    graphBuilder.addPass({
+        name: 'present',
+        reads: [sceneColor],
+        execute: present.execute,
+    });
+
+    // --- Compile graph ---
+
+    const renderGraph: CompiledRenderGraph = graphBuilder.compile();
+
+    const renderTargets = new RenderTargetRegistry(
+        gpu.device,
+        graphBuilder.getTextureDescriptors(),
+    );
+
+    renderTargets.resize(size.width, size.height);
 
     // --- Render loop ---
-
-    const renderTargets = createRenderTargetRegistry(
-        gpu.device,
-        size.width,
-        size.height
-    );
 
     startRenderLoop(
         gpu.device,
@@ -200,18 +210,16 @@ export async function bootstrap(): Promise<void> {
             acquireView: () => swapChain.getCurrentView(),
         }),
         (ctx) => {
-            // Update screen uniforms (CPU → GPU, persistent buffer)
-            app.screen.update(gpu.device, canvas.width, canvas.height);
-
-            app.renderGraph.execute(ctx);
+            screen.update(gpu.device, canvas.width, canvas.height);
+            renderGraph.execute(ctx);
         },
     );
 
-    // --- Resize handling (coarse, to be optimized later) ---
+    // --- Resize handling ---
 
-    let resizeInProgress = false;
+    //let resizeInProgress = false;
 
-    async function handleResize(): Promise<void> {
+    /*async function handleResize(): Promise<void> {
         if (resizeInProgress) return;
         resizeInProgress = true;
 
@@ -250,10 +258,12 @@ export async function bootstrap(): Promise<void> {
         oldApp.simulation.destroy();
 
         resizeInProgress = false;
-    }
+    }*/
 
     window.addEventListener('resize', () => {
-        void handleResize();
+        //void handleResize();
+        const next: CanvasSize = swapChain.resize();
+        renderTargets.resize(next.width, next.height);
     });
 }
 

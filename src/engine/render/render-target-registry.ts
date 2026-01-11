@@ -1,106 +1,61 @@
-export type RenderTargetDescriptor = {
-    size: 'screen';
-    format: GPUTextureFormat;
-    usage: GPUTextureUsageFlags;
-    sampleCount?: number;
-};
+import { RGTextureDescriptor } from '@engine/render/render-graph';
 
-type InternalTarget = {
-    texture: GPUTexture;
-    view: GPUTextureView;
-    desc: RenderTargetDescriptor;
-};
+/**
+ * Centralized registry and lifecycle manager for render-target textures.
+ *
+ * RenderTargetRegistry is the single source of truth for all GPU textures
+ * produced and consumed by the RenderGraph during a frame. It owns:
+ *  - creation and destruction of screen-sized textures
+ *  - resize propagation (e.g. on canvas resize)
+ *  - safe access to GPUTextureView by logical name
+ *
+ * Key design principles:
+ *  - Render passes never create or describe textures themselves
+ *  - Texture formats, usage flags and sizing rules are declared once
+ *    in RenderGraphBuilder and remain immutable thereafter
+ *  - Renderers and passes depend only on symbolic names, not descriptors
+ *
+ * This design:
+ *  - prevents descriptor drift between passes
+ *  - eliminates per-frame texture creation
+ *  - simplifies resize handling
+ *  - keeps render passes stateless and deterministic
+ *
+ * Currently, supports screen-sized textures only; fixed-size or transient
+ * resources can be added later without changing pass interfaces.
+ */
 
-export interface RenderTargetRegistry {
-    getColor(name: string, desc: RenderTargetDescriptor): GPUTextureView;
-    getDepth(name: string, format?: GPUTextureFormat): GPUTextureView;
-    resize(width: number, height: number): void;
-    destroy(): void;
-}
+export class RenderTargetRegistry {
+    private readonly textures = new Map<string, GPUTexture>();
+    private readonly descriptors: Map<string, RGTextureDescriptor>;
 
-export function createRenderTargetRegistry(
-    device: GPUDevice,
-    initialWidth: number,
-    initialHeight: number,
-): RenderTargetRegistry {
-    let width = initialWidth;
-    let height = initialHeight;
-
-    const colorTargets = new Map<string, InternalTarget>();
-    const depthTargets = new Map<string, GPUTexture>();
-
-    function createColorTarget(
-        desc: RenderTargetDescriptor,
-    ): InternalTarget {
-        const texture = device.createTexture({
-            label: 'RenderTarget:Color',
-            size: { width, height },
-            format: desc.format,
-            usage: desc.usage,
-            sampleCount: desc.sampleCount ?? 1,
-        });
-
-        return {
-            texture,
-            view: texture.createView(),
-            desc,
-        };
+    constructor(
+        private readonly device: GPUDevice,
+        descriptors: Map<string, RGTextureDescriptor>,
+    ) {
+        this.descriptors = descriptors;
     }
 
-    return {
-        getColor(name, desc): GPUTextureView {
-            const existing = colorTargets.get(name);
-            if (existing) return existing.view;
+    resize(width: number, height: number): void {
+        for (const [name, desc] of this.descriptors) {
+            if (desc.size !== 'screen') continue;
+            this.textures.get(name)?.destroy();
+            this.textures.set(
+                name,
+                this.device.createTexture({
+                    format: desc.format,
+                    usage: desc.usage,
+                    size: { width, height },
+                }),
+            );
+        }
+    }
 
-            const target = createColorTarget(desc);
-            colorTargets.set(name, target);
-            return target.view;
-        },
-
-        getDepth(
-            name,
-            format: GPUTextureFormat = 'depth24plus',
-        ): GPUTextureView {
-            const existing = depthTargets.get(name);
-            if (existing) return existing.createView();
-
-            const texture = device.createTexture({
-                label: 'RenderTarget:Depth',
-                size: { width, height },
-                format,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT,
-            });
-
-            depthTargets.set(name, texture);
-            return texture.createView();
-        },
-
-        resize(newWidth, newHeight): void {
-            if (newWidth === width && newHeight === height) return;
-
-            width = newWidth;
-            height = newHeight;
-
-            for (const target of colorTargets.values()) {
-                target.texture.destroy();
-            }
-            colorTargets.clear();
-
-            for (const tex of depthTargets.values()) {
-                tex.destroy();
-            }
-            depthTargets.clear();
-        },
-
-        destroy(): void {
-            for (const target of colorTargets.values()) {
-                target.texture.destroy();
-            }
-            for (const tex of depthTargets.values()) {
-                tex.destroy();
-            }
-            colorTargets.clear();
-            depthTargets.clear();
-        },
-    };
+    getTexture(name: string): GPUTextureView {
+        const texture = this.textures.get(name);
+        if (!texture) {
+            throw new Error(`RTRegistry: texture '${name}' not found`);
+        }
+        return texture.createView();
+    }
 }

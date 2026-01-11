@@ -1,6 +1,24 @@
 import { RenderTargetRegistry } from '@engine/render/render-target-registry';
 
-export type PassKind = 'compute' | 'draw' | 'post';
+export type RGBufferHandle = { readonly kind: 'buffer'; readonly name: string };
+export type RGTextureHandle = { readonly kind: 'texture'; readonly name: string };
+
+export type RGResourceHandle = RGBufferHandle | RGTextureHandle;
+
+export type RGTextureDescriptor = {
+    readonly format: GPUTextureFormat;
+    readonly usage: GPUTextureUsageFlags;
+    readonly size: 'screen' | { width: number; height: number };
+};
+
+type RGBufferDescriptor = {
+    readonly size: number;
+    readonly usage: GPUBufferUsageFlags;
+};
+
+type RGResourceDescriptor =
+    | { kind: 'texture'; desc: RGTextureDescriptor }
+    | { kind: 'buffer';  desc: RGBufferDescriptor };
 
 /**
  * Single frame execution context.
@@ -10,97 +28,139 @@ export type RenderContext = {
     readonly encoder: GPUCommandEncoder;
     readonly dt: number;
     resources: RenderTargetRegistry;
-    // Current output view (usually it's swapchain)
-    acquireView(): GPUTextureView | null;
+    acquireView(): GPUTextureView | null; // Current output view (usually it's swapchain)
 };
 
-export type RenderPass = {
-    name: string;
-    kind: PassKind;
-    deps?: readonly string[]; // names of passes this pass depends on
+export type RenderPassNode = {
+    readonly name: string;
+    readonly reads?: readonly RGResourceHandle[];
+    readonly writes?: readonly RGResourceHandle[];
     execute(ctx: RenderContext): void;
 };
 
-export type RenderGraph = {
-    addPass: (pass: RenderPass) => void;
-    removePass: (name: string) => void;
+export type CompiledRenderGraph = {
     execute(ctx: RenderContext): void;
 };
 
-function topoSort(passes: Map<string, RenderPass>): RenderPass[] {
-    // Kahn's algorithm
-    const inDegree = new Map<string, number>();
-    const adj = new Map<string, string[]>();
+function compileRenderGraph(
+    passes: readonly RenderPassNode[],
+): CompiledRenderGraph {
+    // Build adjacency list
+    const edges = new Map<RenderPassNode, Set<RenderPassNode>>();
+    const inDegree = new Map<RenderPassNode, number>();
 
-    for (const [name] of passes) {
-        inDegree.set(name, 0);
-        adj.set(name, []);
+    for (const p of passes) {
+        edges.set(p, new Set());
+        inDegree.set(p, 0);
     }
 
-    for (const [name, pass] of passes) {
-        for (const dep of pass.deps ?? []) {
-            if (!passes.has(dep)) {
-                throw new Error(
-                    `RenderGraph: pass '${name}' depends on unknown pass '${dep}'`,
-                );
+    // Resource-based dependency resolution
+    for (const a of passes) {
+        for (const b of passes) {
+            if (a === b) continue;
+
+            const aWrites = a.writes ?? [];
+            const bReads = b.reads ?? [];
+            const bWrites = b.writes ?? [];
+
+            const hazard =
+                aWrites.some(r => bReads.includes(r)) ||
+                aWrites.some(r => bWrites.includes(r));
+
+            if (hazard) {
+                edges.get(a)!.add(b);
+                inDegree.set(b, inDegree.get(b)! + 1);
             }
-
-            inDegree.set(name, (inDegree.get(name) ?? 0) + 1);
-            adj.get(dep)!.push(name);
         }
     }
 
-    const queue: string[] = [];
-    for (const [k, v] of inDegree) {
-        if (v === 0) queue.push(k);
+    // Kahn's algorithm
+    const queue: RenderPassNode[] = [];
+    for (const [p, deg] of inDegree) {
+        if (deg === 0) queue.push(p);
     }
 
-    const ordered: RenderPass[] = [];
+    const ordered: RenderPassNode[] = [];
     while (queue.length > 0) {
-        const n = queue.shift()!;
-        ordered.push(passes.get(n)!);
-        for (const m of adj.get(n)!) {
-            const d = (inDegree.get(m) ?? 0) - 1;
-            inDegree.set(m, d);
-            if (d === 0) queue.push(m);
+        const p = queue.shift()!;
+        ordered.push(p);
+        for (const n of edges.get(p)!) {
+            const d = inDegree.get(n)! - 1;
+            inDegree.set(n, d);
+            if (d === 0) queue.push(n);
         }
     }
 
-    if (ordered.length !== passes.size) {
-        throw new Error('RenderGraph: cyclic or missing dependencies detected');
+    if (ordered.length !== passes.length) {
+        throw new Error('RG: cyclic dependency detected');
     }
-
-    return ordered;
-}
-
-export function createRenderGraph(): RenderGraph {
-    const passes = new Map<string, RenderPass>();
 
     return {
-        addPass(pass: RenderPass) {
-            if (passes.has(pass.name)) {
-                throw new Error(
-                    `RenderGraph: pass '${pass.name}' already exists`,
-                );
-            }
-            passes.set(pass.name, pass);
-        },
-
-        removePass(name: string) {
-            passes.delete(name);
-        },
-
-        execute(ctx: RenderContext) {
-            const ordered = topoSort(passes);
-
+        execute(ctx) {
             for (const pass of ordered) {
-                try {
-                    pass.execute(ctx);
-                } catch (e) {
-                    // eslint-disable-next-line no-console
-                    console.error(`RenderGraph: error executing pass '${pass.name}':`, e);
-                }
+                pass.execute(ctx);
+            }
+        },
+    };
+}
+
+export class RenderGraphBuilder {
+    private readonly resources = new Map<string, RGResourceDescriptor>();
+    private readonly passes: RenderPassNode[] = [];
+
+    createBuffer(
+        name: string,
+        desc: RGBufferDescriptor,
+    ): RGBufferHandle {
+        this.assertResourceFree(name);
+        this.resources.set(name, {
+            kind: 'buffer',
+            desc,
+        });
+        return { kind: 'buffer', name };
+    }
+
+    createTexture(
+        name: string,
+        desc: RGTextureDescriptor,
+    ): RGTextureHandle {
+        this.assertResourceFree(name);
+        this.resources.set(name, {
+            kind: 'texture',
+            desc,
+        });
+        return { kind: 'texture', name };
+    }
+
+    addPass(pass: RenderPassNode): void {
+        this.passes.push(pass);
+    }
+
+    compile(): CompiledRenderGraph {
+        return compileRenderGraph(this.passes);
+    }
+
+    /**
+     * Returns all texture descriptors declared in the render graph.
+     * Used by RenderTargetRegistry as the authoritative texture list.
+     */
+    getTextureDescriptors(): Map<string, RGTextureDescriptor> {
+        const textures = new Map<string, RGTextureDescriptor>();
+
+        for (const [name, res] of this.resources) {
+            if (res.kind === 'texture') {
+                textures.set(name, res.desc);
             }
         }
-    };
+
+        return textures;
+    }
+
+    private assertResourceFree(name: string): void {
+        if (this.resources.has(name)) {
+            throw new Error(
+                `RenderGraphBuilder: resource '${name}' already exists`,
+            );
+        }
+    }
 }

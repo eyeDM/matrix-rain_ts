@@ -1,11 +1,22 @@
-import { PassKind, RenderContext, RenderPass } from '@engine/render/render-graph';
+import { RenderContext } from '@engine/render/render-graph';
+
+export type PresentPass = {
+    execute(ctx: RenderContext): void;
+};
+
+/**
+ * FIXME: bindGroup здесь всё ещё создаётся per-frame.
+ * Следующее улучшение — хранить bindGroup и пересоздавать его
+ * только при resize / смене sceneColor texture,
+ * что полностью уберёт CPU allocations из present-pass.
+ */
 
 export function createPresentPass(
     device: GPUDevice,
     format: GPUTextureFormat,
     shader: GPUShaderModule,
     sceneColorName: string,
-): RenderPass {
+): PresentPass {
     const sampler = device.createSampler({
         magFilter: 'linear',
         minFilter: 'linear',
@@ -34,45 +45,33 @@ export function createPresentPass(
         primitive: { topology: 'triangle-list' },
     });
 
-    function execute(ctx: RenderContext): void  {
-        const view = ctx.acquireView();
-        if (!view) return;
-
-        const sceneView = ctx.resources.getColor(
-            sceneColorName,
-            // descriptor already created earlier, reuse by name
-            undefined as never,
-        );
+    function execute(ctx: RenderContext): void {
+        const srcView = ctx.resources.getTexture(sceneColorName);
+        const dstView = ctx.acquireView();
+        if (!dstView) return;
 
         const bindGroup = device.createBindGroup({
             layout: bindGroupLayout,
             entries: [
                 { binding: 0, resource: sampler },
-                { binding: 1, resource: sceneView },
+                { binding: 1, resource: srcView },
             ],
         });
 
         const pass = ctx.encoder.beginRenderPass({
-            colorAttachments: [
-                {
-                    view,
-                    loadOp: 'clear',
-                    storeOp: 'store',
-                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
-                },
-            ],
+            colorAttachments: [{
+                view: dstView,
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            }],
         });
 
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup);
-        pass.draw(3);
+        pass.draw(3); // fullscreen triangle
         pass.end();
     }
 
-    return {
-        name: 'final-present',
-        kind: 'post' as PassKind,
-        deps: ['matrix-draw'],
-        execute: execute,
-    };
+    return { execute };
 }
