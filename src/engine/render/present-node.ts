@@ -1,8 +1,4 @@
-import { RenderContext } from '@engine/render/render-graph';
-
-export type PresentPass = {
-    execute(ctx: RenderContext): void;
-};
+import { RenderContext, RenderNodeKind, RenderNode } from '@engine/render/render-graph';
 
 /**
  * FIXME: bindGroup здесь всё ещё создаётся per-frame.
@@ -11,12 +7,12 @@ export type PresentPass = {
  * что полностью уберёт CPU allocations из present-pass.
  */
 
-export function createPresentPass(
+export function createPresentNode(
     device: GPUDevice,
     format: GPUTextureFormat,
     shader: GPUShaderModule,
     sceneColorName: string,
-): PresentPass {
+): RenderNode {
     const sampler = device.createSampler({
         magFilter: 'linear',
         minFilter: 'linear',
@@ -73,5 +69,9 @@ export function createPresentPass(
         pass.end();
     }
 
-    return { execute };
+    return {
+        name: 'matrix-present',
+        kind: 'present' as RenderNodeKind,
+        execute,
+    };
 }

@@ -4,17 +4,17 @@ import { SwapChainController } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 import { CanvasSize } from '@runtime/canvas-resizer';
 
-import { SimulationEngine, createSimulationEngine } from '@engine/simulation/simulation-engine';
-import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
 import { createGlyphAtlas } from '@engine/render/resources';
-import { Renderer, createRenderer} from '@engine/render/renderer';
+import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
+import { SimulationNode, createSimulationNode } from '@engine/simulation/simulation-node';
+import { createDrawNode } from '@engine/render/draw-node';
+import { createPresentNode } from '@engine/render/present-node';
 import { RenderTargetRegistry } from '@engine/render/render-target-registry';
-import { PresentPass, createPresentPass } from '@engine/render/present-pass';
-import { CompiledRenderGraph, RenderGraphBuilder } from '@engine/render/render-graph';
+import { RenderNode, CompiledRenderGraph, RenderGraphBuilder } from '@engine/render/render-graph';
 
+import { InstanceLayout } from '@platform/webgpu/layouts';
 import { WebGPUContext, initWebGPU } from '@platform/webgpu/init';
 import { ShaderLoader } from '@platform/webgpu/shader-loader';
-import {InstanceLayout} from '@platform/webgpu/layouts';
 
 /**
  * Immutable grid layout derived from canvas size.
@@ -134,21 +134,21 @@ export async function bootstrap(): Promise<void> {
         size: 'screen',
     });
 
-    // --- Engines ---
+    // --- RenderNodes ---
 
-    const simulation: SimulationEngine = createSimulationEngine({
-        device: gpu.device,
-        shader: shaderLoader.get('matrix-compute'),
-        glyphUVsBuffer: atlas.glyphUVsBuffer,
-        cols: layout.cols,
-        rows: layout.rows,
-        glyphCount: atlas.glyphCount,
-        cellWidth: atlas.cellWidth,
-        cellHeight: atlas.cellHeight,
-        maxTrail: layout.maxTrail,
-    });
+    const simulation: SimulationNode = createSimulationNode(
+        gpu.device,
+        shaderLoader.get('matrix-compute'),
+        atlas.glyphUVsBuffer,
+        layout.cols,
+        layout.rows,
+        atlas.glyphCount,
+        atlas.cellWidth,
+        atlas.cellHeight,
+        layout.maxTrail,
+    );
 
-    const renderer: Renderer = createRenderer(
+    const draw: RenderNode = createDrawNode(
         gpu.device,
         'rgba16float',
         //'depth24plus',
@@ -160,7 +160,7 @@ export async function bootstrap(): Promise<void> {
         screen.buffer,
     );
 
-    const present: PresentPass = createPresentPass(
+    const present: RenderNode = createPresentNode(
         gpu.device,
         gpu.format,
         shaderLoader.get('matrix-present'),
@@ -179,7 +179,7 @@ export async function bootstrap(): Promise<void> {
         name: 'draw',
         reads: [instanceBuffer],
         writes: [sceneColor],
-        execute: renderer.execute,
+        execute: draw.execute,
     });
 
     graphBuilder.addPass({
@@ -217,51 +217,7 @@ export async function bootstrap(): Promise<void> {
 
     // --- Resize handling ---
 
-    //let resizeInProgress = false;
-
-    /*async function handleResize(): Promise<void> {
-        if (resizeInProgress) return;
-        resizeInProgress = true;
-
-        const size: CanvasSize = swapChain.resize();
-        const newLayout: GridLayout = computeGridLayout(
-            size.width,
-            size.height,
-            size.dpr,
-            atlas.cellWidth,
-            atlas.cellHeight
-        );
-
-        renderTargets.resize(size.width, size.height);
-
-        if (
-            newLayout.cols === app.layout.cols &&
-            newLayout.rows === app.layout.rows
-        ) {
-            resizeInProgress = false;
-            return;
-        }
-
-        const oldApp = app;
-
-        app = makeAppBundle(
-            gpu,
-            shaderLoader,
-            atlas,
-            newLayout,
-        );
-
-        await gpu.device.queue.onSubmittedWorkDone();
-
-        oldApp.screen.destroy();
-        oldApp.renderer.destroy();
-        oldApp.simulation.destroy();
-
-        resizeInProgress = false;
-    }*/
-
     window.addEventListener('resize', () => {
-        //void handleResize();
         const next: CanvasSize = swapChain.resize();
         renderTargets.resize(next.width, next.height);
     });

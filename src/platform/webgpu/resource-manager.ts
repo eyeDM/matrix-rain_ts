@@ -43,9 +43,7 @@ export class ResourceManager {
         return resource;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Convenience factory helpers
-    // ─────────────────────────────────────────────────────────────
+    // --- Convenience factory helpers ---
 
     createBuffer(desc: GPUBufferDescriptor): GPUBuffer {
         return this.track(

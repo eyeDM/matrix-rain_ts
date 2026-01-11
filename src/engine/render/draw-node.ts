@@ -1,18 +1,13 @@
 import { ResourceManager } from '@platform/webgpu/resource-manager';
 
-import { RenderContext } from '@engine/render/render-graph';
-
-export type Renderer = {
-    execute(ctx: RenderContext): void;
-    destroy(): void; // Destroy internally created GPU resources
-};
+import { RenderContext, RenderNodeKind, RenderNode } from '@engine/render/render-graph';
 
 /**
  * Draw-only renderer.
  * Owns render pipeline, vertex buffers and bind groups.
  * Does NOT know about simulation, time, canvas resize logic.
  */
-export function createRenderer(
+export function createDrawNode(
     device: GPUDevice,
     colorFormat: GPUTextureFormat,
     //depthFormat: GPUTextureFormat,
@@ -22,7 +17,7 @@ export function createRenderer(
     instancesBuffer: GPUBuffer,
     instanceCount: number,
     screenBuffer: GPUBuffer,
-): Renderer {
+): RenderNode {
     const rm = new ResourceManager(device);
 
     // --- Static quad geometry (cell-local space) ---
@@ -146,6 +141,8 @@ export function createRenderer(
     }
 
     return {
+        name: 'matrix-draw',
+        kind: 'draw' as RenderNodeKind,
         execute,
         destroy(): void {
             rm.destroyAll();

@@ -31,6 +31,19 @@ export type RenderContext = {
     acquireView(): GPUTextureView | null; // Current output view (usually it's swapchain)
 };
 
+export type RenderNodeKind =
+    | 'compute'
+    | 'draw'
+    | 'post'
+    | 'present';
+
+export type RenderNode = {
+    readonly name: string;
+    readonly kind: RenderNodeKind;
+    execute(ctx: RenderContext): void;
+    destroy?(): void; // Destroy internally created GPU resources
+};
+
 export type RenderPassNode = {
     readonly name: string;
     readonly reads?: readonly RGResourceHandle[];

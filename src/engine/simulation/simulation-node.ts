@@ -1,46 +1,44 @@
-import { RenderContext } from '@engine/render/render-graph';
+import { RenderContext, RenderNodeKind, RenderNode } from '@engine/render/render-graph';
 import { createInstanceBuffer } from '@engine/render/resources';
 import { createStreamBuffers, StreamBuffers } from '@engine/simulation/streams';
 
 const WORKGROUP_SIZE_X = 64; // must match WGSL @workgroup_size
 
-export type SimulationEngine = {
+export type SimulationNode = RenderNode & {
     readonly instances: GPUBuffer;
-    execute(ctx: RenderContext): void;
-    destroy(): void; // Destroy internally created GPU resources
 };
 
-export function createSimulationEngine(params: {
-    device: GPUDevice;
-    shader: GPUShaderModule;
-    glyphUVsBuffer: GPUBuffer;
-    cols: number;
-    rows: number;
-    glyphCount: number;
-    cellWidth: number;
-    cellHeight: number;
-    maxTrail: number;
-}): SimulationEngine {
+export function createSimulationNode(
+    device: GPUDevice,
+    shader: GPUShaderModule,
+    glyphUVsBuffer: GPUBuffer,
+    cols: number,
+    rows: number,
+    glyphCount: number,
+    cellWidth: number,
+    cellHeight: number,
+    maxTrail: number,
+): SimulationNode {
     const streams: StreamBuffers = createStreamBuffers(
-        params.device,
-        params.cols,
-        params.rows,
-        params.glyphCount,
-        params.cellWidth,
-        params.cellHeight,
-        params.maxTrail
+        device,
+        cols,
+        rows,
+        glyphCount,
+        cellWidth,
+        cellHeight,
+        maxTrail
     );
 
     const instances: GPUBuffer = createInstanceBuffer(
-        params.device,
-        params.cols * params.maxTrail
+        device,
+        cols * maxTrail
     );
 
     /** Persistent GPU resource – destroyed only on app shutdown */
 
     // --- Compute pipeline ---
 
-    const bindGroupLayout = params.device.createBindGroupLayout({
+    const bindGroupLayout = device.createBindGroupLayout({
         label: 'Simulation BGL',
         entries: [
             { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },  // SimulationUniforms
@@ -55,19 +53,19 @@ export function createSimulationEngine(params: {
         ],
     });
 
-    const pipeline = params.device.createComputePipeline({
+    const pipeline = device.createComputePipeline({
         label: 'Matrix Simulation Pipeline',
-        layout: params.device.createPipelineLayout({
+        layout: device.createPipelineLayout({
             label: 'Simulation Pipeline Layout',
             bindGroupLayouts: [bindGroupLayout],
         }),
         compute: {
-            module: params.shader,
+            module: shader,
             entryPoint: 'main',
         },
     });
 
-    const bindGroup = params.device.createBindGroup({
+    const bindGroup = device.createBindGroup({
         label: 'Simulation Bind Group',
         layout: bindGroupLayout,
         entries: [
@@ -78,25 +76,27 @@ export function createSimulationEngine(params: {
             { binding: 4, resource: { buffer: streams.seeds } },
             { binding: 5, resource: { buffer: streams.columns } },
             { binding: 6, resource: { buffer: streams.energy } },
-            { binding: 7, resource: { buffer: params.glyphUVsBuffer } },
+            { binding: 7, resource: { buffer: glyphUVsBuffer } },
             { binding: 8, resource: { buffer: instances } },
         ],
     });
 
     function execute(ctx: RenderContext): void {
         streams.simulationWriter.writeFrame(ctx.dt);
-        streams.simulationWriter.flush(params.device.queue, streams.simulationUniforms);
+        streams.simulationWriter.flush(device.queue, streams.simulationUniforms);
 
         const pass = ctx.encoder.beginComputePass();
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup);
         pass.dispatchWorkgroups(
-            Math.ceil(params.cols / WORKGROUP_SIZE_X),
+            Math.ceil(cols / WORKGROUP_SIZE_X),
         );
         pass.end();
     }
 
     return {
+        name: 'matrix-simulation',
+        kind: 'compute' as RenderNodeKind,
         instances,
         execute,
         destroy(): void {
