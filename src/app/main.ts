@@ -155,9 +155,10 @@ export async function bootstrap(): Promise<void> {
         shaderLoader.get('matrix-draw'),
         atlas.texture,
         atlas.sampler,
+        screen.buffer,
         simulation.instances,
         layout.instanceCount,
-        screen.buffer,
+        'sceneColor',
     );
 
     const present: RenderNode = createPresentNode(

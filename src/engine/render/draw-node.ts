@@ -14,9 +14,10 @@ export function createDrawNode(
     shader: GPUShaderModule,
     atlasTexture: GPUTexture,
     atlasSampler: GPUSampler,
+    screenBuffer: GPUBuffer,
     instancesBuffer: GPUBuffer,
     instanceCount: number,
-    screenBuffer: GPUBuffer,
+    sceneColorName: string,
 ): RenderNode {
     const rm = new ResourceManager(device);
 
@@ -112,7 +113,7 @@ export function createDrawNode(
     });
 
     function execute(ctx: RenderContext): void {
-        const colorView = ctx.resources.getTexture('sceneColor');
+        const colorView = ctx.resources.getTexture(sceneColorName);
         //const depthView = ctx.resources.getTexture('sceneDepth');
 
         const pass = ctx.encoder.beginRenderPass({
