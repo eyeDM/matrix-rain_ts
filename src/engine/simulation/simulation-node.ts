@@ -1,24 +1,20 @@
 import { RenderContext, RenderNodeKind, RenderNode } from '@engine/render/render-graph';
-import { createInstanceBuffer } from '@engine/render/resources';
 import { createStreamBuffers, StreamBuffers } from '@engine/simulation/streams';
 
 const WORKGROUP_SIZE_X = 64; // must match WGSL @workgroup_size
-
-export type SimulationNode = RenderNode & {
-    readonly instances: GPUBuffer;
-};
 
 export function createSimulationNode(
     device: GPUDevice,
     shader: GPUShaderModule,
     glyphUVsBuffer: GPUBuffer,
+    instanceBuffer: GPUBuffer,
     cols: number,
     rows: number,
     glyphCount: number,
     cellWidth: number,
     cellHeight: number,
     maxTrail: number,
-): SimulationNode {
+): RenderNode {
     const streams: StreamBuffers = createStreamBuffers(
         device,
         cols,
@@ -27,11 +23,6 @@ export function createSimulationNode(
         cellWidth,
         cellHeight,
         maxTrail
-    );
-
-    const instances: GPUBuffer = createInstanceBuffer(
-        device,
-        cols * maxTrail
     );
 
     /** Persistent GPU resource – destroyed only on app shutdown */
@@ -77,7 +68,7 @@ export function createSimulationNode(
             { binding: 5, resource: { buffer: streams.columns } },
             { binding: 6, resource: { buffer: streams.energy } },
             { binding: 7, resource: { buffer: glyphUVsBuffer } },
-            { binding: 8, resource: { buffer: instances } },
+            { binding: 8, resource: { buffer: instanceBuffer } },
         ],
     });
 
@@ -97,10 +88,8 @@ export function createSimulationNode(
     return {
         name: 'matrix-simulation',
         kind: 'compute' as RenderNodeKind,
-        instances,
         execute,
         destroy(): void {
-            instances.destroy();
             streams.destroy();
         },
     };

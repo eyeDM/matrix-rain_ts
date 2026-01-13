@@ -4,9 +4,9 @@ import { SwapChainController } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 import { CanvasSize } from '@runtime/canvas-resizer';
 
-import { createGlyphAtlas } from '@engine/render/resources';
+import { createGlyphAtlas, createInstanceBuffer } from '@engine/render/resources';
 import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
-import { SimulationNode, createSimulationNode } from '@engine/simulation/simulation-node';
+import { createSimulationNode } from '@engine/simulation/simulation-node';
 import { createDrawNode } from '@engine/render/draw-node';
 import { createPresentNode } from '@engine/render/present-node';
 import { RenderTargetRegistry } from '@engine/render/render-target-registry';
@@ -136,10 +136,16 @@ export async function bootstrap(): Promise<void> {
 
     // --- RenderNodes ---
 
-    const simulation: SimulationNode = createSimulationNode(
+    const instances: GPUBuffer = createInstanceBuffer(
+        gpu.device,
+        layout.cols * layout.maxTrail
+    );
+
+    const simulation: RenderNode = createSimulationNode(
         gpu.device,
         shaderLoader.get('matrix-compute'),
         atlas.glyphUVsBuffer,
+        instances,
         layout.cols,
         layout.rows,
         atlas.glyphCount,
@@ -156,7 +162,7 @@ export async function bootstrap(): Promise<void> {
         atlas.texture,
         atlas.sampler,
         screen.buffer,
-        simulation.instances,
+        instances,
         layout.instanceCount,
         'sceneColor',
     );
