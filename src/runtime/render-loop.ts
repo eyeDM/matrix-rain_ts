@@ -39,14 +39,14 @@ import type { RenderContext } from '@engine/render/render-graph';
  * - device.lost integration
  */
 
-export type FrameContextFactory = (
+export type RenderContextFactory = (
     encoder: GPUCommandEncoder,
     dt: number
 ) => RenderContext;
 
 export function startRenderLoop(
     device: GPUDevice,
-    makeContext: FrameContextFactory,
+    makeContext: RenderContextFactory,
     frame: (ctx: RenderContext) => void,
 ): () => void {
     let lastTime: number | null = null;

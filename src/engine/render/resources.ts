@@ -1,5 +1,3 @@
-import { InstanceLayout } from '@platform/webgpu/layouts';
-
 /**
  * Resources: Symbol texture atlas
  *
@@ -24,7 +22,7 @@ export type UVRect = {
 };
 
 /**
- * AtlasResult: All resources needed by the renderer from the atlas generation process.
+ * All resources needed by the renderer from the atlas generation process.
  */
 export type AtlasResult = {
     texture: GPUTexture;
@@ -283,28 +281,4 @@ export async function createGlyphAtlas(
         cellWidth,
         cellHeight,
     };
-}
-
-/**
- * Create a GPU buffer specifically for holding instance data (InstanceData[] in WGSL).
- * This buffer acts as the output target for the Compute Shader and the input source
- * for the Render (Draw) Shader.
- *
- * @param device - The WebGPU device.
- * @param instanceCount - Total number of symbol instances to allocate space for (cols * maxTrail).
- * @returns The initialized GPUBuffer.
- */
-export function createInstanceBuffer(
-    device: GPUDevice,
-    instanceCount: number,
-): GPUBuffer {
-    // Ensure minimum buffer size to avoid WebGPU validation errors if instanceCount is 0
-    const size = Math.max(4, instanceCount * InstanceLayout.SIZE);
-
-    // Must be STORAGE for compute (output) and STORAGE for render (input)
-    return device.createBuffer({
-        size: size,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        label: 'Matrix Instance Data Buffer',
-    });
 }
