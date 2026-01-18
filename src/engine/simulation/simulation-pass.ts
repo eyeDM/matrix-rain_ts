@@ -23,11 +23,11 @@ export function createSimulationDeviceResources(
             label: 'Simulation BGL',
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },  // SimulationUniforms
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Heads
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Speeds
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Lengths
-                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Seeds
-                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // Columns
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // Columns
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Seeds
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Heads
+                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Speeds
+                { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Lengths
                 { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // Energy
                 { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // GlyphUVs
                 { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // InstanceData
@@ -108,11 +108,11 @@ export function createSimulationSurfaceResources(
             layout: pipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: { buffer: streamBuffers.simulationUniforms } },
-                { binding: 1, resource: { buffer: streamBuffers.heads } },
-                { binding: 2, resource: { buffer: streamBuffers.speeds } },
-                { binding: 3, resource: { buffer: streamBuffers.lengths } },
-                { binding: 4, resource: { buffer: streamBuffers.seeds } },
-                { binding: 5, resource: { buffer: streamBuffers.columns } },
+                { binding: 1, resource: { buffer: streamBuffers.indexes } },
+                { binding: 2, resource: { buffer: streamBuffers.seeds } },
+                { binding: 3, resource: { buffer: streamBuffers.heads } },
+                { binding: 4, resource: { buffer: streamBuffers.speeds } },
+                { binding: 5, resource: { buffer: streamBuffers.lengths } },
                 { binding: 6, resource: { buffer: streamBuffers.energy } },
                 { binding: 7, resource: { buffer: glyphUVsBuffer } },
                 { binding: 8, resource: { buffer: instanceBuffer } },

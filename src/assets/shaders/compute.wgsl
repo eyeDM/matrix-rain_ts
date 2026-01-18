@@ -74,11 +74,11 @@ struct InstanceData {
 };
 
 @group(0) @binding(0) var<uniform> sim: SimulationUniforms;
-@group(0) @binding(1) var<storage, read_write> heads: array<f32>;
-@group(0) @binding(2) var<storage, read_write> speeds: array<f32>;
-@group(0) @binding(3) var<storage, read_write> lengths: array<u32>;
-@group(0) @binding(4) var<storage, read_write> seeds: array<u32>;
-@group(0) @binding(5) var<storage, read> columns: array<u32>;
+@group(0) @binding(1) var<storage, read> indexes: array<u32>;
+@group(0) @binding(2) var<storage, read_write> seeds: array<u32>;
+@group(0) @binding(3) var<storage, read_write> heads: array<f32>;
+@group(0) @binding(4) var<storage, read_write> speeds: array<f32>;
+@group(0) @binding(5) var<storage, read_write> lengths: array<u32>;
 @group(0) @binding(6) var<storage, read_write> energies: array<f32>;
 @group(0) @binding(7) var<storage, read> glyphUVs: array<vec4<f32>>;
 @group(0) @binding(8) var<storage, read_write> instances: array<InstanceData>;

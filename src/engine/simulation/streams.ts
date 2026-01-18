@@ -8,11 +8,11 @@ export type StreamBuffers = {
     rows: number;
 
     // GPU buffers
+    indexes: GPUBuffer; // array<u32> length = cols (optional index buffer)
+    seeds: GPUBuffer;   // array<u32> length = cols
     heads: GPUBuffer;   // array<f32> length = cols
     speeds: GPUBuffer;  // array<f32> length = cols
     lengths: GPUBuffer; // array<u32> length = cols
-    seeds: GPUBuffer;   // array<u32> length = cols
-    columns: GPUBuffer; // array<u32> length = cols (optional index buffer)
     energy: GPUBuffer;  // array<f32> length = cols
     simulationUniforms: GPUBuffer;
     simulationWriter: SimulationUniformWriter;
@@ -41,11 +41,11 @@ export function createStreamBuffers(
     const TRAIL_LENGTH_VARIANCE = 20;
 
     // Initialize CPU-side arrays
+    const indexes = new Uint32Array(cols);
+    const seeds = new Uint32Array(cols);
     const heads = new Float32Array(cols);
     const speeds = new Float32Array(cols);
     const lengths = new Uint32Array(cols);
-    const seeds = new Uint32Array(cols);
-    const columns = new Uint32Array(cols);
     const energy = new Float32Array(cols);
 
     // Populate with sensible defaults/random values
@@ -55,11 +55,11 @@ export function createStreamBuffers(
         : Math.floor(Math.random() * 0xffffffff));
 
     for (let i = 0; i < cols; i++) {
+        indexes[i] = i;
+        seeds[i] = rndU32();
         heads[i] = Math.random() * rows; // random starting head position
         speeds[i] = MIN_SPEED_CELLS_PER_SEC + Math.random() * SPEED_VARIANCE; // cells per second
         lengths[i] = MIN_TRAIL_LENGTH + Math.floor(Math.random() * TRAIL_LENGTH_VARIANCE); // trail length
-        seeds[i] = rndU32();
-        columns[i] = i;
         energy[i] = 0;
     }
 
@@ -100,11 +100,11 @@ export function createStreamBuffers(
         }
     }
 
+    const indexesBuf = createMappedBuffer(indexes, GPUBufferUsage.STORAGE);
+    const seedsBuf = createMappedBuffer(seeds, GPUBufferUsage.STORAGE);
     const headsBuf = createMappedBuffer(heads, GPUBufferUsage.STORAGE);
     const speedsBuf = createMappedBuffer(speeds, GPUBufferUsage.STORAGE);
     const lengthsBuf = createMappedBuffer(lengths, GPUBufferUsage.STORAGE);
-    const seedsBuf = createMappedBuffer(seeds, GPUBufferUsage.STORAGE);
-    const columnsBuf = createMappedBuffer(columns, GPUBufferUsage.STORAGE);
     const energyBuf = createMappedBuffer(energy, GPUBufferUsage.STORAGE);
 
     const simulationUniforms = device.createBuffer({
@@ -120,29 +120,29 @@ export function createStreamBuffers(
         glyphCount,
         cellWidth,
         cellHeight,
-        maxTrail
+        maxTrail,
     );
     writeFrame(0.0);
 
     return {
         cols,
         rows,
+        indexes: indexesBuf,
+        seeds: seedsBuf,
         heads: headsBuf,
         speeds: speedsBuf,
         lengths: lengthsBuf,
-        seeds: seedsBuf,
-        columns: columnsBuf,
         energy: energyBuf,
         simulationUniforms,
         simulationWriter,
 
         writeFrame,
         destroy() {
+            safeDestroy(indexesBuf);
+            safeDestroy(seedsBuf);
             safeDestroy(headsBuf);
             safeDestroy(speedsBuf);
             safeDestroy(lengthsBuf);
-            safeDestroy(seedsBuf);
-            safeDestroy(columnsBuf);
             safeDestroy(energyBuf);
             safeDestroy(simulationUniforms);
         },
