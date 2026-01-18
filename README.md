@@ -45,16 +45,17 @@ npm run build
 The project is organized around a **GPU-centric frame pipeline**:
 ```
 CPU (TypeScript)
- ├─ Initializes WebGPU
- ├─ Creates persistent GPU resources
+ ├─ Initializes WebGPUand swapchain
+ ├─ Creates device-lifetime resources (pipelines, shaders, layouts)
+ ├─ Builds surface-lifetime resources and render graph (init / resize)
  ├─ Updates uniforms (dt, screen size)
- └─ Submits command buffers per frame
-        ↓
-GPU (WebGPU)
- ├─ Compute pass: simulation (WGSL)
- │    └─ Updates stream heads, speeds, glyphs, brightness
- └─ Render pass: instanced drawing (WGSL)
-      └─ Draws all glyph quads in a single draw call
+ ├─ Creates a command encoder per frame
+ └─ Submits GPU passes in deterministic order
+  ↓
+GPU (WebGPU, WGSL)
+ ├─ Compute pass: simulation
+ ├─ Render pass: offscreen draw
+ └─ Present pass: fullscreen composite
 ```
 
 ### Key principles
@@ -73,7 +74,11 @@ GPU (WebGPU)
 
 - **Explicit memory layouts**
 
-    All CPU ↔ GPU layouts are defined once in `src/gpu/layouts.ts` and mirrored exactly in WGSL.
+    All CPU ↔ GPU layouts are defined once in `src/platform/webgpu/layouts.ts` and mirrored exactly in WGSL.
+
+- **Explicit lifetimes**
+
+    Resources are scoped to device, surface, or frame.
 
 - **Resilient render loop**
 
@@ -107,17 +112,18 @@ matrix-rain_ts/
 │  │  ├─ render/
 │  │  │  ├─ renderer.ts         # Pipelines, bind groups, passes
 │  │  │  ├─ render-graph.ts     # DAG-based render pass execution
-│  │  │  └─ resources.ts        # Glyph atlas + instance buffer
+│  │  │  └─ resources.ts        # Glyph atlas
 │  │  │
 │  │  └─ simulation/
-│  │     ├─ simulation-graph.ts # Compute-only pass graph
+│  │     ├─ simulation-pass.ts
 │  │     ├─ streams.ts          # Simulation buffers
 │  │     └─ simulation-uniform-writer.ts    # SimulationUniforms owner
 │  │
 │  └─ assets/                   # Static GPU assets
 │     └─ shaders/
 │        ├─ draw-symbols.wgsl   # Instanced glyph rendering
-│        └─ gpu-update.wgsl     # Compute shader (simulation)
+│        ├─ gpu-update.wgsl     # Compute shader (simulation)
+│        └─ present.wgsl
 │
 ├─ README.md
 ├─ index.html
@@ -192,7 +198,7 @@ assets (wgsl)
 
 - **Strict layout contracts**
 
-    Any change in `gpu/layouts.ts` must be mirrored in WGSL structs. This is intentional and enforced by design.
+    Any change in `src/platform/webgpu/layouts.ts` must be mirrored in WGSL structs. This is intentional and enforced by design.
 
 - **Scalability**
 

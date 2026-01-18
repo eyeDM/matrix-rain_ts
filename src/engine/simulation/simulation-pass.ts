@@ -1,26 +1,25 @@
-import { RGPassType, RGPass, RenderContext } from '@engine/render/render-graph';
-import { StreamBuffers, createStreamBuffers } from "@engine/simulation/streams";
+import { RenderContext } from '@engine/render/render-graph';
+import { StreamBuffers, createStreamBuffers } from '@engine/simulation/streams';
+
+import { InstanceLayout } from '@platform/webgpu/layouts';
+import { GpuResourceScope } from '@platform/webgpu/resource-manager';
 
 const WORKGROUP_SIZE_X = 64; // must match WGSL @workgroup_size
 
-export class SimulationPassBuilder {
-    private readonly bindGroupLayout: GPUBindGroupLayout;
-    private readonly renderPipeline: GPUComputePipeline;
+/**
+ * Device-lifetime resources
+ */
+export type SimulationDeviceResources = {
+    readonly pipeline: GPUComputePipeline;
+};
 
-    private streamBuffers: StreamBuffers | undefined;
-
-    private isBuilt: boolean = false;
-
-    constructor(
-        private readonly device: GPUDevice,
-        shader: GPUShaderModule,
-        private readonly glyphUVsBuffer: GPUBuffer,
-        private readonly glyphCount: number,
-        private readonly cellWidth: number,
-        private readonly cellHeight: number,
-        private readonly instanceBufferName: string,
-    ) {
-        this.bindGroupLayout = device.createBindGroupLayout({
+export function createSimulationDeviceResources(
+    device: GPUDevice,
+    scope: GpuResourceScope,
+    shader: GPUShaderModule,
+): SimulationDeviceResources {
+    const bindGroupLayout = scope.track(
+        device.createBindGroupLayout({
             label: 'Simulation BGL',
             entries: [
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },  // SimulationUniforms
@@ -33,96 +32,114 @@ export class SimulationPassBuilder {
                 { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },  // GlyphUVs
                 { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },  // InstanceData
             ],
-        });
+        })
+    );
 
-        const pipelineLayout = device.createPipelineLayout({
+    const pipelineLayout = scope.track(
+        device.createPipelineLayout({
             label: 'Simulation Pipeline Layout',
-            bindGroupLayouts: [this.bindGroupLayout],
-        });
+            bindGroupLayouts: [bindGroupLayout],
+        })
+    );
 
-        this.renderPipeline = device.createComputePipeline({
-            label: 'Matrix Simulation Pipeline',
+    const pipeline = scope.track(
+        device.createComputePipeline({
+            label: 'Matrix Rain Simulation Pipeline',
             layout: pipelineLayout,
             compute: {
                 module: shader,
                 entryPoint: 'main',
             },
-        });
-    }
+        })
+    );
 
-    build(
-        cols: number,
-        rows: number,
-        maxTrail: number,
-    ): RGPass {
-        this.streamBuffers = createStreamBuffers(
-            this.device,
-            cols,
-            rows,
-            this.glyphCount,
-            this.cellWidth,
-            this.cellHeight,
-            maxTrail,
+    return { pipeline };
+}
+
+/**
+ * Surface-lifetime resources
+ */
+export type SimulationSurfaceResources = {
+    readonly instanceBuffer: GPUBuffer;
+    readonly streamBuffers: StreamBuffers;
+    readonly bindGroup: GPUBindGroup;
+};
+
+export function createSimulationSurfaceResources(
+    device: GPUDevice,
+    scope: GpuResourceScope,
+    pipeline: GPUComputePipeline,
+    glyphUVsBuffer: GPUBuffer,
+    glyphCount: number,
+    cellWidth: number,
+    cellHeight: number,
+    cols: number,
+    rows: number,
+    maxTrail: number,
+    instancesCount: number,
+): SimulationSurfaceResources {
+    // streamBuffers is columns properties; streamBuffers.columns хранит индекс столбца
+    const streamBuffers: StreamBuffers = createStreamBuffers(
+        device,
+        scope,
+        cols,
+        rows,
+        glyphCount,
+        cellWidth,
+        cellHeight,
+        maxTrail,
+    );
+
+    /**
+     * Define a GPU buffer specifically for holding instance data (InstanceData[] in WGSL).
+     * This buffer acts as the output target for the Compute Shader and the input source
+     * for the Render (Draw) Shader.
+     */
+    const instanceBuffer: GPUBuffer = scope.trackDestroyable(
+        device.createBuffer({
+            size: instancesCount * InstanceLayout.SIZE,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
+        })
+    );
+
+    const bindGroup = scope.track(
+        device.createBindGroup({
+            label: 'Simulation Bind Group',
+            layout: pipeline.getBindGroupLayout(0),
+            entries: [
+                { binding: 0, resource: { buffer: streamBuffers.simulationUniforms } },
+                { binding: 1, resource: { buffer: streamBuffers.heads } },
+                { binding: 2, resource: { buffer: streamBuffers.speeds } },
+                { binding: 3, resource: { buffer: streamBuffers.lengths } },
+                { binding: 4, resource: { buffer: streamBuffers.seeds } },
+                { binding: 5, resource: { buffer: streamBuffers.columns } },
+                { binding: 6, resource: { buffer: streamBuffers.energy } },
+                { binding: 7, resource: { buffer: glyphUVsBuffer } },
+                { binding: 8, resource: { buffer: instanceBuffer } },
+            ],
+        })
+    );
+
+    return { instanceBuffer, streamBuffers, bindGroup };
+}
+
+export class SimulationComputePass {
+    constructor(
+        private readonly pipeline: GPUComputePipeline,
+        private readonly streamBuffers: StreamBuffers,
+        private readonly bindGroup: GPUBindGroup,
+        private readonly cols: number,
+    ) {}
+
+    execute(ctx: RenderContext): void {
+        this.streamBuffers.writeFrame(ctx.dt);
+
+        const pass = ctx.encoder.beginComputePass();
+        pass.setPipeline(this.pipeline);
+        pass.setBindGroup(0, this.bindGroup);
+        pass.dispatchWorkgroups(
+            Math.ceil(this.cols / WORKGROUP_SIZE_X),
         );
-
-        const execute= (ctx: RenderContext): void => {
-            const bindGroup = this.device.createBindGroup({
-                label: 'Simulation Bind Group',
-                layout: this.bindGroupLayout,
-                entries: [
-                    { binding: 0, resource: { buffer: this.streamBuffers!.simulationUniforms } },
-                    { binding: 1, resource: { buffer: this.streamBuffers!.heads } },
-                    { binding: 2, resource: { buffer: this.streamBuffers!.speeds } },
-                    { binding: 3, resource: { buffer: this.streamBuffers!.lengths } },
-                    { binding: 4, resource: { buffer: this.streamBuffers!.seeds } },
-                    { binding: 5, resource: { buffer: this.streamBuffers!.columns } },
-                    { binding: 6, resource: { buffer: this.streamBuffers!.energy } },
-                    { binding: 7, resource: { buffer: this.glyphUVsBuffer } },
-                    { binding: 8, resource: { buffer: ctx.resources.getBuffer(this.instanceBufferName) } },
-                ],
-            });
-
-            this.streamBuffers!.simulationWriter.writeFrame(ctx.dt);
-            this.streamBuffers!.simulationWriter.flush(
-                this.device.queue,
-                this.streamBuffers!.simulationUniforms
-            );
-
-            const pass = ctx.encoder.beginComputePass();
-            pass.setPipeline(this.renderPipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(
-                Math.ceil(cols / WORKGROUP_SIZE_X),
-            );
-            pass.end();
-        };
-
-        this.isBuilt = true;
-
-        return {
-            name: 'SimulationPass',
-            type: 'compute' as RGPassType,
-            reads: [],
-            writes: ['InstanceBuffer'],
-            execute: execute,
-        };
-    }
-
-    rebuild(
-        cols: number,
-        rows: number,
-        maxTrail: number,
-    ): RGPass {
-        if (this.isBuilt) {
-            this.destroyResources();
-        }
-
-        return this.build(cols, rows, maxTrail);
-    }
-
-    private destroyResources(): void {
-        if (typeof this.streamBuffers !== 'undefined') {
-            this.streamBuffers.destroy();
-        }
+        pass.end();
     }
 }

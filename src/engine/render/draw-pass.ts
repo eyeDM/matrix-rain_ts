@@ -1,59 +1,73 @@
-import { RGPassType, RGPass, RenderContext } from '@engine/render/render-graph';
+import { RenderContext } from '@engine/render/render-graph';
+
+import { GpuResourceScope } from '@platform/webgpu/resource-manager';
 
 /**
- * FIXME: RenderGraph пересоздаётся при resize, что вызывает пересоздание
- * Vertex buffer, pipeline, bind group.
- * Возможное решение:
- * - выделить и хранить независимо StaticDrawResources.
+ * Device-lifetime resources
  */
+export type DrawDeviceResources = {
+    readonly vertexBuffer: GPUBuffer;
+};
 
-export class DrawPassBuilder {
-    private readonly vertexBuffer: GPUBuffer;
-    private readonly atlasView: GPUTextureView;
-    private readonly bindGroupLayout: GPUBindGroupLayout;
-    private readonly renderPipeline: GPURenderPipeline;
+export function createDrawDeviceResources(
+    device: GPUDevice,
+    scope: GpuResourceScope,
+): DrawDeviceResources {
+    // --- Static quad geometry (cell-local space) ---
 
-    private isBuilt: boolean = false;
+    const vertexData = new Float32Array([
+        // posX, posY, uvU, uvV
+        -0.5, -0.5, 0.0, 0.0,
+         0.5, -0.5, 1.0, 0.0,
+        -0.5,  0.5, 0.0, 1.0,
 
-    constructor(
-        private readonly device: GPUDevice,
-        shader: GPUShaderModule,
-        atlasTexture: GPUTexture,
-        private readonly atlasSampler: GPUSampler,
-        colorFormat: GPUTextureFormat,
-        //depthFormat: GPUTextureFormat,
-        private readonly instanceBufferName: string,
-        private readonly colorTextureName: string,
-        //private readonly depthTextureName: string,
-    ) {
-        // --- Static quad geometry (cell-local space) ---
+         0.5, -0.5, 1.0, 0.0,
+         0.5,  0.5, 1.0, 1.0,
+        -0.5,  0.5, 0.0, 1.0,
+    ]);
 
-        const vertexData = new Float32Array([
-            // posX, posY, uvU, uvV
-            -0.5, -0.5, 0.0, 0.0,
-             0.5, -0.5, 1.0, 0.0,
-            -0.5,  0.5, 0.0, 1.0,
-
-             0.5, -0.5, 1.0, 0.0,
-             0.5,  0.5, 1.0, 1.0,
-            -0.5,  0.5, 0.0, 1.0,
-        ]);
-
-        this.vertexBuffer = device.createBuffer({
+    const vertexBuffer = scope.trackDestroyable(
+        device.createBuffer({
             label: 'Quad Vertex Buffer',
             size: vertexData.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
             mappedAtCreation: true,
-        });
+        })
+    );
 
-        new Float32Array(this.vertexBuffer.getMappedRange()).set(vertexData);
-        this.vertexBuffer.unmap();
+    new Float32Array(vertexBuffer.getMappedRange()).set(vertexData);
+    vertexBuffer.unmap();
 
-        this.atlasView = atlasTexture.createView();
+    return { vertexBuffer };
+}
 
-        // --- Bind group layout & pipeline ---
+/**
+ * Surface-lifetime resources
+ */
+export type DrawSurfaceResources = {
+    readonly bindGroup: GPUBindGroup;
+    readonly pipeline: GPURenderPipeline;
+    readonly colorView: GPUTexture,
+    readonly depthView: GPUTexture,
+};
 
-        this.bindGroupLayout = device.createBindGroupLayout({
+export function createDrawSurfaceResources(
+    device: GPUDevice,
+    scope: GpuResourceScope,
+    shader: GPUShaderModule,
+    atlasSampler: GPUSampler,
+    atlasTextureView: GPUTextureView,
+    instanceBuffer: GPUBuffer,
+    screenBuffer: GPUBuffer,
+    colorFormat: GPUTextureFormat,
+    depthFormat: GPUTextureFormat,
+    viewportWidth: number,
+    viewportHeight: number,
+): DrawSurfaceResources {
+    // --- Bind group layout & pipeline ---
+
+    const bindGroupLayout = scope.track(
+        device.createBindGroupLayout({
             label: 'Render BGL',
             entries: [
                 { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Atlas Sampler
@@ -61,14 +75,31 @@ export class DrawPassBuilder {
                 { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData
                 { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenLayout
             ],
-        });
+        })
+    );
 
-        const pipelineLayout = device.createPipelineLayout({
+    const bindGroup = scope.track(
+        device.createBindGroup({
+            label: 'Render Bind Group',
+            layout: bindGroupLayout,
+            entries: [
+                { binding: 0, resource: atlasSampler },
+                { binding: 1, resource: atlasTextureView },
+                { binding: 2, resource: { buffer: instanceBuffer } },
+                { binding: 3, resource: { buffer: screenBuffer } },
+            ],
+        })
+    );
+
+    const pipelineLayout = scope.track(
+        device.createPipelineLayout({
             label: 'Render Pipeline Layout',
-            bindGroupLayouts: [this.bindGroupLayout],
-        });
+            bindGroupLayouts: [bindGroupLayout],
+        })
+    );
 
-        this.renderPipeline = device.createRenderPipeline({
+    const pipeline = scope.track(
+        device.createRenderPipeline({
             label: 'Matrix Rain Render Pipeline',
             layout: pipelineLayout,
             vertex: {
@@ -104,82 +135,74 @@ export class DrawPassBuilder {
                     },
                 }],
             },
-            /*depthStencil: {
+            depthStencil: {
                 format: depthFormat,
                 depthWriteEnabled: true,
                 depthCompare: 'less',
-            },*/
+            },
             primitive: { topology: 'triangle-list' },
+        })
+    );
+
+    // --- Color and Depth textures ---
+
+    const colorView = scope.trackDestroyable(
+        device.createTexture({
+            size: [viewportWidth, viewportHeight],
+            format: colorFormat,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            //usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        })
+    );
+    const depthView = scope.trackDestroyable(
+        device.createTexture({
+            size: [viewportWidth, viewportHeight],
+            format: depthFormat,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        })
+    );
+
+    return {
+        bindGroup,
+        pipeline,
+        colorView,
+        depthView,
+    };
+}
+
+export class DrawPass {
+    constructor(
+        private readonly vertexBuffer: GPUBuffer,
+        private readonly pipeline: GPURenderPipeline,
+        private readonly bindGroup: GPUBindGroup,
+        private readonly colorView: GPUTexture,
+        private readonly depthView: GPUTexture,
+        private readonly instanceCount: number,
+    ) {}
+
+    execute(ctx: RenderContext): void {
+        const pass = ctx.encoder.beginRenderPass({
+            colorAttachments: [{
+                view: this.colorView,
+                loadOp: 'clear',
+                storeOp: 'store',
+                clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            }],
+            depthStencilAttachment: {
+                view: this.depthView,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+                depthClearValue: 1.0,
+            },
         });
-    }
 
-    build(
-        screenBuffer: GPUBuffer,
-        instanceCount: number,
-    ): RGPass {
-        const execute= (ctx: RenderContext): void => {
-            const bindGroup = this.device.createBindGroup({
-                label: 'Render Bind Group',
-                layout: this.bindGroupLayout,
-                entries: [
-                    { binding: 0, resource: this.atlasSampler },
-                    { binding: 1, resource: this.atlasView },
-                    { binding: 2, resource: { buffer: ctx.resources.getBuffer(this.instanceBufferName) } },
-                    { binding: 3, resource: { buffer: screenBuffer } },
-                ],
-            });
+        pass.setPipeline(this.pipeline);
+        pass.setVertexBuffer(0, this.vertexBuffer);
+        pass.setBindGroup(0, this.bindGroup);
+        // 6 vertices = 2 triangles forming a quad;
+        // instanced `instanceCount` times (one instance per glyph)
+        pass.draw(6, this.instanceCount);
 
-            const colorView = ctx.resources.getTexture(this.colorTextureName);
-            //const depthView = ctx.resources.getTexture(this.depthTextureName);
-
-            const pass = ctx.encoder.beginRenderPass({
-                colorAttachments: [{
-                    view: colorView,
-                    loadOp: 'clear',
-                    storeOp: 'store',
-                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
-                }],
-                /*depthStencilAttachment: {
-                    view: depthView,
-                    depthLoadOp: 'clear',
-                    depthStoreOp: 'store',
-                    depthClearValue: 1.0,
-                },*/
-            });
-
-            pass.setPipeline(this.renderPipeline);
-            pass.setVertexBuffer(0, this.vertexBuffer);
-            pass.setBindGroup(0, bindGroup);
-            // 6 vertices = 2 triangles forming a quad;
-            // instanced `instanceCount` times (one instance per glyph)
-            pass.draw(6, instanceCount);
-
-            pass.end();
-        };
-
-        this.isBuilt = true;
-
-        return {
-            name: 'DrawPass',
-            type: 'draw' as RGPassType,
-            reads: [this.instanceBufferName],
-            writes: [this.colorTextureName],
-            execute: execute,
-        };
-    }
-
-    rebuild(
-        screenBuffer: GPUBuffer,
-        instanceCount: number,
-    ): RGPass {
-        if (this.isBuilt) {
-            this.destroyResources();
-        }
-
-        return this.build(screenBuffer, instanceCount);
-    }
-
-    private destroyResources(): void {
-        try { this.vertexBuffer.destroy(); } catch {}
+        pass.end();
     }
 }

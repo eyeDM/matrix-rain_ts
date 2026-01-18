@@ -1,23 +1,3 @@
-import { ResourceManager } from "@platform/webgpu/resource-manager";
-
-export type RGResourceName = string;
-
-export type RGPassType =
-    | 'compute'
-    | 'draw'
-    | 'post'
-    | 'present';
-
-export interface RGPass {
-    readonly name: string;
-    readonly type: RGPassType;
-
-    readonly reads: readonly RGResourceName[];
-    readonly writes: readonly RGResourceName[];
-
-    execute(ctx: RenderContext): void;
-}
-
 /**
  * Single frame execution context.
  * GPUTextureView is retrieved lazily.
@@ -25,93 +5,116 @@ export interface RGPass {
 export type RenderContext = {
     readonly device: GPUDevice;
     readonly encoder: GPUCommandEncoder;
-    readonly resources: ResourceManager;
     readonly dt: number;
     acquireView(): GPUTextureView | null; // Current output view (usually it's swapchain)
 };
 
-export class RenderGraphBuilder {
-    private readonly passes: RGPass[] = [];
+export interface ExecutablePass {
+    execute(ctx: RenderContext): void;
+}
 
-    addPass(pass: RGPass): void {
-        this.assertUniqueName(pass.name);
-        this.passes.push(pass);
-    }
+export type GraphResource =
+    | GPUBuffer
+    | GPUTexture
+    | GPUTextureView;
 
-    build(): RenderGraph {
-        const ordered = this.topologicalSort(this.passes);
-        return new RenderGraph(ordered);
-    }
+interface GraphNode {
+    readonly pass: ExecutablePass;
+    readonly reads: Set<GraphResource>;
+    readonly writes: Set<GraphResource>;
+}
 
-    // --- Internal ---
+export class PassBuilder {
+    constructor(private readonly node: GraphNode) {}
 
-    private assertUniqueName(name: string): void {
-        if (this.passes.some(p => p.name === name)) {
-            throw new Error(`RenderGraph: duplicate pass name '${name}'`);
+    reads(...resources: readonly GraphResource[]): this {
+        for (const r of resources) {
+            this.node.reads.add(r);
         }
+        return this;
     }
 
-    private topologicalSort(passes: RGPass[]): RGPass[] {
-        const result: RGPass[] = [];
-        const remaining = new Set(passes);
-        const executed = new Set<RGPass>();
-
-        const lastWriter = new Map<RGResourceName, RGPass>();
-
-        while (remaining.size > 0) {
-            let progress = false;
-
-            for (const pass of Array.from(remaining)) {
-                if (this.canExecute(pass, lastWriter, executed)) {
-                    remaining.delete(pass);
-                    executed.add(pass);
-                    result.push(pass);
-
-                    for (const r of pass.writes) {
-                        lastWriter.set(r, pass);
-                    }
-
-                    progress = true;
-                }
-            }
-
-            if (!progress) {
-                throw new Error(
-                    'RenderGraph: cyclic or unsatisfiable resource dependencies'
-                );
-            }
+    writes(...resources: readonly GraphResource[]): this {
+        for (const r of resources) {
+            this.node.writes.add(r);
         }
-
-        return result;
-    }
-
-    private canExecute(
-        pass: RGPass,
-        lastWriter: Map<RGResourceName, RGPass>,
-        executed: Set<RGPass>,
-    ): boolean {
-        for (const r of pass.reads) {
-            const writer = lastWriter.get(r);
-            if (writer !== undefined && !executed.has(writer)) {
-                return false;
-            }
-        }
-        return true;
+        return this;
     }
 }
 
 export class RenderGraph {
     constructor(
-        private readonly passes: readonly RGPass[]
+        private readonly orderedPasses: readonly ExecutablePass[]
     ) {}
 
+    //execute(device: GPUDevice): void {
     execute(ctx: RenderContext): void {
-        //const encoder = ctx.device.createCommandEncoder();
+        //const encoder = device.createCommandEncoder();
 
-        for (const pass of this.passes) {
+        for (const pass of this.orderedPasses) {
+            //pass.execute(encoder);
             pass.execute(ctx);
         }
 
-        //ctx.device.queue.submit([encoder.finish()]);
+        //device.queue.submit([encoder.finish()]);
+    }
+}
+
+export class RenderGraphBuilder {
+    private readonly nodes: GraphNode[] = [];
+
+    addPass(pass: ExecutablePass): PassBuilder {
+        const node: GraphNode = {
+            pass,
+            reads: new Set(),
+            writes: new Set()
+        };
+
+        this.nodes.push(node);
+        return new PassBuilder(node);
+    }
+
+    build(): RenderGraph {
+        const ordered = this.topologicalSort();
+        return new RenderGraph(ordered.map(n => n.pass));
+    }
+
+    private topologicalSort(): GraphNode[] {
+        const result: GraphNode[] = [];
+        const visited = new Set<GraphNode>();
+        const visiting = new Set<GraphNode>();
+
+        const dependsOn = (a: GraphNode, b: GraphNode): boolean => {
+            // a зависит от b, если читает то, что b пишет
+            for (const r of a.reads) {
+                if (b.writes.has(r)) return true;
+            }
+            return false;
+        };
+
+        const visit = (node: GraphNode): void => {
+            if (visited.has(node)) return;
+            if (visiting.has(node)) {
+                throw new Error("RenderGraph cycle detected");
+            }
+
+            visiting.add(node);
+
+            for (const other of this.nodes) {
+                if (other !== node && dependsOn(node, other)) {
+                    visit(other);
+                }
+            }
+
+            visiting.delete(node);
+            visited.add(node);
+            result.push(node);
+        };
+
+        for (const node of this.nodes) {
+            visit(node);
+        }
+
+        return result;
     }
 }

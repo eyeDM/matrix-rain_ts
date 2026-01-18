@@ -1,6 +1,7 @@
 import { SimulationUniformWriter } from '@engine/simulation/simulation-uniform-writer';
 
 import { SimulationUniformLayout } from '@platform/webgpu/layouts';
+import {GpuResourceScope} from "@platform/webgpu/resource-manager";
 
 export type StreamBuffers = {
     cols: number;
@@ -16,6 +17,7 @@ export type StreamBuffers = {
     simulationUniforms: GPUBuffer;
     simulationWriter: SimulationUniformWriter;
 
+    writeFrame(dt: number): void;
     destroy(): void;
 };
 
@@ -25,6 +27,7 @@ export type StreamBuffers = {
  */
 export function createStreamBuffers(
     device: GPUDevice,
+    surfaceScope: GpuResourceScope,
     cols: number,
     rows: number,
     glyphCount: number,
@@ -70,15 +73,22 @@ export function createStreamBuffers(
         data: Float32Array | Uint32Array,
         usage: GPUBufferUsageFlags
     ): GPUBuffer {
-        const buffer = device.createBuffer({
-            size: alignTo4(data.byteLength),
-            usage: usage | GPUBufferUsage.COPY_DST,
-            mappedAtCreation: true,
-        });
+        const buffer = surfaceScope.trackDestroyable(
+            device.createBuffer({
+                size: alignTo4(data.byteLength),
+                usage: usage | GPUBufferUsage.COPY_DST,
+                mappedAtCreation: true,
+            })
+        );
 
         new (data.constructor as any)(buffer.getMappedRange()).set(data);
         buffer.unmap();
         return buffer;
+    }
+
+    function writeFrame(dt: number): void {
+        simulationWriter.writeFrame(dt);
+        simulationWriter.flush(device.queue, simulationUniforms);
     }
 
     function safeDestroy(buffer?: GPUBuffer): void {
@@ -86,7 +96,7 @@ export function createStreamBuffers(
         try {
             buffer.destroy();
         } catch {
-            /* noop — buffer may already be destroyed */
+            /* buffer may already be destroyed */
         }
     }
 
@@ -98,9 +108,9 @@ export function createStreamBuffers(
     const energyBuf = createMappedBuffer(energy, GPUBufferUsage.STORAGE);
 
     const simulationUniforms = device.createBuffer({
+        label: 'SimulationUniforms',
         size: SimulationUniformLayout.SIZE,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        label: 'SimulationUniforms',
     });
 
     const simulationWriter = new SimulationUniformWriter();
@@ -112,8 +122,7 @@ export function createStreamBuffers(
         cellHeight,
         maxTrail
     );
-    simulationWriter.writeFrame(0.0);
-    simulationWriter.flush(device.queue, simulationUniforms);
+    writeFrame(0.0);
 
     return {
         cols,
@@ -127,6 +136,7 @@ export function createStreamBuffers(
         simulationUniforms,
         simulationWriter,
 
+        writeFrame,
         destroy() {
             safeDestroy(headsBuf);
             safeDestroy(speedsBuf);

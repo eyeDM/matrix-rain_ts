@@ -1,24 +1,34 @@
 // Bootstrap entry — initialize WebGPU
 
+import { CanvasSize } from '@runtime/canvas-resizer';
 import { SwapChainController } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
-import { CanvasSize } from '@runtime/canvas-resizer';
 
 import { AtlasResult, createGlyphAtlas } from '@engine/render/resources';
 import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
-import { SimulationPassBuilder } from '@engine/simulation/simulation-pass';
-import { DrawPassBuilder } from '@engine/render/draw-pass';
-import { PresentPassBuilder } from '@engine/render/present-pass';
+import {
+    SimulationDeviceResources, createSimulationDeviceResources,
+    SimulationSurfaceResources, createSimulationSurfaceResources,
+    SimulationComputePass,
+} from '@engine/simulation/simulation-pass';
+import {
+    DrawDeviceResources, createDrawDeviceResources,
+    DrawSurfaceResources, createDrawSurfaceResources,
+    DrawPass,
+} from '@engine/render/draw-pass';
+import {
+    PresentDeviceResources, createPresentDeviceResources,
+    PresentSurfaceResources, createPresentSurfaceResources,
+    PresentPass,
+} from '@engine/render/present-pass';
 import { RenderContext, RenderGraphBuilder, RenderGraph } from '@engine/render/render-graph';
 
-import { InstanceLayout } from '@platform/webgpu/layouts';
 import { WebGPUContext, initWebGPU } from '@platform/webgpu/init';
 import { ShaderLoader } from '@platform/webgpu/shader-loader';
-import { ResourceRegistry } from '@platform/webgpu/resource-registry';
-import { ResourceManager } from '@platform/webgpu/resource-manager';
+import { GpuResources } from '@platform/webgpu/resource-manager';
 
 const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // 'bgra8unorm'
-//const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
+const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 
 /**
  * Immutable screen layout derived from canvas and atlas sizes.
@@ -70,118 +80,6 @@ function computeScreenLayout(
             maxTrail: maxTrail,
         },
     };
-}
-
-function buildRegistry(layout: ScreenLayout): ResourceRegistry {
-    const registry = new ResourceRegistry();
-
-    /**
-     * Define a GPU buffer specifically for holding instance data (InstanceData[] in WGSL).
-     * This buffer acts as the output target for the Compute Shader and the input source
-     * for the Render (Draw) Shader.
-     */
-    registry.addBuffer('InstanceBuffer', {
-        size: layout.instances.count * InstanceLayout.SIZE,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
-    });
-
-    /*registry.addBuffer('FrameUniforms', {
-        size: 64,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });*/
-
-    /*const sceneColor = resources.declareTexture({
-        name: 'SceneColor',
-        desc: {
-            format: COLOR_FORMAT,
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-            size: { width: size.width, height: size.height }
-        },
-        recreateOnResize: true
-    });*/
-
-    registry.addTexture('SceneColor', {
-        size: [layout.viewport.width, layout.viewport.height],
-        format: COLOR_FORMAT,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-        //usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });
-
-    /*registry.addTexture('DepthTarget', {
-        size: [size.width, size.height],
-        format: DEPTH_FORMAT,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    });*/
-
-    /*registry.addSampler('LinearClampSampler', {
-        magFilter: 'linear',
-        minFilter: 'linear',
-        addressModeU: 'clamp-to-edge',
-        addressModeV: 'clamp-to-edge',
-    });*/
-
-    registry.freeze(); // make registry immutable
-
-    return registry;
-}
-
-/**
- * FIXME: *PassBuilder создают destroyable GPU-ресурсы,
- * часть из которых зависит от текущего размера экрана.
- * При resize их следует уничтожать и создавать заново.
- */
-function buildRenderGraph(
-    gpu: WebGPUContext,
-    shaderLoader: ShaderLoader,
-    atlas: AtlasResult,
-    layout: ScreenLayout,
-    screenBuffer: GPUBuffer,
-): RenderGraph {
-    const graphBuilder = new RenderGraphBuilder();
-
-    // --- Pass declarations ---
-
-    const SimulationPass = new SimulationPassBuilder(
-        gpu.device,
-        shaderLoader.get('matrix-compute'),
-        atlas.glyphUVsBuffer,
-        atlas.glyphCount,
-        atlas.cellWidth,
-        atlas.cellHeight,
-        'InstanceBuffer',
-    )
-
-    graphBuilder.addPass(
-        SimulationPass.build(layout.grid.cols, layout.grid.rows, layout.instances.maxTrail)
-    );
-
-    const DrawPass = new DrawPassBuilder(
-        gpu.device,
-        shaderLoader.get('matrix-draw'),
-        atlas.texture,
-        atlas.sampler,
-        COLOR_FORMAT,
-        //DEPTH_FORMAT,
-        'InstanceBuffer',
-        'SceneColor',
-    );
-
-    graphBuilder.addPass(
-        DrawPass.build(screenBuffer, layout.instances.count)
-    );
-
-    const PresentPass = new PresentPassBuilder(
-        gpu.device,
-        gpu.format,
-        shaderLoader.get('matrix-present'),
-        'SceneColor',
-    );
-
-    graphBuilder.addPass(
-        PresentPass.build()
-    );
-
-    return graphBuilder.build();
 }
 
 export async function bootstrap(): Promise<void> {
@@ -248,34 +146,144 @@ export async function bootstrap(): Promise<void> {
 
     const screen = new ScreenUniformController(gpu.device);
 
-    screen.update(gpu.device, layout.viewport.width, layout.viewport.height);
-
-    // --- Resource declaration ---
-
-    const registry: ResourceRegistry = buildRegistry(layout);
-
-    let resources = new ResourceManager(gpu.device, registry);
-
-    // --- Render Graph ---
-
-    let renderGraph: RenderGraph = buildRenderGraph(
-        gpu,
-        shaderLoader,
-        atlas,
-        layout,
-        screen.buffer,
+    screen.update(
+        gpu.device,
+        layout.viewport.width,
+        layout.viewport.height,
     );
+
+    // --- Resources management ---
+
+    const resources = new GpuResources();
+
+    // * Device-Lifetime resources
+
+    const simDeviceResources: SimulationDeviceResources = createSimulationDeviceResources(
+        gpu.device,
+        resources.deviceScope,
+        shaderLoader.get('matrix-compute'),
+    );
+
+    const drawDeviceResources: DrawDeviceResources = createDrawDeviceResources(
+        gpu.device,
+        resources.deviceScope,
+    );
+
+    const presentDeviceResources: PresentDeviceResources = createPresentDeviceResources(
+        gpu.device,
+        resources.deviceScope,
+        shaderLoader.get('matrix-present'),
+        gpu.format,
+    );
+
+    // * Surface-Lifetime resources
+
+    function buildSurface(
+        layout: ScreenLayout,
+    ): {
+        simPass: SimulationComputePass;
+        drawPass: DrawPass;
+        presentPass: PresentPass;
+        renderGraph: RenderGraph;
+    } {
+        const simSurfaceResources: SimulationSurfaceResources = createSimulationSurfaceResources(
+            gpu.device,
+            resources.surfaceScope,
+            simDeviceResources.pipeline,
+            atlas.glyphUVsBuffer,
+            atlas.glyphCount,
+            atlas.cellWidth,
+            atlas.cellHeight,
+            layout.grid.cols,
+            layout.grid.rows,
+            layout.instances.maxTrail,
+            layout.instances.count,
+        );
+
+        const drawSurfaceResources: DrawSurfaceResources = createDrawSurfaceResources(
+            gpu.device,
+            resources.surfaceScope,
+            shaderLoader.get('matrix-draw'),
+            atlas.sampler,
+            atlas.textureView,
+            simSurfaceResources.instanceBuffer,
+            screen.buffer,
+            COLOR_FORMAT,
+            DEPTH_FORMAT,
+            layout.viewport.width,
+            layout.viewport.height,
+        );
+
+        const presentSurfaceResources: PresentSurfaceResources = createPresentSurfaceResources(
+            gpu.device,
+            resources.surfaceScope,
+            presentDeviceResources.pipeline,
+            presentDeviceResources.sampler,
+            drawSurfaceResources.colorView,
+        );
+
+        // --- Render Passes ---
+
+        const simPass = new SimulationComputePass(
+            simDeviceResources.pipeline,
+            simSurfaceResources.streamBuffers,
+            simSurfaceResources.bindGroup,
+            layout.grid.cols,
+        );
+
+        const drawPass = new DrawPass(
+            drawDeviceResources.vertexBuffer,
+            drawSurfaceResources.pipeline,
+            drawSurfaceResources.bindGroup,
+            drawSurfaceResources.colorView,
+            drawSurfaceResources.depthView,
+            layout.instances.count,
+        );
+
+        const presentPass = new PresentPass(
+            presentDeviceResources.pipeline,
+            presentSurfaceResources.bindGroup,
+        );
+
+        // --- Render Graph ---
+
+        const graphBuilder = new RenderGraphBuilder();
+
+        graphBuilder
+            .addPass(simPass)
+            .writes(simSurfaceResources.instanceBuffer);
+
+        graphBuilder
+            .addPass(drawPass)
+            .reads(simSurfaceResources.instanceBuffer)
+            .writes(drawSurfaceResources.colorView);
+
+        graphBuilder
+            .addPass(presentPass)
+            .reads(drawSurfaceResources.colorView);
+
+        const renderGraph: RenderGraph = graphBuilder.build();
+
+        return {
+            simPass,
+            drawPass,
+            presentPass,
+            renderGraph,
+        };
+    }
+
+    let surface = buildSurface(layout);
+    let renderGraph = surface.renderGraph;
 
     // --- Render loop ---
 
     function makeRenderContext(
         encoder: GPUCommandEncoder,
-        dt: number
+        dt: number,
     ): RenderContext {
         return {
             device: gpu.device,
             encoder,
-            resources,
             dt,
             acquireView: () => swapChain.getCurrentView(),
         };
@@ -310,20 +318,18 @@ export async function bootstrap(): Promise<void> {
             atlas.cellHeight,
         );
 
-        screen.update(gpu.device, layout.viewport.width, layout.viewport.height);
-
-        resources.destroyAll();
-        const newRegistry = buildRegistry(layout);
-
-        resources = new ResourceManager(gpu.device, newRegistry);
-
-        renderGraph = buildRenderGraph(
-            gpu,
-            shaderLoader,
-            atlas,
-            layout,
-            screen.buffer,
+        screen.update(
+            gpu.device,
+            layout.viewport.width,
+            layout.viewport.height,
         );
+
+        // 1. Destroy ALL surface-lifetime GPU resources
+        resources.surfaceScope.destroyAll();
+
+        // 2. Rebuild surface layer
+        surface = buildSurface(layout);
+        renderGraph = surface.renderGraph;
     });
 }
 

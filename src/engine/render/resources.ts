@@ -26,6 +26,7 @@ export type UVRect = {
  */
 export type AtlasResult = {
     texture: GPUTexture;
+    textureView: GPUTextureView;
     sampler: GPUSampler;
     glyphMap: Map<string, UVRect>;
     glyphCount: number;
@@ -225,10 +226,10 @@ export async function createGlyphAtlas(
     // --- 4. GPU Texture Creation and Copy ---
 
     const texture = device.createTexture({
+        label: 'Glyph Atlas Texture',
         size: { width: atlasWidth, height: atlasHeight, depthOrArrayLayers: 1 },
         format: 'rgba8unorm',
         usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-        label: 'Glyph Atlas Texture',
     });
 
     // Convert canvas to ImageBitmap
@@ -248,22 +249,24 @@ export async function createGlyphAtlas(
         try { bitmap.close(); } catch (e) { /* ignore */ }
     }
 
+    const textureView = texture.createView();
+
     // --- 5. Sampler Creation ---
 
     const sampler = device.createSampler({
+        label: 'Glyph Atlas Sampler',
         magFilter: 'linear',
         minFilter: 'linear',
         addressModeU: 'clamp-to-edge',
         addressModeV: 'clamp-to-edge',
-        label: 'Glyph Atlas Sampler',
     });
 
     // --- 6. Glyph UV Buffer Creation ---
 
     const glyphUVsBuffer = device.createBuffer({
+        label: 'Glyph UV Storage Buffer',
         size: uvRects.byteLength,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        label: 'Glyph UV Storage Buffer',
         mappedAtCreation: true,
     });
 
@@ -274,6 +277,7 @@ export async function createGlyphAtlas(
 
     return {
         texture,
+        textureView,
         sampler,
         glyphMap,
         glyphCount: glyphs.length,
