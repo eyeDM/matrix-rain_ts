@@ -106,17 +106,14 @@ export async function bootstrap(): Promise<void> {
     const shaderLoader = new ShaderLoader(gpu.device);
 
     await Promise.all([
-        // Load compute WGSL
         shaderLoader.load(
             'matrix-compute',
-            new URL('./../assets/shaders/gpu-update.wgsl', import.meta.url).href
+            new URL('./../assets/shaders/compute.wgsl', import.meta.url).href
         ),
-        // Load draw shader
         shaderLoader.load(
             'matrix-draw',
-            new URL('./../assets/shaders/draw-symbols.wgsl', import.meta.url).href
+            new URL('./../assets/shaders/draw.wgsl', import.meta.url).href
         ),
-        // Load present shader
         shaderLoader.load(
             'matrix-present',
             new URL('./../assets/shaders/present.wgsl', import.meta.url).href

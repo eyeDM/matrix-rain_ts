@@ -1,8 +1,8 @@
 # TODO
 
-## [WGSL] Улучшить PRNG для симуляции (gpu-update.wgsl)
+## [WGSL] Улучшить PRNG для симуляции (compute.wgsl)
 
-Заменить или модифицировать текущий Linear Congruential Generator (LCG) в `gpu-update.wgsl` на более качественный PRNG (например, Xorshift или Tausworthe) для лучшего визуального распределения случайности.
+Заменить или модифицировать текущий Linear Congruential Generator (LCG) в `compute.wgsl` на более качественный PRNG (например, Xorshift или Tausworthe) для лучшего визуального распределения случайности.
 
 ## При выборе символов использовать bias по алфавиту
 
