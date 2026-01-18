@@ -155,43 +155,55 @@ backend (WebGPU abstractions)
 assets (WGSL)
 ```
 
-### Core subsystems (FIXME)
+### Core subsystems
 
-1. **WebGPU initialization**
+1. **Backend (WebGPU)**
 
-    - Adapter selection with high-performance preference
-    - HiDPI-aware canvas configuration
-    - Safe reconfiguration on resize
+    - Adapter and device initialization
+    - Shader module compilation and management
+    - Resource scopes: device-, surface-, frame-lifetime
+    - Safe reconfiguration of swapchain and canvas on resize
 
-2. **Glyph atlas**
+2. **Glyph atlas (domain layer)**
 
     - Glyphs rendered once into an offscreen canvas
-    - Uploaded as a single `rgba8unorm` texture
-    - UV rectangles stored in a GPU storage buffer for compute access
+    - Uploaded as a GPU texture with sampler
+    - UV coordinates stored in a GPU buffer for simulation and rendering
+    - Pure domain logic, independent of GPU execution
 
-3. **Simulation (compute shader)**
+3. **Simulation (compute pass, GPU layer)**
 
     - One workgroup per column (`@workgroup_size(64)`)
-    - Updates:
-        * Head position
-        * Speed
-        * Trail length
+    - Updates entirely on GPU:
+        * Head positions
+        * Speeds
+        * Trail lengths
         * Glyph selection
         * Brightness gradient
-    - Outputs directly into the instance buffer consumed by the rendere
+    - Writes directly into the instance buffer for rendering
+    - Surface-lifetime resources updated on resize
 
-4. **Rendering**
+4. **Rendering (draw pass, GPU layer)**
 
     - Single quad vertex buffer
     - Fully instanced draw (`draw(6, instanceCount)`)
     - Alpha blending for smooth trails
     - Screen-space positioning via uniforms
+    - Surface-lifetime resources recreated on resize
 
-5. **RenderGraph**
+5. **Present pass (GPU layer)**
 
-    - Declarative pass dependencies
+    - Composites offscreen render target to swapchain
+    - Fullscreen triangle, clear and store ops
+    - Receives frame-lifetime `GPUTextureView` from swapchain
+
+6. **RenderGraph**
+
+    - Declarative pass dependencies (`reads` / `writes`)
     - Topological sorting per frame
-    - Clean separation between compute and draw passes
+    - Passes encode commands only; do not own resources
+    - Ensures deterministic execution and separation between compute, draw, and present passes
+
 
 ---
 
