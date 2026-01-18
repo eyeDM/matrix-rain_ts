@@ -74,7 +74,7 @@ GPU (WebGPU, WGSL)
 
 - **Explicit memory layouts**
 
-    All CPU ↔ GPU layouts are defined once in `src/platform/webgpu/layouts.ts` and mirrored exactly in WGSL.
+    All CPU ↔ GPU layouts are defined once in `src/backend/layouts.ts` and mirrored exactly in WGSL.
 
 - **Explicit lifetimes**
 
@@ -96,33 +96,36 @@ matrix-rain_ts/
 │  ├─ app/
 │  │  └─ main.ts                # Application bootstrap
 │  │
-│  ├─ runtime/                  # Long-lived runtime infrastructure
+│  ├─ runtime/                  # App-level orchestration
 │  │  ├─ render-loop.ts         # requestAnimationFrame loop
-│  │  ├─ swap-chain.ts          # (перенос из gpu/)
+│  │  ├─ swap-chain.ts          # Swapchain + resize handling
 │  │  └─ canvas-resizer.ts
 │  │
-│  ├─ platform/                 # WebGPU platform abstractions
-│  │  └─ webgpu/
-│  │     ├─ init.ts             # Adapter/device/context initialization
-│  │     ├─ shader-library.ts
-│  │     ├─ layouts.ts          # Canonical CPU↔GPU memory layouts
-│  │     └─ resource-manager.ts # Explicit GPU resource ownership
-│  │
-│  ├─ engine/                   # Domain logic (GPU-agnostic where possible)
-│  │  ├─ render/
-│  │  │  ├─ renderer.ts         # Pipelines, bind groups, passes
-│  │  │  ├─ render-graph.ts     # DAG-based render pass execution
-│  │  │  └─ resources.ts        # Glyph atlas
+│  ├─ gpu/                      # WebGPU execution layer
+│  │  ├─ render-graph.ts        # DAG-based render pass execution + reads / writes DSL
 │  │  │
-│  │  └─ simulation/
-│  │     ├─ simulation-pass.ts
-│  │     ├─ streams.ts          # Simulation buffers
-│  │     └─ simulation-uniform-writer.ts    # SimulationUniforms owner
+│  │  ├─ screen-uniform-controller.ts
+│  │  ├─ simulation-uniform-writer.ts    # SimulationUniforms owner
+│  │  ├─ streams.ts             # Simulation buffers
+│  │  ├─ simulation-pass.ts     # Compute pass (GPU execution)
+│  │  │
+│  │  ├─ draw-pass.ts           # Offscreen render pass
+│  │  │
+│  │  └─ present-pass.ts        # Final composite pass
+│  │
+│  ├─ backend/                  # WebGPU platform abstractions
+│  │  ├─ init.ts                # Adapter / device / context initialization
+│  │  ├─ layouts.ts             # Canonical CPU↔GPU memory layouts
+│  │  ├─ resource-tracker.ts    # GPU resource tracker
+│  │  └─ shader-loader.ts       # WGSL loader
+│  │
+│  ├─ domain/
+│  │  └─ glyph-atlas.ts         # Glyph atlas
 │  │
 │  └─ assets/                   # Static GPU assets
 │     └─ shaders/
-│        ├─ draw-symbols.wgsl   # Instanced glyph rendering
-│        ├─ gpu-update.wgsl     # Compute shader (simulation)
+│        ├─ compute.wgsl
+│        ├─ draw.wgsl
 │        └─ present.wgsl
 │
 ├─ README.md
@@ -134,19 +137,25 @@ matrix-rain_ts/
 
 ### Dependency flow
 
+The project follows a strict top-down dependency flow. Each layer depends only on the layers below it and never in the opposite direction. This keeps the architecture predictable, testable, and free of hidden coupling.
+
+High-level application and runtime code orchestrate execution, GPU passes encode commands without owning platform details, backend code provides thin WebGPU abstractions, and WGSL shaders form the lowest-level implementation.
+
 ```
-main.ts
+app (bootstrap)
  ↓
-runtime (loop, swap-chain)
+runtime (render loop, swapchain, resize)
  ↓
-engine (renderer / simulation)
+domain (glyph atlas)
  ↓
-platform/webgpu (device, shaders, layouts)
+gpu (passes, render graph, execution)
  ↓
-assets (wgsl)
+backend (WebGPU abstractions)
+ ↓
+assets (WGSL)
 ```
 
-### Core subsystems
+### Core subsystems (FIXME)
 
 1. **WebGPU initialization**
 
@@ -198,7 +207,7 @@ assets (wgsl)
 
 - **Strict layout contracts**
 
-    Any change in `src/platform/webgpu/layouts.ts` must be mirrored in WGSL structs. This is intentional and enforced by design.
+    Any change in `src/backend/layouts.ts` must be mirrored in WGSL structs. This is intentional and enforced by design.
 
 - **Scalability**
 

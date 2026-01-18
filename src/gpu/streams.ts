@@ -1,7 +1,7 @@
-import { SimulationUniformWriter } from '@engine/simulation/simulation-uniform-writer';
+import { SimulationUniformLayout } from '@backend/layouts';
+import { GpuResourceScope } from '@backend/resource-tracker';
 
-import { SimulationUniformLayout } from '@platform/webgpu/layouts';
-import {GpuResourceScope} from "@platform/webgpu/resource-manager";
+import { SimulationUniformWriter } from '@gpu/simulation-uniform-writer';
 
 export type StreamBuffers = {
     cols: number;

@@ -30,11 +30,11 @@
     "baseUrl": ".",
     "paths": {
       "@app/*": ["src/app/*"],
-      "@runtime/*": ["src/runtime/*"],
-      "@engine/*": ["src/engine/*"],
-      "@platform/*": ["src/platform/*"],
       "@assets/*": ["src/assets/*"],
-      "@shared/*": ["src/shared/*"]
+      "@backend/*": ["src/backend/*"],
+      "@domain/*": ["src/domain/*"],
+      "@gpu/*": ["src/gpu/*"],
+      "@runtime/*": ["src/runtime/*"]
     }
   },
   "include": ["src"]

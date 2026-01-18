@@ -1,4 +1,4 @@
-import { ScreenLayout } from '@platform/webgpu/layouts';
+import { ScreenLayout } from '@backend/layouts';
 
 export class ScreenUniformController {
     readonly buffer: GPUBuffer; // Screen uniform buffer

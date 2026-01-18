@@ -1,6 +1,6 @@
-import { RenderContext } from '@engine/render/render-graph';
+import { GpuResourceScope } from '@backend/resource-tracker';
 
-import { GpuResourceScope } from '@platform/webgpu/resource-manager';
+import { RenderContext } from '@gpu/render-graph';
 
 /**
  * Device-lifetime resources

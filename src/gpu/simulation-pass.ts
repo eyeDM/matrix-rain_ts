@@ -1,8 +1,8 @@
-import { RenderContext } from '@engine/render/render-graph';
-import { StreamBuffers, createStreamBuffers } from '@engine/simulation/streams';
+import { InstanceLayout } from '@backend/layouts';
+import { GpuResourceScope } from '@backend/resource-tracker';
 
-import { InstanceLayout } from '@platform/webgpu/layouts';
-import { GpuResourceScope } from '@platform/webgpu/resource-manager';
+import { RenderContext } from '@gpu/render-graph';
+import { StreamBuffers, createStreamBuffers } from '@gpu/streams';
 
 const WORKGROUP_SIZE_X = 64; // must match WGSL @workgroup_size
 

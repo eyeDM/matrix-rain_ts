@@ -1,31 +1,32 @@
 // Bootstrap entry — initialize WebGPU
 
-import { CanvasSize } from '@runtime/canvas-resizer';
-import { SwapChainController } from '@runtime/swap-chain';
-import { startRenderLoop } from '@runtime/render-loop';
+import { WebGPUContext, initWebGPU } from '@backend/init';
+import { ShaderLoader } from '@backend/shader-loader';
+import { GpuResources } from '@backend/resource-tracker';
 
-import { AtlasResult, createGlyphAtlas } from '@engine/render/resources';
-import { ScreenUniformController } from '@engine/render/screen-uniform-controller';
+import { ScreenUniformController } from '@gpu/screen-uniform-controller';
 import {
     SimulationDeviceResources, createSimulationDeviceResources,
     SimulationSurfaceResources, createSimulationSurfaceResources,
     SimulationComputePass,
-} from '@engine/simulation/simulation-pass';
+} from '@gpu/simulation-pass';
 import {
     DrawDeviceResources, createDrawDeviceResources,
     DrawSurfaceResources, createDrawSurfaceResources,
     DrawPass,
-} from '@engine/render/draw-pass';
+} from '@gpu/draw-pass';
 import {
     PresentDeviceResources, createPresentDeviceResources,
     PresentSurfaceResources, createPresentSurfaceResources,
     PresentPass,
-} from '@engine/render/present-pass';
-import { RenderContext, RenderGraphBuilder, RenderGraph } from '@engine/render/render-graph';
+} from '@gpu/present-pass';
+import { RenderContext, RenderGraphBuilder, RenderGraph } from '@gpu/render-graph';
 
-import { WebGPUContext, initWebGPU } from '@platform/webgpu/init';
-import { ShaderLoader } from '@platform/webgpu/shader-loader';
-import { GpuResources } from '@platform/webgpu/resource-manager';
+import { AtlasResult, createGlyphAtlas } from '@domain/glyph-atlas';
+
+import { CanvasSize } from '@runtime/canvas-resizer';
+import { SwapChainController } from '@runtime/swap-chain';
+import { startRenderLoop } from '@runtime/render-loop';
 
 const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // 'bgra8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';

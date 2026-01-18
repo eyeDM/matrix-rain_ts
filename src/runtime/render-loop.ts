@@ -1,4 +1,4 @@
-import type { RenderContext } from '@engine/render/render-graph';
+import type { RenderContext } from '@gpu/render-graph';
 
 /**
  * Render loop infrastructure.
