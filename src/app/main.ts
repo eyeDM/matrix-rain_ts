@@ -4,7 +4,7 @@ import { WebGPUContext, initWebGPU } from '@backend/init';
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
 
-import { ScreenUniformController } from '@gpu/screen-uniform-controller';
+import { ScreenUniformBuffer } from '@gpu/screen-uniform-buffer';
 import {
     SimulationDeviceResources, createSimulationDeviceResources,
     SimulationSurfaceResources, createSimulationSurfaceResources,
@@ -142,10 +142,9 @@ export async function bootstrap(): Promise<void> {
 
     // --- Screen uniforms ---
 
-    const screen = new ScreenUniformController(gpu.device);
+    const screen = new ScreenUniformBuffer(gpu.device);
 
     screen.update(
-        gpu.device,
         layout.viewport.width,
         layout.viewport.height,
     );
@@ -317,7 +316,6 @@ export async function bootstrap(): Promise<void> {
         );
 
         screen.update(
-            gpu.device,
             layout.viewport.width,
             layout.viewport.height,
         );

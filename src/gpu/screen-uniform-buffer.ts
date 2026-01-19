@@ -1,13 +1,13 @@
 import { ScreenLayout } from '@backend/layouts';
 
-export class ScreenUniformController {
-    readonly buffer: GPUBuffer; // Screen uniform buffer
+export class ScreenUniformBuffer {
+    readonly buffer: GPUBuffer;
 
     private readonly staging: ArrayBuffer;
     private readonly view: DataView;
 
-    constructor(device: GPUDevice) {
-        this.buffer = device.createBuffer({
+    constructor(private readonly device: GPUDevice) {
+        this.buffer = this.device.createBuffer({
             label: 'Screen Uniform Buffer',
             size: ScreenLayout.SIZE,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -18,13 +18,12 @@ export class ScreenUniformController {
     }
 
     update(
-        device: GPUDevice,
         width: number,
         height: number
     ): void {
         this.view.setFloat32(ScreenLayout.offsets.width, width, true);
         this.view.setFloat32(ScreenLayout.offsets.height, height, true);
-        device.queue.writeBuffer(this.buffer, 0, this.staging);
+        this.device.queue.writeBuffer(this.buffer, 0, this.staging);
     }
 
     destroy(): void {
