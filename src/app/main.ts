@@ -137,17 +137,14 @@ export async function bootstrap(): Promise<void> {
         atlas.cellHeight,
     );
 
-    // --- Screen uniforms ---
-
-    const screen = new ScreenUniformBuffer(gpu.device);
-
-    screen.update(layout.viewport.width, layout.viewport.height);
-
     // --- Resources management ---
 
     const resources = new GpuResources();
 
     // * Device-Lifetime resources
+
+    const screen = new ScreenUniformBuffer(gpu.device, resources.deviceScope);
+    screen.update(layout.viewport.width, layout.viewport.height);
 
     const simDeviceResources: SimulationDeviceResources = createSimulationDeviceResources(
         gpu.device,
