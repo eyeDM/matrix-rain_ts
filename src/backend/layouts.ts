@@ -14,6 +14,11 @@
  */
 
 // Unified simulation uniforms.
+//
+// ALIGN intentionally set to 16: conservative choice matching common
+// GPU/UBO expectations (vec3/vec4 packing) and cache-friendly 16-byte accesses.
+// Although these fields are scalars (align=4) the 16-byte alignment
+// improves portability and avoids driver-side re-packing.
 export const SimulationUniformLayout = {
     ALIGN: 16,
     SIZE: 32,
@@ -29,25 +34,25 @@ export const SimulationUniformLayout = {
     },
 } as const;
 
+// Instance data layout (storage buffer), one per symbol instance.
 export const InstanceLayout = {
     ALIGN: 16,
-    SIZE: 48,
+    SIZE: 64,
     offsets: {
         offset: 0,       // vec2<f32> - pixel-space offset of top-left of cell
         cellSize: 8,     // vec2<f32> - pixel size (width, height) of cell
         uvRect: 16,      // vec4<f32> - u0, v0, u1, v1 (normalized atlas UVs)
         brightness: 32,  // f32  — final luminance scalar
-        _pad0: 36,       // vec3<f32>  — explicit padding
+        _pad0: 48,       // vec3<f32>  — explicit padding (aligned to 16)
     },
 } as const;
 
 // Canvas size in pixels
 export const ScreenLayout = {
-    ALIGN: 16,
-    SIZE: 16,
+    ALIGN: 8,
+    SIZE: 8,
     offsets: {
         width: 0,  // f32
         height: 4, // f32
-        _pad0: 8,  // vec2<f32>
     },
 } as const;

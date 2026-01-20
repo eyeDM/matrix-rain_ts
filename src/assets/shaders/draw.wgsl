@@ -1,7 +1,6 @@
 // * Instanced symbol renderer *
 
-// Instance data layout (storage buffer), one per symbol instance.
-// MUST match InstanceLayout (48 bytes, align 16)
+// MUST match InstanceLayout (64 bytes, align 16)
 struct InstanceData {
   offset: vec2<f32>,
   cellSize: vec2<f32>,

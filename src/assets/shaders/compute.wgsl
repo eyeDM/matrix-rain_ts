@@ -64,7 +64,7 @@ struct SimulationUniforms  {
   pad0: u32,
 };
 
-// MUST match InstanceLayout (48 bytes, align 16)
+// MUST match InstanceLayout (64 bytes, align 16)
 struct InstanceData {
   offset: vec2<f32>,
   cellSize: vec2<f32>,

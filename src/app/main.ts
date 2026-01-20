@@ -60,11 +60,8 @@ function computeScreenLayout(
     cellWidth: number,
     cellHeight: number,
 ): ScreenLayout {
-    const widthCSS = canvasSize.width * canvasSize.dpr;
-    const heightCSS = canvasSize.height * canvasSize.dpr;
-
-    const cols = Math.floor(widthCSS / cellWidth);
-    const rows = Math.ceil(heightCSS / cellHeight);
+    const cols = Math.floor(canvasSize.width / cellWidth);
+    const rows = Math.ceil(canvasSize.height / cellHeight);
 
     const MIN_TRAIL = 4;
     const maxTrail = Math.max(MIN_TRAIL, rows);
@@ -144,10 +141,7 @@ export async function bootstrap(): Promise<void> {
 
     const screen = new ScreenUniformBuffer(gpu.device);
 
-    screen.update(
-        layout.viewport.width,
-        layout.viewport.height,
-    );
+    screen.update(layout.viewport.width, layout.viewport.height);
 
     // --- Resources management ---
 
@@ -175,9 +169,7 @@ export async function bootstrap(): Promise<void> {
 
     // * Surface-Lifetime resources
 
-    function buildSurface(
-        layout: ScreenLayout,
-    ): {
+    function buildSurface(layout: ScreenLayout): {
         simPass: SimulationComputePass;
         drawPass: DrawPass;
         presentPass: PresentPass;
@@ -315,10 +307,7 @@ export async function bootstrap(): Promise<void> {
             atlas.cellHeight,
         );
 
-        screen.update(
-            layout.viewport.width,
-            layout.viewport.height,
-        );
+        screen.update(layout.viewport.width, layout.viewport.height);
 
         // 1. Destroy ALL surface-lifetime GPU resources
         resources.surfaceScope.destroyAll();
