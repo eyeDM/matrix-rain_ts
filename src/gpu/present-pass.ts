@@ -22,6 +22,7 @@ export function createPresentDeviceResources(
             entries: [
                 { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+                { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             ],
         })
     );
@@ -75,6 +76,7 @@ export function createPresentSurfaceResources(
     pipeline: GPURenderPipeline,
     sampler: GPUSampler,
     colorView: GPUTexture,
+    presentUniformBuffer: GPUBuffer,
 ): PresentSurfaceResources {
     const bindGroup = scope.track(
         device.createBindGroup({
@@ -83,6 +85,7 @@ export function createPresentSurfaceResources(
             entries: [
                 { binding: 0, resource: sampler },
                 { binding: 1, resource: colorView },
+                { binding: 2, resource: { buffer: presentUniformBuffer } },
             ],
         })
     );
@@ -96,6 +99,7 @@ export class PresentPass {
         private readonly sampler: GPUSampler,
         /** A callback that returns the current GPUTextureView to sample for presentation. */
         private readonly getTextureView: () => GPUTextureView | null,
+        private readonly presentUniformBuffer: GPUBuffer,
         private readonly frameScope: GpuResourceScope,
     ) {}
 
@@ -115,6 +119,7 @@ export class PresentPass {
                 entries: [
                     { binding: 0, resource: this.sampler },
                     { binding: 1, resource: srcView },
+                    { binding: 2, resource: { buffer: this.presentUniformBuffer } },
                 ],
             })
         );

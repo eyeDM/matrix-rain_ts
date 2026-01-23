@@ -68,3 +68,24 @@ export const HistoryParamsLayout = {
         _pad0: 4,    // padding
     },
 } as const;
+
+// Present-stage uniform layout: screen params + time + effect controls.
+export const PresentUniformLayout = {
+    ALIGN: 16,
+    SIZE: 80,
+    offsets: {
+        width: 0,             // f32
+        height: 4,            // f32
+        time: 8,              // f32
+        _pad0: 12,            // f32 padding
+        vignetteStrength: 16, // f32
+        scanlineStrength: 20, // f32
+        noiseAmplitude: 24,   // f32
+        curvature: 28,        // f32
+        tintR: 32,            // f32
+        tintG: 36,            // f32
+        tintB: 40,            // f32
+        scanlineFreq: 44,     // f32
+        _pad1: 48,            // padding to 64
+    },
+} as const;

@@ -21,6 +21,7 @@ import {
     PresentSurfaceResources, createPresentSurfaceResources,
     PresentPass,
 } from '@gpu/present-pass';
+import { PresentUniformBuffer } from '@gpu/present-uniform-buffer';
 import {
     HistoryDeviceResources, createHistoryDeviceResources,
     HistoryComputePass,
@@ -178,6 +179,23 @@ export async function bootstrap(): Promise<void> {
         shaderLoader.get('matrix-history'),
     );
 
+    // Present uniform buffer (device-lifetime)
+    const presentUniform = new PresentUniformBuffer(
+        gpu.device,
+        resources.deviceScope,
+    );
+    presentUniform.update({
+        width: size.width,
+        height: size.height,
+        time: 0,
+        vignetteStrength: 0.15,
+        scanlineStrength: 0.06,
+        noiseAmplitude: 0.02,
+        curvature: 0.03,
+        tint: [0.0, 1.0, 0.0],
+        scanlineFreq: 200.0,
+    });
+
     // * Surface-Lifetime resources
 
     function buildSurface(layout: ScreenLayout): {
@@ -221,6 +239,7 @@ export async function bootstrap(): Promise<void> {
             presentDeviceResources.pipeline,
             presentDeviceResources.sampler,
             drawSurfaceResources.colorView,
+            presentUniform.buffer,
         );
 
         // --- History textures & history compute pass ---
@@ -272,6 +291,7 @@ export async function bootstrap(): Promise<void> {
             presentDeviceResources.pipeline,
             presentDeviceResources.sampler,
             () => historyPass.getOutputView(),
+            presentUniform.buffer,
             resources.frameScope,
         );
 
@@ -327,6 +347,7 @@ export async function bootstrap(): Promise<void> {
 
     let surface = buildSurface(layout);
     let renderGraph = surface.renderGraph;
+    let timeAccumulator = 0;
 
     // --- Render loop ---
 
@@ -343,6 +364,20 @@ export async function bootstrap(): Promise<void> {
     }
 
     function animation(ctx: RenderContext): void {
+        // update present-time uniform
+        timeAccumulator += ctx.dt;
+        presentUniform.update({
+            width: layout.viewport.width,
+            height: layout.viewport.height,
+            time: timeAccumulator,
+            vignetteStrength: 0.15,
+            scanlineStrength: 0.06,
+            noiseAmplitude: 0.02,
+            curvature: 0.03,
+            tint: [0.0, 1.0, 0.0],
+            scanlineFreq: 200.0,
+        });
+
         renderGraph.execute(ctx);
     }
 
@@ -372,6 +407,19 @@ export async function bootstrap(): Promise<void> {
         );
 
         screen.update(layout.viewport.width, layout.viewport.height);
+
+        // update present uniform size
+        presentUniform.update({
+            width: layout.viewport.width,
+            height: layout.viewport.height,
+            time: timeAccumulator,
+            vignetteStrength: 0.15,
+            scanlineStrength: 0.06,
+            noiseAmplitude: 0.02,
+            curvature: 0.03,
+            tint: [0.0, 1.0, 0.0],
+            scanlineFreq: 200.0,
+        });
 
         // 1. Destroy ALL surface-lifetime GPU resources
         resources.surfaceScope.destroyAll();
