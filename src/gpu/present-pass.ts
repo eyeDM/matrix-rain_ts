@@ -93,12 +93,31 @@ export function createPresentSurfaceResources(
 export class PresentPass {
     constructor(
         private readonly pipeline: GPURenderPipeline,
-        private readonly bindGroup: GPUBindGroup,
+        private readonly sampler: GPUSampler,
+        /** A callback that returns the current GPUTextureView to sample for presentation. */
+        private readonly getTextureView: () => GPUTextureView | null,
+        private readonly frameScope: GpuResourceScope,
     ) {}
 
     execute(ctx: RenderContext): void {
         const dstView = ctx.acquireView();
         if (!dstView) return;
+
+        const srcView = this.getTextureView();
+        if (!srcView) return;
+
+        // Create a transient bind group per-frame that points at the current source texture.
+        const bgl = this.pipeline.getBindGroupLayout(0);
+        const bindGroup = this.frameScope.track(
+            (ctx.device as GPUDevice).createBindGroup({
+                label: 'Present Bind Group (frame)',
+                layout: bgl,
+                entries: [
+                    { binding: 0, resource: this.sampler },
+                    { binding: 1, resource: srcView },
+                ],
+            })
+        );
 
         const pass = ctx.encoder.beginRenderPass({
             colorAttachments: [{
@@ -110,7 +129,7 @@ export class PresentPass {
         });
 
         pass.setPipeline(this.pipeline);
-        pass.setBindGroup(0, this.bindGroup);
+        pass.setBindGroup(0, bindGroup);
         pass.draw(3); // fullscreen triangle
         pass.end();
     }

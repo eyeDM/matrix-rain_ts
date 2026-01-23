@@ -5,6 +5,7 @@ import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
 
 import { ScreenUniformBuffer } from '@gpu/screen-uniform-buffer';
+import { HistoryParamsLayout } from '@backend/layouts';
 import {
     SimulationDeviceResources, createSimulationDeviceResources,
     SimulationSurfaceResources, createSimulationSurfaceResources,
@@ -20,6 +21,10 @@ import {
     PresentSurfaceResources, createPresentSurfaceResources,
     PresentPass,
 } from '@gpu/present-pass';
+import {
+    HistoryDeviceResources, createHistoryDeviceResources,
+    HistoryComputePass,
+} from '@gpu/history-pass';
 import { RenderContext, RenderGraphBuilder, RenderGraph } from '@gpu/render-graph';
 
 import { AtlasResult, createGlyphAtlas } from '@domain/glyph-atlas';
@@ -116,6 +121,10 @@ export async function bootstrap(): Promise<void> {
             'matrix-present',
             new URL('./../assets/shaders/present.wgsl', import.meta.url).href
         ),
+        shaderLoader.load(
+            'matrix-history',
+            new URL('./../assets/shaders/history.wgsl', import.meta.url).href
+        ),
     ]);
 
     // --- Glyph atlas (long-lived) ---
@@ -163,6 +172,11 @@ export async function bootstrap(): Promise<void> {
         shaderLoader.get('matrix-present'),
         gpu.format,
     );
+    const historyDeviceResources: HistoryDeviceResources = createHistoryDeviceResources(
+        gpu.device,
+        resources.deviceScope,
+        shaderLoader.get('matrix-history'),
+    );
 
     // * Surface-Lifetime resources
 
@@ -200,12 +214,65 @@ export async function bootstrap(): Promise<void> {
             layout.viewport.height,
         );
 
+        // --- Create present surface resources (legacy single-frame bind group kept for compatibility) ---
         const presentSurfaceResources: PresentSurfaceResources = createPresentSurfaceResources(
             gpu.device,
             resources.surfaceScope,
             presentDeviceResources.pipeline,
             presentDeviceResources.sampler,
             drawSurfaceResources.colorView,
+        );
+
+        // --- History textures & history compute pass ---
+        const historyTexA = resources.surfaceScope.trackDestroyable(
+            gpu.device.createTexture({
+                size: [layout.viewport.width, layout.viewport.height],
+                format: COLOR_FORMAT,
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
+            })
+        );
+        const historyTexB = resources.surfaceScope.trackDestroyable(
+            gpu.device.createTexture({
+                size: [layout.viewport.width, layout.viewport.height],
+                format: COLOR_FORMAT,
+                usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
+            })
+        );
+
+        const paramsBuffer = resources.surfaceScope.trackDestroyable(
+            gpu.device.createBuffer({
+                label: 'History Params',
+                size: HistoryParamsLayout.SIZE,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            })
+        );
+
+        // default decay
+        const decay = 0.85;
+        const decayStaging = new ArrayBuffer(HistoryParamsLayout.SIZE);
+        const dv = new DataView(decayStaging);
+        dv.setFloat32(HistoryParamsLayout.offsets.decay, decay, true);
+        gpu.device.queue.writeBuffer(paramsBuffer, 0, decayStaging);
+
+        const historyPass = new HistoryComputePass(
+            gpu.device,
+            historyDeviceResources.pipeline,
+            historyDeviceResources.sampler,
+            resources.frameScope,
+            drawSurfaceResources.colorView,
+            historyTexA,
+            historyTexB,
+            paramsBuffer,
+            layout.viewport.width,
+            layout.viewport.height,
+        );
+
+        // final present pass will sample the latest history output via a getter
+        const presentPass = new PresentPass(
+            presentDeviceResources.pipeline,
+            presentDeviceResources.sampler,
+            () => historyPass.getOutputView(),
+            resources.frameScope,
         );
 
         // --- Render Passes ---
@@ -226,11 +293,6 @@ export async function bootstrap(): Promise<void> {
             layout.instances.count,
         );
 
-        const presentPass = new PresentPass(
-            presentDeviceResources.pipeline,
-            presentSurfaceResources.bindGroup,
-        );
-
         // --- Render Graph ---
 
         const graphBuilder = new RenderGraphBuilder();
@@ -245,8 +307,13 @@ export async function bootstrap(): Promise<void> {
             .writes(drawSurfaceResources.colorView);
 
         graphBuilder
+            .addPass(historyPass)
+            .reads(drawSurfaceResources.colorView)
+            .writes(historyTexA, historyTexB);
+
+        graphBuilder
             .addPass(presentPass)
-            .reads(drawSurfaceResources.colorView);
+            .reads(historyTexA, historyTexB);
 
         const renderGraph: RenderGraph = graphBuilder.build();
 

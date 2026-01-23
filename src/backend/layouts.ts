@@ -56,3 +56,15 @@ export const ScreenLayout = {
         height: 4, // f32
     },
 } as const;
+
+// History parameters used by the history accumulation compute shader.
+// We conservatively pad to 32 bytes to satisfy std140-like uniform packing
+// and keep room for future fields (e.g., brightness ramps).
+export const HistoryParamsLayout = {
+    ALIGN: 16,
+    SIZE: 32,
+    offsets: {
+        decay: 0,    // f32
+        _pad0: 4,    // padding
+    },
+} as const;
