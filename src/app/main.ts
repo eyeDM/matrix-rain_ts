@@ -21,6 +21,11 @@ import {
     PresentSurfaceResources, createPresentSurfaceResources,
     PresentPass,
 } from '@gpu/present-pass';
+import {
+    BlurDeviceResources, createBlurDeviceResources,
+    BlurSurfaceResources, createBlurSurfaceResources,
+    BlurPass,
+} from '@gpu/blur-pass';
 import { PresentUniformBuffer } from '@gpu/present-uniform-buffer';
 import {
     HistoryDeviceResources, createHistoryDeviceResources,
@@ -29,6 +34,7 @@ import {
 import { RenderContext, RenderGraphBuilder, RenderGraph } from '@gpu/render-graph';
 
 import { AtlasResult, createGlyphAtlas } from '@domain/glyph-atlas';
+import { BlurParamsLayout } from '@backend/layouts';
 
 import { CanvasSize } from '@runtime/canvas-resizer';
 import { SwapChainController } from '@runtime/swap-chain';
@@ -126,6 +132,10 @@ export async function bootstrap(): Promise<void> {
             'matrix-history',
             new URL('./../assets/shaders/history.wgsl', import.meta.url).href
         ),
+        shaderLoader.load(
+            'matrix-blur',
+            new URL('./../assets/shaders/blur.wgsl', import.meta.url).href
+        ),
     ]);
 
     // --- Glyph atlas (long-lived) ---
@@ -178,6 +188,12 @@ export async function bootstrap(): Promise<void> {
         resources.deviceScope,
         shaderLoader.get('matrix-history'),
     );
+    const blurDeviceResources: BlurDeviceResources = createBlurDeviceResources(
+        gpu.device,
+        resources.deviceScope,
+        shaderLoader.get('matrix-blur'),
+        COLOR_FORMAT,
+    );
 
     // Present uniform buffer (device-lifetime)
     const presentUniform = new PresentUniformBuffer(
@@ -194,6 +210,7 @@ export async function bootstrap(): Promise<void> {
         curvature: 0.03,
         tint: [0.0, 1.0, 0.0],
         scanlineFreq: 200.0,
+        bloomIntensity: 0.35,
     });
 
     // * Surface-Lifetime resources
@@ -292,6 +309,7 @@ export async function bootstrap(): Promise<void> {
             presentDeviceResources.sampler,
             () => historyPass.getOutputView(),
             presentUniform.buffer,
+            () => blurResult.createView(),
             resources.frameScope,
         );
 
@@ -313,6 +331,83 @@ export async function bootstrap(): Promise<void> {
             layout.instances.count,
         );
 
+        // --- Blur resources (surface-lifetime) ---
+        const blurTemp = resources.surfaceScope.trackDestroyable(
+            gpu.device.createTexture({
+                size: [layout.viewport.width, layout.viewport.height],
+                format: COLOR_FORMAT,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            })
+        );
+        const blurResult = resources.surfaceScope.trackDestroyable(
+            gpu.device.createTexture({
+                size: [layout.viewport.width, layout.viewport.height],
+                format: COLOR_FORMAT,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            })
+        );
+
+        const blurParamsH = resources.surfaceScope.trackDestroyable(
+            gpu.device.createBuffer({ label: 'Blur Params H', size: BlurParamsLayout.SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+        );
+        const blurParamsV = resources.surfaceScope.trackDestroyable(
+            gpu.device.createBuffer({ label: 'Blur Params V', size: BlurParamsLayout.SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST })
+        );
+
+        // write horizontal params: dir=(1,0)
+        {
+            const st = new ArrayBuffer(BlurParamsLayout.SIZE);
+            const dv = new DataView(st);
+            dv.setFloat32(BlurParamsLayout.offsets.dirX, 1.0, true);
+            dv.setFloat32(BlurParamsLayout.offsets.dirY, 0.0, true);
+            dv.setFloat32(BlurParamsLayout.offsets.texelSize, 1.0 / layout.viewport.width, true);
+            dv.setFloat32(BlurParamsLayout.offsets.threshold, 0.7, true);
+            gpu.device.queue.writeBuffer(blurParamsH, 0, st);
+        }
+
+        // write vertical params: dir=(0,1)
+        {
+            const st = new ArrayBuffer(BlurParamsLayout.SIZE);
+            const dv = new DataView(st);
+            dv.setFloat32(BlurParamsLayout.offsets.dirX, 0.0, true);
+            dv.setFloat32(BlurParamsLayout.offsets.dirY, 1.0, true);
+            dv.setFloat32(BlurParamsLayout.offsets.texelSize, 1.0 / layout.viewport.height, true);
+            dv.setFloat32(BlurParamsLayout.offsets.threshold, 0.0, true); // threshold only in first pass
+            gpu.device.queue.writeBuffer(blurParamsV, 0, st);
+        }
+
+        const blurSurfaceH = createBlurSurfaceResources(
+            gpu.device,
+            resources.surfaceScope,
+            blurDeviceResources.pipeline,
+            blurDeviceResources.sampler,
+            drawSurfaceResources.colorView.createView(),
+            blurParamsH,
+            blurTemp,
+        );
+
+        const blurSurfaceV = createBlurSurfaceResources(
+            gpu.device,
+            resources.surfaceScope,
+            blurDeviceResources.pipeline,
+            blurDeviceResources.sampler,
+            blurTemp.createView(),
+            blurParamsV,
+            blurResult,
+        );
+
+        const blurPassH = new BlurPass(
+            blurDeviceResources.pipeline,
+            blurSurfaceH.bindGroup,
+            blurTemp,
+        );
+
+        const blurPassV = new BlurPass(
+            blurDeviceResources.pipeline,
+            blurSurfaceV.bindGroup,
+            blurResult,
+        );
+
         // --- Render Graph ---
 
         const graphBuilder = new RenderGraphBuilder();
@@ -327,13 +422,24 @@ export async function bootstrap(): Promise<void> {
             .writes(drawSurfaceResources.colorView);
 
         graphBuilder
+            .addPass(blurPassH)
+            .reads(drawSurfaceResources.colorView)
+            .writes(blurTemp);
+
+        graphBuilder
+            .addPass(blurPassV)
+            .reads(blurTemp)
+            .writes(blurResult);
+
+        graphBuilder
             .addPass(historyPass)
             .reads(drawSurfaceResources.colorView)
             .writes(historyTexA, historyTexB);
 
         graphBuilder
             .addPass(presentPass)
-            .reads(historyTexA, historyTexB);
+            .reads(historyTexA, historyTexB)
+            .reads(blurResult);
 
         const renderGraph: RenderGraph = graphBuilder.build();
 
@@ -376,6 +482,7 @@ export async function bootstrap(): Promise<void> {
             curvature: 0.03,
             tint: [0.0, 1.0, 0.0],
             scanlineFreq: 200.0,
+            bloomIntensity: 0.35,
         });
 
         renderGraph.execute(ctx);
@@ -419,6 +526,7 @@ export async function bootstrap(): Promise<void> {
             curvature: 0.03,
             tint: [0.0, 1.0, 0.0],
             scanlineFreq: 200.0,
+            bloomIntensity: 0.35,
         });
 
         // 1. Destroy ALL surface-lifetime GPU resources

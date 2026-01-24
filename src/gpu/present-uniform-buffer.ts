@@ -36,6 +36,7 @@ export class PresentUniformBuffer {
         curvature: number;
         tint: [number, number, number];
         scanlineFreq: number;
+        bloomIntensity: number;
     }): void {
         this.view.setFloat32(PresentUniformLayout.offsets.width, params.width, true);
         this.view.setFloat32(PresentUniformLayout.offsets.height, params.height, true);
@@ -48,6 +49,7 @@ export class PresentUniformBuffer {
         this.view.setFloat32(PresentUniformLayout.offsets.tintG, params.tint[1], true);
         this.view.setFloat32(PresentUniformLayout.offsets.tintB, params.tint[2], true);
         this.view.setFloat32(PresentUniformLayout.offsets.scanlineFreq, params.scanlineFreq, true);
+        this.view.setFloat32(PresentUniformLayout.offsets.bloomIntensity, params.bloomIntensity, true);
 
         this.device.queue.writeBuffer(this.buffer, 0, this.staging);
     }

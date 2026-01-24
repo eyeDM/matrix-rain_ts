@@ -86,6 +86,19 @@ export const PresentUniformLayout = {
         tintG: 36,            // f32
         tintB: 40,            // f32
         scanlineFreq: 44,     // f32
-        _pad1: 48,            // padding to 64
+        bloomIntensity: 48,   // f32
+        _pad1: 52,            // padding to 64
+    },
+} as const;
+
+// Blur params for separable Gaussian blur (direction and texel size + threshold)
+export const BlurParamsLayout = {
+    ALIGN: 16,
+    SIZE: 16,
+    offsets: {
+        dirX: 0,       // f32
+        dirY: 4,       // f32
+        texelSize: 8,  // f32
+        threshold: 12, // f32
     },
 } as const;

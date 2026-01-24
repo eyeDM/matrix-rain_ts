@@ -23,6 +23,7 @@ export function createPresentDeviceResources(
                 { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
                 { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
             ],
         })
     );
@@ -84,8 +85,9 @@ export function createPresentSurfaceResources(
             layout: pipeline.getBindGroupLayout(0),
             entries: [
                 { binding: 0, resource: sampler },
-                { binding: 1, resource: colorView },
+                { binding: 1, resource: colorView.createView() },
                 { binding: 2, resource: { buffer: presentUniformBuffer } },
+                { binding: 3, resource: colorView.createView() },
             ],
         })
     );
@@ -100,6 +102,8 @@ export class PresentPass {
         /** A callback that returns the current GPUTextureView to sample for presentation. */
         private readonly getTextureView: () => GPUTextureView | null,
         private readonly presentUniformBuffer: GPUBuffer,
+        /** Optional callback that returns the bloom texture view. */
+        private readonly getBloomView: (() => GPUTextureView | null) | null,
         private readonly frameScope: GpuResourceScope,
     ) {}
 
@@ -112,15 +116,25 @@ export class PresentPass {
 
         // Create a transient bind group per-frame that points at the current source texture.
         const bgl = this.pipeline.getBindGroupLayout(0);
+        const bloomView = (this.getBloomView) ? this.getBloomView() : null;
+        const entries: GPUBindGroupEntry[] = [
+            { binding: 0, resource: this.sampler },
+            { binding: 1, resource: srcView },
+            { binding: 2, resource: { buffer: this.presentUniformBuffer } },
+        ];
+
+        if (bloomView) {
+            entries.push({ binding: 3, resource: bloomView });
+        } else {
+            // push an empty dummy (not strictly necessary if shader handles missing bloom)
+            entries.push({ binding: 3, resource: srcView });
+        }
+
         const bindGroup = this.frameScope.track(
             (ctx.device as GPUDevice).createBindGroup({
                 label: 'Present Bind Group (frame)',
                 layout: bgl,
-                entries: [
-                    { binding: 0, resource: this.sampler },
-                    { binding: 1, resource: srcView },
-                    { binding: 2, resource: { buffer: this.presentUniformBuffer } },
-                ],
+                entries,
             })
         );
 
