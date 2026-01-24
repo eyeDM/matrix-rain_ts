@@ -39,6 +39,7 @@ import { BlurParamsLayout } from '@backend/layouts';
 import { CanvasSize } from '@runtime/canvas-resizer';
 import { SwapChainController } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
+import { createDebugUI, PresentParams } from './debug-ui';
 
 const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // 'bgra8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
@@ -220,6 +221,7 @@ export async function bootstrap(): Promise<void> {
         drawPass: DrawPass;
         presentPass: PresentPass;
         renderGraph: RenderGraph;
+        updateDecay: (v: number) => void;
     } {
         const simSurfaceResources: SimulationSurfaceResources = createSimulationSurfaceResources(
             gpu.device,
@@ -284,7 +286,7 @@ export async function bootstrap(): Promise<void> {
         );
 
         // default decay
-        const decay = 0.85;
+        let decay = 0.85;
         const decayStaging = new ArrayBuffer(HistoryParamsLayout.SIZE);
         const dv = new DataView(decayStaging);
         dv.setFloat32(HistoryParamsLayout.offsets.decay, decay, true);
@@ -312,6 +314,15 @@ export async function bootstrap(): Promise<void> {
             () => blurResult.createView(),
             resources.frameScope,
         );
+
+        // expose a small updater to modify the history decay param from the UI
+        function updateDecay(v: number) {
+            decay = v;
+            const st = new ArrayBuffer(HistoryParamsLayout.SIZE);
+            const dv = new DataView(st);
+            dv.setFloat32(HistoryParamsLayout.offsets.decay, decay, true);
+            gpu.device.queue.writeBuffer(paramsBuffer, 0, st);
+        }
 
         // --- Render Passes ---
 
@@ -448,12 +459,47 @@ export async function bootstrap(): Promise<void> {
             drawPass,
             presentPass,
             renderGraph,
+            updateDecay,
         };
     }
 
     let surface = buildSurface(layout);
     let renderGraph = surface.renderGraph;
     let timeAccumulator = 0;
+
+    // --- Debug UI (runtime parameter tuning) ---
+    const presentState: PresentParams = {
+        vignetteStrength: 0.15,
+        scanlineStrength: 0.06,
+        noiseAmplitude: 0.02,
+        curvature: 0.03,
+        tint: [0.0, 1.0, 0.0],
+        scanlineFreq: 200.0,
+        bloomIntensity: 0.35,
+    };
+
+    const ui = createDebugUI(
+        presentState,
+        (partial) => {
+            Object.assign(presentState, partial);
+            presentUniform.update({
+                width: layout.viewport.width,
+                height: layout.viewport.height,
+                time: timeAccumulator,
+                vignetteStrength: presentState.vignetteStrength,
+                scanlineStrength: presentState.scanlineStrength,
+                noiseAmplitude: presentState.noiseAmplitude,
+                curvature: presentState.curvature,
+                tint: presentState.tint,
+                scanlineFreq: presentState.scanlineFreq,
+                bloomIntensity: presentState.bloomIntensity,
+            });
+        },
+        (decayVal) => {
+            // delegate to the active surface's updater; surface may be rebuilt on resize
+            surface.updateDecay(decayVal);
+        },
+    );
 
     // --- Render loop ---
 
@@ -476,13 +522,13 @@ export async function bootstrap(): Promise<void> {
             width: layout.viewport.width,
             height: layout.viewport.height,
             time: timeAccumulator,
-            vignetteStrength: 0.15,
-            scanlineStrength: 0.06,
-            noiseAmplitude: 0.02,
-            curvature: 0.03,
-            tint: [0.0, 1.0, 0.0],
-            scanlineFreq: 200.0,
-            bloomIntensity: 0.35,
+            vignetteStrength: presentState.vignetteStrength,
+            scanlineStrength: presentState.scanlineStrength,
+            noiseAmplitude: presentState.noiseAmplitude,
+            curvature: presentState.curvature,
+            tint: presentState.tint,
+            scanlineFreq: presentState.scanlineFreq,
+            bloomIntensity: presentState.bloomIntensity,
         });
 
         renderGraph.execute(ctx);
@@ -515,18 +561,18 @@ export async function bootstrap(): Promise<void> {
 
         screen.update(layout.viewport.width, layout.viewport.height);
 
-        // update present uniform size
+        // update present uniform size (preserve UI-driven params)
         presentUniform.update({
             width: layout.viewport.width,
             height: layout.viewport.height,
             time: timeAccumulator,
-            vignetteStrength: 0.15,
-            scanlineStrength: 0.06,
-            noiseAmplitude: 0.02,
-            curvature: 0.03,
-            tint: [0.0, 1.0, 0.0],
-            scanlineFreq: 200.0,
-            bloomIntensity: 0.35,
+            vignetteStrength: presentState.vignetteStrength,
+            scanlineStrength: presentState.scanlineStrength,
+            noiseAmplitude: presentState.noiseAmplitude,
+            curvature: presentState.curvature,
+            tint: presentState.tint,
+            scanlineFreq: presentState.scanlineFreq,
+            bloomIntensity: presentState.bloomIntensity,
         });
 
         // 1. Destroy ALL surface-lifetime GPU resources
