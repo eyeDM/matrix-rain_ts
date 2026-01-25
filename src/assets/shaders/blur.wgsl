@@ -24,15 +24,15 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let size = vec2<f32>(f32(sizei.x), f32(sizei.y));
   let uv = p.xy / size;
 
-  // Gaussian weights (9 taps)
-  let w = array<f32,9>(0.05, 0.09, 0.12, 0.15, 0.18, 0.15, 0.12, 0.09, 0.05);
+  // Gaussian-ish weights (5 taps) to reduce sample cost
+  let w = array<f32,5>(0.06, 0.24, 0.38, 0.24, 0.06);
 
   var sum = vec3<f32>(0.0);
   var tot = 0.0;
 
-  // center offset index 4
-  for (var i: i32 = 0; i < 9; i = i + 1) {
-    let offset = f32(i - 4) * params.texelSize * params.dir;
+  // center offset index 2
+  for (var i: i32 = 0; i < 5; i = i + 1) {
+    let offset = f32(i - 2) * params.texelSize * params.dir;
     let sampleUV = clamp(uv + offset, vec2<f32>(0.0), vec2<f32>(1.0));
     let c = textureSample(tex, samp, sampleUV).rgb;
     let weight = w[i];

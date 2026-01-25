@@ -343,16 +343,21 @@ export async function bootstrap(): Promise<void> {
         );
 
         // --- Blur resources (surface-lifetime) ---
+        // render blur at lower resolution to save bandwidth (half-res)
+        const BLUR_SCALE = 2; // 2 = half-res, 4 = quarter-res
+        const blurW = Math.max(1, Math.floor(layout.viewport.width / BLUR_SCALE));
+        const blurH = Math.max(1, Math.floor(layout.viewport.height / BLUR_SCALE));
+
         const blurTemp = resources.surfaceScope.trackDestroyable(
             gpu.device.createTexture({
-                size: [layout.viewport.width, layout.viewport.height],
+                size: [blurW, blurH],
                 format: COLOR_FORMAT,
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
             })
         );
         const blurResult = resources.surfaceScope.trackDestroyable(
             gpu.device.createTexture({
-                size: [layout.viewport.width, layout.viewport.height],
+                size: [blurW, blurH],
                 format: COLOR_FORMAT,
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
             })
@@ -371,6 +376,7 @@ export async function bootstrap(): Promise<void> {
             const dv = new DataView(st);
             dv.setFloat32(BlurParamsLayout.offsets.dirX, 1.0, true);
             dv.setFloat32(BlurParamsLayout.offsets.dirY, 0.0, true);
+            // texelSize for sampling the source scene texture (full-res)
             dv.setFloat32(BlurParamsLayout.offsets.texelSize, 1.0 / layout.viewport.width, true);
             dv.setFloat32(BlurParamsLayout.offsets.threshold, 0.7, true);
             gpu.device.queue.writeBuffer(blurParamsH, 0, st);
@@ -382,7 +388,8 @@ export async function bootstrap(): Promise<void> {
             const dv = new DataView(st);
             dv.setFloat32(BlurParamsLayout.offsets.dirX, 0.0, true);
             dv.setFloat32(BlurParamsLayout.offsets.dirY, 1.0, true);
-            dv.setFloat32(BlurParamsLayout.offsets.texelSize, 1.0 / layout.viewport.height, true);
+            // vertical pass samples from the half-res intermediate, so texelSize must match its height
+            dv.setFloat32(BlurParamsLayout.offsets.texelSize, 1.0 / blurH, true);
             dv.setFloat32(BlurParamsLayout.offsets.threshold, 0.0, true); // threshold only in first pass
             gpu.device.queue.writeBuffer(blurParamsV, 0, st);
         }
