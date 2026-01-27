@@ -142,4 +142,9 @@ export class SimulationComputePass {
         );
         pass.end();
     }
+
+    /** Set deterministic flicker state forwarded to the underlying stream buffers. */
+    setFlickerState(time: number, amplitude: number, frequency: number): void {
+        this.streamBuffers.setFlickerState(time, amplitude, frequency);
+    }
 }

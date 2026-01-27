@@ -62,6 +62,10 @@ struct SimulationUniforms  {
   cellHeight: f32,
   maxTrail: u32,
   pad0: u32,
+  // per-frame controls
+  time: f32,
+  flickerAmplitude: f32,
+  flickerFrequency: f32,
 };
 
 // MUST match InstanceLayout (64 bytes, align 16)
@@ -110,6 +114,11 @@ const TRAIL_DECAY: f32 = 3.2;
 const HEAD_BRIGHTNESS_BOOST: f32 = 1.15;
 
 const LN2: f32 = 0.69314718056;
+
+// Constants for deterministic per-column flicker
+const PHASE_MASK: u32 = 0xffffu; // use lower 16 bits of seed
+const PHASE_SCALE: f32 = 1.0 / 65536.0; // reciprocal of (PHASE_MASK + 1)
+const TWO_PI: f32 = 6.283185307179586;
 
 fn approxNormal01(seed: u32) -> f32 {
   var s: u32 = seed;
@@ -236,6 +245,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (t == 0u) {
       brightness = brightness * HEAD_BRIGHTNESS_BOOST;
     }
+
+    // Deterministic per-column flicker: derive a stable phase from the column seed
+    // Use lower 16 bits of seed for a quick phase, map to [0, TWO_PI)
+    let seedLow: f32 = f32(seeds[columnIdx] & PHASE_MASK) * PHASE_SCALE;
+    let phase: f32 = seedLow * TWO_PI;
+    let angular = sim.time * sim.flickerFrequency * TWO_PI; // convert Hz*time -> radians
+    let flick = sin(angular + phase) * sim.flickerAmplitude;
+    brightness = max(brightness * (1.0 + flick), 0.0);
 
     instances[idx].brightness = brightness;
 

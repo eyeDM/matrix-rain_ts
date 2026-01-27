@@ -38,7 +38,18 @@ export class SimulationUniformWriter {
      * Intended to be called once per frame.
      */
     writeFrame(dt: number): void {
+        // dt is required; time and flicker params may be provided by caller via stored state
         this.view.setFloat32(SimulationUniformLayout.offsets.dt, dt, true);
+    }
+
+    /**
+     * Write per-frame parameters including time and flicker controls.
+     */
+    writeFrameWithFlicker(dt: number, time: number, flickerAmplitude: number, flickerFrequency: number): void {
+        this.view.setFloat32(SimulationUniformLayout.offsets.dt, dt, true);
+        this.view.setFloat32(SimulationUniformLayout.offsets.time, time, true);
+        this.view.setFloat32(SimulationUniformLayout.offsets.flickerAmplitude, flickerAmplitude, true);
+        this.view.setFloat32(SimulationUniformLayout.offsets.flickerFrequency, flickerFrequency, true);
     }
 
     /**

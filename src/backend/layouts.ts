@@ -21,7 +21,7 @@
 // improves portability and avoids driver-side re-packing.
 export const SimulationUniformLayout = {
     ALIGN: 16,
-    SIZE: 32,
+    SIZE: 48,
     offsets: {
         dt: 0,           // f32
         rows: 4,         // u32
@@ -30,7 +30,11 @@ export const SimulationUniformLayout = {
         cellWidth: 16,   // f32
         cellHeight: 20,  // f32
         maxTrail: 24,    // u32
-        _pad0: 28,       // u32 (explicit padding to 32 bytes)
+        _pad0: 28,       // u32 (padding)
+        // per-frame simulation controls
+        time: 32,        // f32
+        flickerAmplitude: 36, // f32
+        flickerFrequency: 40, // f32
     },
 } as const;
 

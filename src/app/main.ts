@@ -483,6 +483,8 @@ export async function bootstrap(): Promise<void> {
         tint: [0.0, 1.0, 0.0],
         scanlineFreq: 200.0,
         bloomIntensity: 0.35,
+        flickerAmplitude: 0.06,
+        flickerFreq: 0.6,
     };
 
     const ui = createDebugUI(
@@ -537,6 +539,13 @@ export async function bootstrap(): Promise<void> {
             scanlineFreq: presentState.scanlineFreq,
             bloomIntensity: presentState.bloomIntensity,
         });
+
+        // update simulation flicker state on the sim pass so compute shader can use it
+        try {
+            surface.simPass.setFlickerState(timeAccumulator, presentState.flickerAmplitude ?? 0.0, presentState.flickerFreq ?? 0.0);
+        } catch {
+            /* surface may be rebuilt on resize */
+        }
 
         renderGraph.execute(ctx);
     }

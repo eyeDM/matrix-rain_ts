@@ -6,6 +6,8 @@ export type PresentParams = {
     tint: [number, number, number];
     scanlineFreq: number;
     bloomIntensity: number;
+    flickerAmplitude?: number;
+    flickerFreq?: number;
 };
 
 function mkLabel(text: string): HTMLLabelElement {
@@ -91,6 +93,10 @@ export function createDebugUI(
     makeParam('noise', 0, 0.1, 0.001, initial.noiseAmplitude, (v) => onPresentChange({ noiseAmplitude: v }));
     makeParam('curvature', 0, 0.2, 0.001, initial.curvature, (v) => onPresentChange({ curvature: v }));
     makeParam('bloom', 0, 1, 0.01, initial.bloomIntensity, (v) => onPresentChange({ bloomIntensity: v }));
+
+    // flicker controls (simulation)
+    makeParam('flicker_amp', 0, 0.5, 0.001, initial.flickerAmplitude ?? 0.0, (v) => onPresentChange({ flickerAmplitude: v }));
+    makeParam('flicker_freq', 0, 4, 0.01, initial.flickerFreq ?? 0.5, (v) => onPresentChange({ flickerFreq: v }));
 
     // tint quick buttons
     const tintRow = document.createElement('div');

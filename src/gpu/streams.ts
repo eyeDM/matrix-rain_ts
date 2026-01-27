@@ -18,6 +18,7 @@ export type StreamBuffers = {
     simulationWriter: SimulationUniformWriter;
 
     writeFrame(dt: number): void;
+    setFlickerState(time: number, amplitude: number, frequency: number): void;
     destroy(): void;
 };
 
@@ -86,9 +87,21 @@ export function createStreamBuffers(
         return buffer;
     }
 
+    // stored flicker state (updated from host each frame)
+    let flickerTime = 0.0;
+    let flickerAmp = 0.0;
+    let flickerFreq = 0.0;
+
     function writeFrame(dt: number): void {
-        simulationWriter.writeFrame(dt);
+        // use the writer helper that writes time & flicker params
+        simulationWriter.writeFrameWithFlicker(dt, flickerTime, flickerAmp, flickerFreq);
         simulationWriter.flush(device.queue, simulationUniforms);
+    }
+
+    function setFlickerState(time: number, amplitude: number, frequency: number): void {
+        flickerTime = time;
+        flickerAmp = amplitude;
+        flickerFreq = frequency;
     }
 
     function safeDestroy(buffer?: GPUBuffer): void {
@@ -137,6 +150,7 @@ export function createStreamBuffers(
         simulationWriter,
 
         writeFrame,
+        setFlickerState,
         destroy() {
             safeDestroy(indexesBuf);
             safeDestroy(seedsBuf);
