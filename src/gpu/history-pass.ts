@@ -1,3 +1,4 @@
+import { HistoryParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -49,15 +50,57 @@ export function createHistoryDeviceResources(
     return { pipeline, sampler };
 }
 
+/**
+ * Surface-lifetime resources
+ */
+export type HistorySurfaceResources = {
+    readonly historyTexA: GPUTexture;
+    readonly historyTexB: GPUTexture;
+    readonly paramsBuffer: GPUBuffer;
+};
+
+export function createHistorySurfaceResources(
+    device: GPUDevice,
+    scope: GpuResourceScope,
+    colorFormat: GPUTextureFormat,
+    viewportWidth: number,
+    viewportHeight: number,
+): HistorySurfaceResources {
+    const historyTexA = scope.trackDestroyable(
+        device.createTexture({
+            size: [viewportWidth, viewportHeight],
+            format: colorFormat,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
+        })
+    );
+
+    const historyTexB = scope.trackDestroyable(
+        device.createTexture({
+            size: [viewportWidth, viewportHeight],
+            format: colorFormat,
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
+        })
+    );
+
+    const paramsBuffer = scope.trackDestroyable(
+        device.createBuffer({
+            label: 'History Params',
+            size: HistoryParamsLayout.SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        })
+    );
+
+    return { historyTexA, historyTexB, paramsBuffer };
+}
+
 export class HistoryComputePass {
     private prev: GPUTexture;
     private dst: GPUTexture;
 
     constructor(
-        private readonly device: GPUDevice,
+        private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPUComputePipeline,
         private readonly sampler: GPUSampler,
-        private readonly frameScope: GpuResourceScope,
         // scene texture produced by DrawPass
         private readonly sceneTexture: GPUTexture,
         // history textures: allocate two textures and ping-pong between them
@@ -78,11 +121,10 @@ export class HistoryComputePass {
     execute(ctx: RenderContext): void {
         const encoder = ctx.encoder;
 
-        const bgl = this.pipeline.getBindGroupLayout(0);
         const bindGroup = this.frameScope.track(
-            (ctx.device as GPUDevice).createBindGroup({
+            ctx.device.createBindGroup({
                 label: 'History Compute BG (frame)',
-                layout: bgl,
+                layout: this.pipeline.getBindGroupLayout(0),
                 entries: [
                     { binding: 0, resource: this.sampler },
                     { binding: 1, resource: this.sceneTexture.createView() },

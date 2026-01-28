@@ -6,8 +6,8 @@ export type PresentParams = {
     tint: [number, number, number];
     scanlineFreq: number;
     bloomIntensity: number;
-    flickerAmplitude?: number;
-    flickerFreq?: number;
+    flickerAmplitude: number;
+    flickerFreq: number;
 };
 
 function mkLabel(text: string): HTMLLabelElement {
@@ -23,7 +23,7 @@ function mkLabel(text: string): HTMLLabelElement {
     return l;
 }
 
-function mkSlider(min: number, max: number, step: number, value: number) {
+function mkSlider(min: number, max: number, step: number, value: number): HTMLInputElement {
     const input = document.createElement('input');
     input.type = 'range';
     input.min = String(min);
@@ -71,44 +71,65 @@ export function createDebugUI(
     });
 
     // helper to create a slider + value for present params
-    function makeParam(name: string, min: number, max: number, step: number, value: number, cb: (v: number) => void) {
-        const lab = mkLabel(name);
-        const s = mkSlider(min, max, step, value);
-        const val = document.createElement('span');
-        val.textContent = String(value);
-        lab.appendChild(s);
-        lab.appendChild(val);
-        container.appendChild(lab);
-        s.addEventListener('input', () => {
-            const nv = parseFloat(s.value);
-            val.textContent = nv.toFixed(3);
+    function makeParam(
+        name: string,
+        min: number,
+        max: number,
+        step: number,
+        value: number,
+        cb: (v: number) => void,
+    ) {
+        const label = mkLabel(name);
+        const slider = mkSlider(min, max, step, value);
+        const valueEl = document.createElement('span');
+        valueEl.textContent = slider.value;
+        label.appendChild(slider);
+        label.appendChild(valueEl);
+        container.appendChild(label);
+        slider.addEventListener('input', () => {
+            const nv = parseFloat(slider.value);
+            valueEl.textContent = nv.toFixed(3);
             cb(nv);
         });
-        return { slider: s, valueEl: val };
+        return { slider, valueEl };
     }
 
-    // vignette
     makeParam('vignette', 0, 1, 0.01, initial.vignetteStrength, (v) => onPresentChange({ vignetteStrength: v }));
     makeParam('scanline', 0, 1, 0.01, initial.scanlineStrength, (v) => onPresentChange({ scanlineStrength: v }));
     makeParam('noise', 0, 0.1, 0.001, initial.noiseAmplitude, (v) => onPresentChange({ noiseAmplitude: v }));
     makeParam('curvature', 0, 0.2, 0.001, initial.curvature, (v) => onPresentChange({ curvature: v }));
     makeParam('bloom', 0, 1, 0.01, initial.bloomIntensity, (v) => onPresentChange({ bloomIntensity: v }));
 
-    // flicker controls (simulation)
-    makeParam('flicker_amp', 0, 0.5, 0.001, initial.flickerAmplitude ?? 0.0, (v) => onPresentChange({ flickerAmplitude: v }));
-    makeParam('flicker_freq', 0, 4, 0.01, initial.flickerFreq ?? 0.5, (v) => onPresentChange({ flickerFreq: v }));
+    makeParam(
+        'flicker amp',
+        0,
+        0.5,
+        0.001,
+        initial.flickerAmplitude,
+        (v) => onPresentChange({ flickerAmplitude: v })
+    );
+    makeParam(
+        'flicker freq',
+        0,
+        4,
+        0.01,
+        initial.flickerFreq,
+        (v) => onPresentChange({ flickerFreq: v })
+    );
 
     // tint quick buttons
+    const btnGreen = document.createElement('button');
+    btnGreen.textContent = 'Green';
+    btnGreen.onclick = () => onPresentChange({ tint: [0.0, 1.0, 0.0] });
+
+    const btnWhite = document.createElement('button');
+    btnWhite.textContent = 'White';
+    btnWhite.onclick = () => onPresentChange({ tint: [1.0, 1.0, 1.0] });
+
     const tintRow = document.createElement('div');
     tintRow.style.display = 'flex';
     tintRow.style.gap = '6px';
     tintRow.style.marginTop = '8px';
-    const btnGreen = document.createElement('button');
-    btnGreen.textContent = 'Green';
-    btnGreen.onclick = () => onPresentChange({ tint: [0.0, 1.0, 0.0] });
-    const btnWhite = document.createElement('button');
-    btnWhite.textContent = 'White';
-    btnWhite.onclick = () => onPresentChange({ tint: [1.0, 1.0, 1.0] });
     tintRow.appendChild(btnGreen);
     tintRow.appendChild(btnWhite);
     container.appendChild(tintRow);

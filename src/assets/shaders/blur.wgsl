@@ -8,14 +8,14 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   return vec4<f32>(pos[i], 0.0, 1.0);
 }
 
-@group(0) @binding(0) var samp: sampler;
-@group(0) @binding(1) var tex: texture_2d<f32>;
-
 struct BlurParams {
   dir: vec2<f32>,
   texelSize: f32,
   threshold: f32,
 };
+
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> params: BlurParams;
 
 @fragment

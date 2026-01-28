@@ -47,8 +47,8 @@ export function createDrawDeviceResources(
 export type DrawSurfaceResources = {
     readonly bindGroup: GPUBindGroup;
     readonly pipeline: GPURenderPipeline;
-    readonly colorView: GPUTexture,
-    readonly depthView: GPUTexture,
+    readonly colorView: GPUTexture;
+    readonly depthView: GPUTexture;
 };
 
 export function createDrawSurfaceResources(

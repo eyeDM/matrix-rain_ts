@@ -1,5 +1,5 @@
-import { GpuResourceScope } from '@backend/resource-tracker';
 import { PresentUniformLayout } from '@backend/layouts';
+import { GpuResourceScope } from '@backend/resource-tracker';
 
 /**
  * Wrapper for present-stage uniform buffer.

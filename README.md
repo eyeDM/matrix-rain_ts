@@ -86,7 +86,7 @@ GPU (WebGPU, WGSL)
 
 ---
 
-## Project Structure
+## Project Structure (FIXME: needs to be updated)
 ```
 matrix-rain_ts/
 ├─ public/

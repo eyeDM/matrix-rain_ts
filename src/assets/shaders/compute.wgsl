@@ -61,7 +61,6 @@ struct SimulationUniforms  {
   cellWidth: f32,
   cellHeight: f32,
   maxTrail: u32,
-  pad0: u32,
   // per-frame controls
   time: f32,
   flickerAmplitude: f32,

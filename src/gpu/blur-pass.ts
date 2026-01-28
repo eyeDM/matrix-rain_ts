@@ -1,4 +1,5 @@
 import { GpuResourceScope } from '@backend/resource-tracker';
+
 import { RenderContext } from '@gpu/render-graph';
 
 export type BlurDeviceResources = {
@@ -49,8 +50,6 @@ export function createBlurDeviceResources(
 
 export type BlurSurfaceResources = {
     readonly bindGroup: GPUBindGroup;
-    readonly pipeline: GPURenderPipeline;
-    readonly target: GPUTexture;
 };
 
 export function createBlurSurfaceResources(
@@ -60,7 +59,6 @@ export function createBlurSurfaceResources(
     sampler: GPUSampler,
     inputView: GPUTextureView,
     paramsBuffer: GPUBuffer,
-    target: GPUTexture,
 ): BlurSurfaceResources {
     const bindGroupLayout = pipeline.getBindGroupLayout(0);
     const bindGroup = scope.track(
@@ -75,7 +73,7 @@ export function createBlurSurfaceResources(
         })
     );
 
-    return { bindGroup, pipeline, target };
+    return { bindGroup };
 }
 
 export class BlurPass {

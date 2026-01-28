@@ -8,16 +8,21 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   return vec4<f32>(pos[i], 0.0, 1.0);
 }
 
-@group(0) @binding(0) var samp: sampler;
-@group(0) @binding(1) var tex: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> present: PresentUniforms;
-@group(0) @binding(3) var bloomTex: texture_2d<f32>;
+const TWO_PI: f32 = 6.283185307179586;
+const SCAN_BIAS: f32 = 0.5;
+const SCAN_AMPLITUDE: f32 = 0.5; // used to map sin() from -1..1 to 0..1
+const SCANLINE_TIME_SCALE: f32 = 1.5; // temporal speed factor for scanline animation
+const VIGNETTE_EDGE: f32 = 0.7071;
+const GRAIN_SEED_X: f32 = 12.9898;
+const GRAIN_SEED_Y: f32 = 78.233;
+const GRAIN_TIME_SCALE: f32 = 0.1;
+const GRAIN_HASH_SCALE: f32 = 43758.5453;
+const HALF: f32 = 0.5;
 
 struct PresentUniforms {
   width: f32,
   height: f32,
   time: f32,
-  _pad0: f32,
   vignetteStrength: f32,
   scanlineStrength: f32,
   noiseAmplitude: f32,
@@ -27,8 +32,13 @@ struct PresentUniforms {
   tintB: f32,
   scanlineFreq: f32,
   bloomIntensity: f32,
-  _pad1: vec3<f32>,
+  pad0: vec4<f32>,
 };
+
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var tex: texture_2d<f32>;
+@group(0) @binding(2) var bloomTex: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> present: PresentUniforms;
 
 @fragment
 fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
@@ -51,17 +61,17 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   var tint = vec3<f32>(present.tintR, present.tintG, present.tintB) * lum;
 
   // Scanline modulation (sinusoidal across Y)
-  let scan = 0.5 + 0.5 * sin((uv.y * present.scanlineFreq) * 6.283185 + present.time * 1.5);
+  let scan = SCAN_BIAS + SCAN_AMPLITUDE * sin((uv.y * present.scanlineFreq) * TWO_PI + present.time * SCANLINE_TIME_SCALE);
   let scanMod = mix(1.0, scan, present.scanlineStrength);
 
   // Vignette
   let dist = distance(uv, center);
-  let vig = 1.0 - present.vignetteStrength * smoothstep(0.0, 0.7071, dist);
+  let vig = 1.0 - present.vignetteStrength * smoothstep(0.0, VIGNETTE_EDGE, dist);
 
   // Film grain (hashed noise)
-  let seed = uv.x * 12.9898 + uv.y * 78.233 + present.time * 0.1;
-  let n = fract(sin(seed) * 43758.5453);
-  let grain = (n - 0.5) * present.noiseAmplitude;
+  let seed = uv.x * GRAIN_SEED_X + uv.y * GRAIN_SEED_Y + present.time * GRAIN_TIME_SCALE;
+  let n = fract(sin(seed) * GRAIN_HASH_SCALE);
+  let grain = (n - HALF) * present.noiseAmplitude;
 
   let outColor = tint * scanMod * vig + grain + bloom * present.bloomIntensity;
   return vec4<f32>(outColor, 1.0);

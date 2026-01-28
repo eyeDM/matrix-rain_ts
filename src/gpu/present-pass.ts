@@ -22,8 +22,8 @@ export function createPresentDeviceResources(
             entries: [
                 { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-                { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-                { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+                { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+                { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             ],
         })
     );
@@ -86,8 +86,8 @@ export function createPresentSurfaceResources(
             entries: [
                 { binding: 0, resource: sampler },
                 { binding: 1, resource: colorView.createView() },
-                { binding: 2, resource: { buffer: presentUniformBuffer } },
-                { binding: 3, resource: colorView.createView() },
+                { binding: 2, resource: colorView.createView() },
+                { binding: 3, resource: { buffer: presentUniformBuffer } },
             ],
         })
     );
@@ -95,16 +95,17 @@ export function createPresentSurfaceResources(
     return { bindGroup };
 }
 
+export function writeBlurParams(): void {}
+
 export class PresentPass {
     constructor(
+        private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPURenderPipeline,
         private readonly sampler: GPUSampler,
         /** A callback that returns the current GPUTextureView to sample for presentation. */
         private readonly getTextureView: () => GPUTextureView | null,
+        private readonly bloomTexture: GPUTexture,
         private readonly presentUniformBuffer: GPUBuffer,
-        /** Optional callback that returns the bloom texture view. */
-        private readonly getBloomView: (() => GPUTextureView | null) | null,
-        private readonly frameScope: GpuResourceScope,
     ) {}
 
     execute(ctx: RenderContext): void {
@@ -115,26 +116,16 @@ export class PresentPass {
         if (!srcView) return;
 
         // Create a transient bind group per-frame that points at the current source texture.
-        const bgl = this.pipeline.getBindGroupLayout(0);
-        const bloomView = (this.getBloomView) ? this.getBloomView() : null;
-        const entries: GPUBindGroupEntry[] = [
-            { binding: 0, resource: this.sampler },
-            { binding: 1, resource: srcView },
-            { binding: 2, resource: { buffer: this.presentUniformBuffer } },
-        ];
-
-        if (bloomView) {
-            entries.push({ binding: 3, resource: bloomView });
-        } else {
-            // push an empty dummy (not strictly necessary if shader handles missing bloom)
-            entries.push({ binding: 3, resource: srcView });
-        }
-
         const bindGroup = this.frameScope.track(
-            (ctx.device as GPUDevice).createBindGroup({
+            ctx.device.createBindGroup({
                 label: 'Present Bind Group (frame)',
-                layout: bgl,
-                entries,
+                layout: this.pipeline.getBindGroupLayout(0),
+                entries: [
+                    { binding: 0, resource: this.sampler },
+                    { binding: 1, resource: srcView },
+                    { binding: 2, resource: this.bloomTexture.createView() },
+                    { binding: 3, resource: { buffer: this.presentUniformBuffer } },
+                ],
             })
         );
 

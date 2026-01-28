@@ -1,13 +1,13 @@
+// MUST match HistoryParamsLayout (16 bytes, align 16)
+struct HistoryParams {
+  decay: f32,
+};
+
 @group(0) @binding(0) var samp: sampler;
 @group(0) @binding(1) var sceneTex: texture_2d<f32>;
 @group(0) @binding(2) var prevTex: texture_2d<f32>;
 @group(0) @binding(3) var dstTex: texture_storage_2d<rgba16float, write>;
-
-struct Params {
-  decay: f32,
-  _pad: vec3<f32>,
-};
-@group(0) @binding(4) var<uniform> params: Params;
+@group(0) @binding(4) var<uniform> params: HistoryParams;
 
 @compute @workgroup_size(8,8)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {

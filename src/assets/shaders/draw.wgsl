@@ -9,7 +9,7 @@ struct InstanceData {
   pad0: vec3<f32>,
 };
 
-// MUST match ScreenLayout (16 bytes, align 16)
+// MUST match ScreenLayout (8 bytes, align 8)
 struct Screen {
   size: vec2<f32>,
 };

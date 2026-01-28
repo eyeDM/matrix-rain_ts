@@ -17,8 +17,8 @@ export type StreamBuffers = {
     simulationUniforms: GPUBuffer;
     simulationWriter: SimulationUniformWriter;
 
-    writeFrame(dt: number): void;
     setFlickerState(time: number, amplitude: number, frequency: number): void;
+    writeFrame(dt: number): void;
     destroy(): void;
 };
 
@@ -92,16 +92,16 @@ export function createStreamBuffers(
     let flickerAmp = 0.0;
     let flickerFreq = 0.0;
 
-    function writeFrame(dt: number): void {
-        // use the writer helper that writes time & flicker params
-        simulationWriter.writeFrameWithFlicker(dt, flickerTime, flickerAmp, flickerFreq);
-        simulationWriter.flush(device.queue, simulationUniforms);
-    }
-
     function setFlickerState(time: number, amplitude: number, frequency: number): void {
         flickerTime = time;
         flickerAmp = amplitude;
         flickerFreq = frequency;
+    }
+
+    function writeFrame(dt: number): void {
+        // use the writer helper that writes time & flicker params
+        simulationWriter.writeFrameWithFlicker(dt, flickerTime, flickerAmp, flickerFreq);
+        simulationWriter.flush(device.queue, simulationUniforms);
     }
 
     function safeDestroy(buffer?: GPUBuffer): void {
@@ -120,11 +120,13 @@ export function createStreamBuffers(
     const lengthsBuf = createMappedBuffer(lengths, GPUBufferUsage.STORAGE);
     const energyBuf = createMappedBuffer(energy, GPUBufferUsage.STORAGE);
 
-    const simulationUniforms = device.createBuffer({
-        label: 'SimulationUniforms',
-        size: SimulationUniformLayout.SIZE,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    const simulationUniforms = surfaceScope.trackDestroyable(
+        device.createBuffer({
+            label: 'SimulationUniforms',
+            size: SimulationUniformLayout.SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        })
+    );
 
     const simulationWriter = new SimulationUniformWriter();
     simulationWriter.writeStatic(
@@ -149,8 +151,8 @@ export function createStreamBuffers(
         simulationUniforms,
         simulationWriter,
 
-        writeFrame,
         setFlickerState,
+        writeFrame,
         destroy() {
             safeDestroy(indexesBuf);
             safeDestroy(seedsBuf);
