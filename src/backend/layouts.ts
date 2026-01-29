@@ -66,6 +66,7 @@ export const HistoryParamsLayout = {
     SIZE: 16,
     offsets: {
         decay: 0,  // f32
+        _pad0: 4,  // vec3<f32>  — explicit padding (aligned to 16)
     },
 } as const;
 
