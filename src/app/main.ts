@@ -3,7 +3,7 @@
 import { WebGPUContext, initWebGPU } from '@backend/init';
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
-import { BlurParamsLayout, HistoryParamsLayout } from '@backend/layouts';
+import { BlurParamsLayout } from '@backend/layouts';
 
 import { ScreenUniformBuffer } from '@gpu/screen-uniform-buffer';
 
@@ -19,7 +19,7 @@ import {
 } from '@gpu/draw-pass';
 import {
     PresentDeviceResources, createPresentDeviceResources,
-    PresentSurfaceResources, createPresentSurfaceResources,
+    //PresentSurfaceResources, createPresentSurfaceResources,
     PresentPass,
 } from '@gpu/present-pass';
 import {
@@ -184,6 +184,7 @@ export async function bootstrap(): Promise<void> {
         gpu.device,
         resources.deviceScope,
         shaderLoader.get('matrix-history'),
+        COLOR_FORMAT,
     );
 
     const blurDeviceResources: BlurDeviceResources = createBlurDeviceResources(
@@ -222,9 +223,9 @@ export async function bootstrap(): Promise<void> {
     function buildSurface(layout: ScreenLayout): {
         simPass: SimulationComputePass;
         drawPass: DrawPass;
+        historyPass: HistoryComputePass;
         presentPass: PresentPass;
         renderGraph: RenderGraph;
-        updateDecay: (v: number) => void;
     } {
         const simSurfaceResources: SimulationSurfaceResources = createSimulationSurfaceResources(
             gpu.device,
@@ -341,32 +342,6 @@ export async function bootstrap(): Promise<void> {
             layout.viewport.height,
         );
 
-        // --- Create present surface resources (legacy single-frame bind group kept for compatibility) ---
-        const presentSurfaceResources: PresentSurfaceResources = createPresentSurfaceResources(
-            gpu.device,
-            resources.surfaceScope,
-            presentDeviceResources.pipeline,
-            presentDeviceResources.sampler,
-            drawSurfaceResources.colorView,
-            presentUniform.buffer,
-        );
-
-        // default decay
-        let decay = 0.85;
-        const decayStaging = new ArrayBuffer(HistoryParamsLayout.SIZE);
-        const dv = new DataView(decayStaging);
-        dv.setFloat32(HistoryParamsLayout.offsets.decay, decay, true);
-        gpu.device.queue.writeBuffer(historySurfaceResources.paramsBuffer, 0, decayStaging);
-
-        // expose a small updater to modify the history decay param from the UI
-        function updateDecay(v: number) {
-            decay = v;
-            const st = new ArrayBuffer(HistoryParamsLayout.SIZE);
-            const dv = new DataView(st);
-            dv.setFloat32(HistoryParamsLayout.offsets.decay, decay, true);
-            gpu.device.queue.writeBuffer(historySurfaceResources.paramsBuffer, 0, st);
-        }
-
         // --- Render Passes ---
 
         const simPass = new SimulationComputePass(
@@ -408,6 +383,8 @@ export async function bootstrap(): Promise<void> {
             layout.viewport.width,
             layout.viewport.height,
         );
+        // default decay
+        historyPass.updateDecay(gpu.device, 0.75);
 
         // final present pass will sample the latest history output via a getter
         const presentPass = new PresentPass(
@@ -457,9 +434,9 @@ export async function bootstrap(): Promise<void> {
         return {
             simPass,
             drawPass,
+            historyPass,
             presentPass,
             renderGraph,
-            updateDecay,
         };
     }
 
@@ -477,7 +454,7 @@ export async function bootstrap(): Promise<void> {
             device: gpu.device,
             encoder,
             dt,
-            acquireView: () => swapChain.getCurrentView(),
+            acquireView: () => swapChain.getCurrentView(), // TODO: move to PresentPass constructor
         };
     }
 
@@ -594,7 +571,7 @@ export async function bootstrap(): Promise<void> {
         },
         (decayVal) => {
             // delegate to the active surface's updater; surface may be rebuilt on resize
-            surface.updateDecay(decayVal);
+            surface.historyPass.updateDecay(gpu.device, decayVal);
         },
     );
 }

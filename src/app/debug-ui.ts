@@ -58,7 +58,7 @@ export function createDebugUI(
 
     // decay slider
     const decayLabel = mkLabel('decay');
-    const decaySlider = mkSlider(0.6, 0.99, 0.01, 0.85);
+    const decaySlider = mkSlider(0.6, 0.99, 0.01, 0.75);
     const decayVal = document.createElement('span');
     decayVal.textContent = decaySlider.value;
     decayLabel.appendChild(decaySlider);

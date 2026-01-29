@@ -15,6 +15,7 @@ export function createHistoryDeviceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
     shader: GPUShaderModule,
+    colorFormat: GPUTextureFormat,
 ): HistoryDeviceResources {
     const bindGroupLayout = scope.track(
         device.createBindGroupLayout({
@@ -23,7 +24,7 @@ export function createHistoryDeviceResources(
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } }, // sampler
                 { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } }, // scene
                 { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } }, // prev history
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: 'rgba16float' } }, // dst history
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: colorFormat } }, // dst history
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // params
             ],
         })
@@ -158,6 +159,22 @@ export class HistoryComputePass {
         pass.end();
 
         this.swapPingPong();
+    }
+
+    /**
+     * A small updater to modify the decay param
+     *
+     * @param device
+     * @param decayVal
+     */
+    updateDecay(
+        device: GPUDevice,
+        decayVal: number,
+    ) {
+        const decayStaging = new ArrayBuffer(HistoryParamsLayout.SIZE);
+        const view = new DataView(decayStaging);
+        view.setFloat32(HistoryParamsLayout.offsets.decay, decayVal, true);
+        device.queue.writeBuffer(this.paramsBuffer, 0, decayStaging);
     }
 
     /**
