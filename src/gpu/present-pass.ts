@@ -71,6 +71,7 @@ export type PresentSurfaceResources = {
     readonly bindGroup: GPUBindGroup;
 };
 
+// FIXME: DEAD CODE
 export function createPresentSurfaceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
@@ -98,22 +99,24 @@ export function createPresentSurfaceResources(
 export function writeBlurParams(): void {}
 
 export class PresentPass {
+    // cache view to avoid creating it every frame
+    private readonly bloomTexView: GPUTextureView;
+
     constructor(
         private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPURenderPipeline,
         private readonly sampler: GPUSampler,
-        /** A callback that returns the current GPUTextureView to sample for presentation. */
-        private readonly getTextureView: () => GPUTextureView | null,
-        private readonly bloomTexture: GPUTexture,
         private readonly presentUniformBuffer: GPUBuffer,
-    ) {}
+        /** A callback that returns the current GPUTextureView to sample for presentation. */
+        private readonly getTextureView: () => GPUTextureView,
+        bloomTexture: GPUTexture,
+    ) {
+        this.bloomTexView = bloomTexture.createView();
+    }
 
     execute(ctx: RenderContext): void {
         const dstView = ctx.acquireView();
         if (!dstView) return;
-
-        const srcView = this.getTextureView();
-        if (!srcView) return;
 
         // Create a transient bind group per-frame that points at the current source texture.
         const bindGroup = this.frameScope.track(
@@ -122,8 +125,8 @@ export class PresentPass {
                 layout: this.pipeline.getBindGroupLayout(0),
                 entries: [
                     { binding: 0, resource: this.sampler },
-                    { binding: 1, resource: srcView },
-                    { binding: 2, resource: this.bloomTexture.createView() },
+                    { binding: 1, resource: this.getTextureView() },
+                    { binding: 2, resource: this.bloomTexView },
                     { binding: 3, resource: { buffer: this.presentUniformBuffer } },
                 ],
             })

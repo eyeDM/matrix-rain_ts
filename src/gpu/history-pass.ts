@@ -94,28 +94,39 @@ export function createHistorySurfaceResources(
 }
 
 export class HistoryComputePass {
-    private prev: GPUTexture;
-    private dst: GPUTexture;
+    // cache views to avoid creating it every frame
+    private readonly sceneView: GPUTextureView;
+
+    private readonly historyViewA: GPUTextureView;
+    private readonly historyViewB: GPUTextureView;
+
+    private ping = 0;
 
     constructor(
         private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPUComputePipeline,
         private readonly sampler: GPUSampler,
         // scene texture produced by DrawPass
-        private readonly sceneTexture: GPUTexture,
+        sceneTex: GPUTexture,
         // history textures: allocate two textures and ping-pong between them
-        historyA: GPUTexture,
-        historyB: GPUTexture,
+        historyTexA: GPUTexture,
+        historyTexB: GPUTexture,
         private readonly paramsBuffer: GPUBuffer,
         private readonly viewportWidth: number,
         private readonly viewportHeight: number,
     ) {
-        this.prev = historyA;
-        this.dst = historyB;
+        this.sceneView = sceneTex.createView();
+
+        this.historyViewA = historyTexA.createView();
+        this.historyViewB = historyTexB.createView();
+    }
+
+    getPrevView(): GPUTextureView {
+        return this.ping === 0 ? this.historyViewA : this.historyViewB;
     }
 
     getOutputView(): GPUTextureView {
-        return this.dst.createView();
+        return this.ping === 1 ? this.historyViewA : this.historyViewB;
     }
 
     execute(ctx: RenderContext): void {
@@ -127,9 +138,9 @@ export class HistoryComputePass {
                 layout: this.pipeline.getBindGroupLayout(0),
                 entries: [
                     { binding: 0, resource: this.sampler },
-                    { binding: 1, resource: this.sceneTexture.createView() },
-                    { binding: 2, resource: this.prev.createView() },
-                    { binding: 3, resource: this.dst.createView() },
+                    { binding: 1, resource: this.sceneView },
+                    { binding: 2, resource: this.getPrevView() },
+                    { binding: 3, resource: this.getOutputView() },
                     { binding: 4, resource: { buffer: this.paramsBuffer } },
                 ],
             })
@@ -146,9 +157,14 @@ export class HistoryComputePass {
         pass.dispatchWorkgroups(workX, workY);
         pass.end();
 
-        // swap prev/dst for next frame
-        const t = this.prev;
-        this.prev = this.dst;
-        this.dst = t;
+        this.swapPingPong();
+    }
+
+    /**
+     * Internal swap helper — call after compute writes to swap ping/pong.
+     * Ensure views remain the same objects (no createView per-frame).
+     */
+    private swapPingPong(): void {
+        this.ping = 1 - this.ping;
     }
 }

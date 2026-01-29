@@ -47,7 +47,7 @@ export type RenderContextFactory = (
 export function startRenderLoop(
     device: GPUDevice,
     makeContext: RenderContextFactory,
-    frame: (ctx: RenderContext) => void,
+    eachFrame: (ctx: RenderContext) => void,
 ): () => void {
     let lastTime: number | null = null;
     let isActive = true;
@@ -61,7 +61,7 @@ export function startRenderLoop(
         const encoder = device.createCommandEncoder();
         const ctx = makeContext(encoder, dt);
 
-        frame(ctx);
+        eachFrame(ctx);
         device.queue.submit([encoder.finish()]);
         requestAnimationFrame(tick);
     }

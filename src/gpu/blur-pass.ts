@@ -57,7 +57,7 @@ export function createBlurSurfaceResources(
     scope: GpuResourceScope,
     pipeline: GPURenderPipeline,
     sampler: GPUSampler,
-    inputView: GPUTextureView,
+    inputTex: GPUTexture,
     paramsBuffer: GPUBuffer,
 ): BlurSurfaceResources {
     const bindGroupLayout = pipeline.getBindGroupLayout(0);
@@ -67,7 +67,7 @@ export function createBlurSurfaceResources(
             layout: bindGroupLayout,
             entries: [
                 { binding: 0, resource: sampler },
-                { binding: 1, resource: inputView },
+                { binding: 1, resource: inputTex.createView() },
                 { binding: 2, resource: { buffer: paramsBuffer } },
             ],
         })
@@ -77,16 +77,21 @@ export function createBlurSurfaceResources(
 }
 
 export class BlurPass {
+    // cache view to avoid creating it every frame
+    private readonly targetTexView: GPUTextureView;
+
     constructor(
         private readonly pipeline: GPURenderPipeline,
         private readonly bindGroup: GPUBindGroup,
-        private readonly target: GPUTexture,
-    ) {}
+        targetTex: GPUTexture,
+    ) {
+        this.targetTexView = targetTex.createView();
+    }
 
     execute(ctx: RenderContext): void {
         const pass = ctx.encoder.beginRenderPass({
             colorAttachments: [{
-                view: this.target.createView(),
+                view: this.targetTexView,
                 loadOp: 'clear',
                 storeOp: 'store',
                 clearValue: { r: 0, g: 0, b: 0, a: 1 },

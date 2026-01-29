@@ -319,7 +319,7 @@ export async function bootstrap(): Promise<void> {
             resources.surfaceScope,
             blurDeviceResources.pipeline,
             blurDeviceResources.sampler,
-            drawSurfaceResources.colorView.createView(),
+            drawSurfaceResources.colorView,
             blurParamsH,
         );
 
@@ -328,7 +328,7 @@ export async function bootstrap(): Promise<void> {
             resources.surfaceScope,
             blurDeviceResources.pipeline,
             blurDeviceResources.sampler,
-            blurTexTemp.createView(),
+            blurTexTemp,
             blurParamsV,
         );
 
@@ -414,9 +414,9 @@ export async function bootstrap(): Promise<void> {
             resources.frameScope,
             presentDeviceResources.pipeline,
             presentDeviceResources.sampler,
+            presentUniform.buffer,
             () => historyPass.getOutputView(),
             blurTexResult,
-            presentUniform.buffer,
         );
 
         // --- Render Graph ---
@@ -481,7 +481,7 @@ export async function bootstrap(): Promise<void> {
         };
     }
 
-    function animation(ctx: RenderContext): void {
+    function eachFrame(ctx: RenderContext): void {
         // update present-time uniform
         timeAccumulator += ctx.dt;
         presentUniform.update({
@@ -509,12 +509,13 @@ export async function bootstrap(): Promise<void> {
         }
 
         renderGraph.execute(ctx);
+        resources.frameScope.destroyAll();
     }
 
     startRenderLoop(
         gpu.device,
         makeRenderContext,
-        animation,
+        eachFrame,
     );
 
     // --- Resize handling ---
