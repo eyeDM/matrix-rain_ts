@@ -19,6 +19,7 @@ const GRAIN_TIME_SCALE: f32 = 0.1;
 const GRAIN_HASH_SCALE: f32 = 43758.5453;
 const HALF: f32 = 0.5;
 
+// MUST match PresentUniformLayout (align: 4, size: 48)
 struct PresentUniforms {
   width: f32,
   height: f32,
@@ -32,7 +33,6 @@ struct PresentUniforms {
   tintB: f32,
   scanlineFreq: f32,
   bloomIntensity: f32,
-  pad0: vec4<f32>,
 };
 
 @group(0) @binding(0) var samp: sampler;

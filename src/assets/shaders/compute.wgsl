@@ -52,7 +52,7 @@
 //
 // ============================================================================`
 
-// MUST match SimulationUniformLayout (32 bytes, align 16)
+// MUST match SimulationUniformLayout (align: 4, size: 48)
 struct SimulationUniforms  {
   dt: f32,
   rows: u32,
@@ -61,19 +61,22 @@ struct SimulationUniforms  {
   cellWidth: f32,
   cellHeight: f32,
   maxTrail: u32,
-  // per-frame controls
   time: f32,
   flickerAmplitude: f32,
   flickerFrequency: f32,
+  pad0: f32,
+  pad1: f32,
 };
 
-// MUST match InstanceLayout (64 bytes, align 16)
+// MUST match InstanceLayout (align: 16, size: 48)
 struct InstanceData {
   offset: vec2<f32>,
   cellSize: vec2<f32>,
   uvRect: vec4<f32>,
   brightness: f32,
-  pad0: vec3<f32>,
+  pad0: f32,
+  pad1: f32,
+  pad2: f32,
 };
 
 @group(0) @binding(0) var<uniform> sim: SimulationUniforms;

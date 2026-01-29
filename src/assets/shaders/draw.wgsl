@@ -1,17 +1,21 @@
 // * Instanced symbol renderer *
 
-// MUST match InstanceLayout (64 bytes, align 16)
+// MUST match InstanceLayout (align: 16, size: 48)
 struct InstanceData {
   offset: vec2<f32>,
   cellSize: vec2<f32>,
   uvRect: vec4<f32>,
   brightness: f32,
-  pad0: vec3<f32>,
+  pad0: f32,
+  pad1: f32,
+  pad2: f32,
 };
 
-// MUST match ScreenLayout (8 bytes, align 8)
+// MUST match ScreenLayout (align: 4, size: 16)
 struct Screen {
   size: vec2<f32>,
+  pad0: f32,
+  pad1: f32,
 };
 
 struct VertexOut {

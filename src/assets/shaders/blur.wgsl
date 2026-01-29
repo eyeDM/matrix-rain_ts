@@ -8,6 +8,7 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   return vec4<f32>(pos[i], 0.0, 1.0);
 }
 
+// MUST match BlurParamsLayout (align: 4, size: 16)
 struct BlurParams {
   dir: vec2<f32>,
   texelSize: f32,

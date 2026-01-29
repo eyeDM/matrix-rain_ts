@@ -1,7 +1,9 @@
-// MUST match HistoryParamsLayout (16 bytes, align 16)
+// MUST match HistoryParamsLayout (align: 4, size: 16)
 struct HistoryParams {
   decay: f32,
-  pad0: vec3<f32>,
+  pad0: f32,
+  pad1: f32,
+  pad2: f32,
 };
 
 @group(0) @binding(0) var samp: sampler;
