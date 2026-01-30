@@ -6,7 +6,6 @@ export type RenderContext = {
     readonly device: GPUDevice;
     readonly encoder: GPUCommandEncoder;
     readonly dt: number;
-    acquireView(): GPUTextureView | null; // Current output view (usually it's swapchain)
 };
 
 export interface ExecutablePass {

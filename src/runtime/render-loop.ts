@@ -12,13 +12,9 @@ import type { RenderContext } from '@gpu/render-graph';
  * Design notes:
  * - The render loop is intentionally unaware of canvas, swap chain,
  *   or framebuffer concepts.
- * - Framebuffer acquisition is delegated to FrameContext.acquireView(),
- *   allowing different backends (canvas, offscreen, XR).
- * - A frame may be intentionally skipped by returning `null` from
- *   acquireView(); the loop continues without interruption.
  *
  * Timing:
- * - `dt` is computed using `performance.now()` and expressed in seconds.
+ * - `dt` is computed using `DOMHighResTimeStamp` and expressed in milliseconds.
  *
  * WebGPU-specific notes:
  * - Acquiring the current swap-chain texture and creating a view is
@@ -39,15 +35,9 @@ import type { RenderContext } from '@gpu/render-graph';
  * - device.lost integration
  */
 
-export type RenderContextFactory = (
-    encoder: GPUCommandEncoder,
-    dt: number
-) => RenderContext;
-
 export function startRenderLoop(
     device: GPUDevice,
-    makeContext: RenderContextFactory,
-    eachFrame: (ctx: RenderContext) => void,
+    onEachFrame: (ctx: RenderContext) => void,
 ): () => void {
     let lastTime: number | null = null;
     let isActive = true;
@@ -59,9 +49,9 @@ export function startRenderLoop(
         lastTime = now;
 
         const encoder = device.createCommandEncoder();
-        const ctx = makeContext(encoder, dt);
+        const ctx: RenderContext = { device, encoder, dt };
 
-        eachFrame(ctx);
+        onEachFrame(ctx);
         device.queue.submit([encoder.finish()]);
         requestAnimationFrame(tick);
     }

@@ -64,39 +64,7 @@ export function createPresentDeviceResources(
     };
 }
 
-/**
- * Surface-lifetime resources
- */
-export type PresentSurfaceResources = {
-    readonly bindGroup: GPUBindGroup;
-};
-
-// FIXME: DEAD CODE
-export function createPresentSurfaceResources(
-    device: GPUDevice,
-    scope: GpuResourceScope,
-    pipeline: GPURenderPipeline,
-    sampler: GPUSampler,
-    colorView: GPUTexture,
-    presentUniformBuffer: GPUBuffer,
-): PresentSurfaceResources {
-    const bindGroup = scope.track(
-        device.createBindGroup({
-            label: 'Present Bind Group',
-            layout: pipeline.getBindGroupLayout(0),
-            entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: colorView.createView() },
-                { binding: 2, resource: colorView.createView() },
-                { binding: 3, resource: { buffer: presentUniformBuffer } },
-            ],
-        })
-    );
-
-    return { bindGroup };
-}
-
-export function writeBlurParams(): void {}
+//export function writeBlurParams(): void {}
 
 export class PresentPass {
     // cache view to avoid creating it every frame
@@ -107,17 +75,16 @@ export class PresentPass {
         private readonly pipeline: GPURenderPipeline,
         private readonly sampler: GPUSampler,
         private readonly presentUniformBuffer: GPUBuffer,
-        /** A callback that returns the current GPUTextureView to sample for presentation. */
+        /** A callback that returns the current texture view to sample for presentation */
         private readonly getTextureView: () => GPUTextureView,
+        /** A callback that returns the current texture view for output */
+        private readonly getOutputView: () => GPUTextureView,
         bloomTexture: GPUTexture,
     ) {
         this.bloomTexView = bloomTexture.createView();
     }
 
     execute(ctx: RenderContext): void {
-        const dstView = ctx.acquireView();
-        if (!dstView) return;
-
         // Create a transient bind group per-frame that points at the current source texture.
         const bindGroup = this.frameScope.track(
             ctx.device.createBindGroup({
@@ -134,7 +101,7 @@ export class PresentPass {
 
         const pass = ctx.encoder.beginRenderPass({
             colorAttachments: [{
-                view: dstView,
+                view: this.getOutputView(),
                 loadOp: 'clear',
                 storeOp: 'store',
                 clearValue: { r: 0, g: 0, b: 0, a: 1 },

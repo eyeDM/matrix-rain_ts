@@ -1,14 +1,6 @@
 import { CanvasSize, CanvasResizer } from '@runtime/canvas-resizer';
 
-export interface SwapChain {
-    /** Resize backing buffer and reconfigure if needed */
-    resize(): CanvasSize;
-
-    /** Acquire current frame view (always valid) */
-    getCurrentView(): GPUTextureView | null;
-}
-
-export class SwapChainController implements SwapChain {
+export class SwapChain {
     private readonly resizer: CanvasResizer;
 
     constructor(
@@ -22,15 +14,7 @@ export class SwapChainController implements SwapChain {
         this.configure(); // initial
     }
 
-    private configure(): void {
-        this.context.configure({
-            device: this.device,
-            format: this.format,
-            alphaMode: this.alphaMode,
-        });
-    }
-
-    // Call to (re)configure canvas size and reconfigure the context
+    /** Resize backing buffer and reconfigure the context if needed */
     resize(): CanvasSize {
         const { size, changed } = this.resizer.resize();
 
@@ -41,12 +25,16 @@ export class SwapChainController implements SwapChain {
         return size;
     }
 
-    // Acquire the current texture view from the context
-    getCurrentView(): GPUTextureView | null {
-        try {
-            return this.context.getCurrentTexture().createView();
-        } catch {
-            return null;
-        }
+    /** Acquire the current texture view from the context */
+    getCurrentView(): GPUTextureView {
+        return this.context.getCurrentTexture().createView();
+    }
+
+    private configure(): void {
+        this.context.configure({
+            device: this.device,
+            format: this.format,
+            alphaMode: this.alphaMode,
+        });
     }
 }

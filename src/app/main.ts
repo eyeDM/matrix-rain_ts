@@ -19,7 +19,6 @@ import {
 } from '@gpu/draw-pass';
 import {
     PresentDeviceResources, createPresentDeviceResources,
-    //PresentSurfaceResources, createPresentSurfaceResources,
     PresentPass,
 } from '@gpu/present-pass';
 import {
@@ -38,7 +37,7 @@ import { RenderContext, RenderGraphBuilder, RenderGraph } from '@gpu/render-grap
 import { AtlasResult, createGlyphAtlas } from '@domain/glyph-atlas';
 
 import { CanvasSize } from '@runtime/canvas-resizer';
-import { SwapChainController } from '@runtime/swap-chain';
+import { SwapChain } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 
 import { createDebugUI, PresentParams } from '@app/debug-ui';
@@ -107,7 +106,7 @@ export async function bootstrap(): Promise<void> {
 
     const gpu: WebGPUContext = await initWebGPU(canvas);
 
-    const swapChain = new SwapChainController(
+    const swapChain = new SwapChain(
         canvas,
         gpu.context,
         gpu.device,
@@ -393,6 +392,7 @@ export async function bootstrap(): Promise<void> {
             presentDeviceResources.sampler,
             presentUniform.buffer,
             () => historyPass.getOutputView(),
+            () => swapChain.getCurrentView(),
             blurTexResult,
         );
 
@@ -442,23 +442,11 @@ export async function bootstrap(): Promise<void> {
 
     let surface = buildSurface(layout);
     let renderGraph = surface.renderGraph;
-    let timeAccumulator = 0;
+    let timeAccumulator = 0; // FIXME: don't use it!
 
     // --- Render loop ---
 
-    function makeRenderContext(
-        encoder: GPUCommandEncoder,
-        dt: number,
-    ): RenderContext {
-        return {
-            device: gpu.device,
-            encoder,
-            dt,
-            acquireView: () => swapChain.getCurrentView(), // TODO: move to PresentPass constructor
-        };
-    }
-
-    function eachFrame(ctx: RenderContext): void {
+    function onEachFrame(ctx: RenderContext): void {
         // update present-time uniform
         timeAccumulator += ctx.dt;
         presentUniform.update({
@@ -489,11 +477,7 @@ export async function bootstrap(): Promise<void> {
         resources.frameScope.destroyAll();
     }
 
-    startRenderLoop(
-        gpu.device,
-        makeRenderContext,
-        eachFrame,
-    );
+    startRenderLoop(gpu.device, onEachFrame);
 
     // --- Resize handling ---
 
