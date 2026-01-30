@@ -3,7 +3,6 @@
 import { WebGPUContext, initWebGPU } from '@backend/init';
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
-import { BlurParamsLayout } from '@backend/layouts';
 
 import { ScreenUniformBuffer } from '@gpu/screen-uniform-buffer';
 
@@ -217,15 +216,19 @@ export async function bootstrap(): Promise<void> {
         bloomIntensity: 0.35,
     });
 
-    // * Surface-Lifetime resources
+    // * Surface-Lifetime bundle
 
     function buildSurface(layout: ScreenLayout): {
         simPass: SimulationComputePass;
         drawPass: DrawPass;
+        blurPassH: BlurPass;
+        blurPassV: BlurPass;
         historyPass: HistoryComputePass;
         presentPass: PresentPass;
         renderGraph: RenderGraph;
     } {
+        // --- Resources ---
+
         const simSurfaceResources: SimulationSurfaceResources = createSimulationSurfaceResources(
             gpu.device,
             resources.surfaceScope,
@@ -254,85 +257,17 @@ export async function bootstrap(): Promise<void> {
             layout.viewport.height,
         );
 
-        // --- Blur resources (surface-lifetime) ---
-        // render blur at lower resolution to save bandwidth (half-res)
-        const BLUR_SCALE = 2; // 2 = half-res, 4 = quarter-res
-        const blurW = Math.max(1, Math.floor(layout.viewport.width / BLUR_SCALE));
-        const blurH = Math.max(1, Math.floor(layout.viewport.height / BLUR_SCALE));
-
-        const blurTexTemp = resources.surfaceScope.trackDestroyable(
-            gpu.device.createTexture({
-                size: [blurW, blurH],
-                format: COLOR_FORMAT,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-            })
-        );
-        const blurTexResult = resources.surfaceScope.trackDestroyable(
-            gpu.device.createTexture({
-                size: [blurW, blurH],
-                format: COLOR_FORMAT,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-            })
-        );
-
-        const blurParamsH = resources.surfaceScope.trackDestroyable(
-            gpu.device.createBuffer({
-                label: 'Blur Params H',
-                size: BlurParamsLayout.SIZE,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            })
-        );
-        const blurParamsV = resources.surfaceScope.trackDestroyable(
-            gpu.device.createBuffer({
-                label: 'Blur Params V',
-                size: BlurParamsLayout.SIZE,
-                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-            })
-        );
-
-        // write horizontal params: dir=(1,0)
-        {
-            const st = new ArrayBuffer(BlurParamsLayout.SIZE);
-            const dv = new DataView(st);
-            dv.setFloat32(BlurParamsLayout.offsets.dirX, 1.0, true);
-            dv.setFloat32(BlurParamsLayout.offsets.dirY, 0.0, true);
-            // texelSize for sampling the source scene texture (full-res)
-            dv.setFloat32(BlurParamsLayout.offsets.texelSize, 1.0 / layout.viewport.width, true);
-            dv.setFloat32(BlurParamsLayout.offsets.threshold, 0.7, true);
-            gpu.device.queue.writeBuffer(blurParamsH, 0, st);
-        }
-
-        // write vertical params: dir=(0,1)
-        {
-            const st = new ArrayBuffer(BlurParamsLayout.SIZE);
-            const dv = new DataView(st);
-            dv.setFloat32(BlurParamsLayout.offsets.dirX, 0.0, true);
-            dv.setFloat32(BlurParamsLayout.offsets.dirY, 1.0, true);
-            // vertical pass samples from the half-res intermediate, so texelSize must match its height
-            dv.setFloat32(BlurParamsLayout.offsets.texelSize, 1.0 / blurH, true);
-            dv.setFloat32(BlurParamsLayout.offsets.threshold, 0.0, true); // threshold only in first pass
-            gpu.device.queue.writeBuffer(blurParamsV, 0, st);
-        }
-
-        const blurSurfaceH: BlurSurfaceResources = createBlurSurfaceResources(
+        const blurSurfaceResources: BlurSurfaceResources = createBlurSurfaceResources(
             gpu.device,
             resources.surfaceScope,
             blurDeviceResources.pipeline,
             blurDeviceResources.sampler,
-            drawSurfaceResources.colorView,
-            blurParamsH,
+            drawSurfaceResources.colorTex,
+            COLOR_FORMAT,
+            layout.viewport.width,
+            layout.viewport.height,
         );
 
-        const blurSurfaceV: BlurSurfaceResources = createBlurSurfaceResources(
-            gpu.device,
-            resources.surfaceScope,
-            blurDeviceResources.pipeline,
-            blurDeviceResources.sampler,
-            blurTexTemp,
-            blurParamsV,
-        );
-
-        // --- History textures & history compute pass ---
         const historySurfaceResources: HistorySurfaceResources = createHistorySurfaceResources(
             gpu.device,
             resources.surfaceScope,
@@ -354,28 +289,28 @@ export async function bootstrap(): Promise<void> {
             drawDeviceResources.vertexBuffer,
             drawSurfaceResources.pipeline,
             drawSurfaceResources.bindGroup,
-            drawSurfaceResources.colorView,
-            drawSurfaceResources.depthView,
+            drawSurfaceResources.colorTex,
+            drawSurfaceResources.depthTex,
             layout.instances.count,
         );
 
         const blurPassH = new BlurPass(
             blurDeviceResources.pipeline,
-            blurSurfaceH.bindGroup,
-            blurTexTemp,
+            blurSurfaceResources.bindGroupH,
+            blurSurfaceResources.texTemp,
         );
 
         const blurPassV = new BlurPass(
             blurDeviceResources.pipeline,
-            blurSurfaceV.bindGroup,
-            blurTexResult,
+            blurSurfaceResources.bindGroupV,
+            blurSurfaceResources.texResult,
         );
 
         const historyPass = new HistoryComputePass(
             resources.frameScope,
             historyDeviceResources.pipeline,
             historyDeviceResources.sampler,
-            drawSurfaceResources.colorView,
+            drawSurfaceResources.colorTex,
             historySurfaceResources.historyTexA,
             historySurfaceResources.historyTexB,
             historySurfaceResources.paramsBuffer,
@@ -393,7 +328,7 @@ export async function bootstrap(): Promise<void> {
             presentUniform.buffer,
             () => historyPass.getOutputView(),
             () => swapChain.getCurrentView(),
-            blurTexResult,
+            blurSurfaceResources.texResult,
         );
 
         // --- Render Graph ---
@@ -407,33 +342,35 @@ export async function bootstrap(): Promise<void> {
         graphBuilder
             .addPass(drawPass)
             .reads(simSurfaceResources.instanceBuffer)
-            .writes(drawSurfaceResources.colorView);
+            .writes(drawSurfaceResources.colorTex);
 
         graphBuilder
             .addPass(blurPassH)
-            .reads(drawSurfaceResources.colorView)
-            .writes(blurTexTemp);
+            .reads(drawSurfaceResources.colorTex)
+            .writes(blurSurfaceResources.texTemp);
 
         graphBuilder
             .addPass(blurPassV)
-            .reads(blurTexTemp)
-            .writes(blurTexResult);
+            .reads(blurSurfaceResources.texTemp)
+            .writes(blurSurfaceResources.texResult);
 
         graphBuilder
             .addPass(historyPass)
-            .reads(drawSurfaceResources.colorView)
+            .reads(drawSurfaceResources.colorTex)
             .writes(historySurfaceResources.historyTexA, historySurfaceResources.historyTexB);
 
         graphBuilder
             .addPass(presentPass)
             .reads(historySurfaceResources.historyTexA, historySurfaceResources.historyTexB)
-            .reads(blurTexResult);
+            .reads(blurSurfaceResources.texResult);
 
         const renderGraph: RenderGraph = graphBuilder.build();
 
         return {
             simPass,
             drawPass,
+            blurPassH,
+            blurPassV,
             historyPass,
             presentPass,
             renderGraph,
@@ -442,9 +379,10 @@ export async function bootstrap(): Promise<void> {
 
     let surface = buildSurface(layout);
     let renderGraph = surface.renderGraph;
-    let timeAccumulator = 0; // FIXME: don't use it!
 
     // --- Render loop ---
+
+    let timeAccumulator = 0; // FIXME: don't use it!
 
     function onEachFrame(ctx: RenderContext): void {
         // update present-time uniform

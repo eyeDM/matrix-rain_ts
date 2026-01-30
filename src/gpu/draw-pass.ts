@@ -47,8 +47,8 @@ export function createDrawDeviceResources(
 export type DrawSurfaceResources = {
     readonly bindGroup: GPUBindGroup;
     readonly pipeline: GPURenderPipeline;
-    readonly colorView: GPUTexture;
-    readonly depthView: GPUTexture;
+    readonly colorTex: GPUTexture;
+    readonly depthTex: GPUTexture;
 };
 
 export function createDrawSurfaceResources(
@@ -146,7 +146,7 @@ export function createDrawSurfaceResources(
 
     // --- Color and Depth textures ---
 
-    const colorView = scope.trackDestroyable(
+    const colorTex = scope.trackDestroyable(
         device.createTexture({
             size: [viewportWidth, viewportHeight],
             format: colorFormat,
@@ -154,7 +154,7 @@ export function createDrawSurfaceResources(
             //usage: GPUTextureUsage.RENDER_ATTACHMENT,
         })
     );
-    const depthView = scope.trackDestroyable(
+    const depthTex = scope.trackDestroyable(
         device.createTexture({
             size: [viewportWidth, viewportHeight],
             format: depthFormat,
@@ -165,8 +165,8 @@ export function createDrawSurfaceResources(
     return {
         bindGroup,
         pipeline,
-        colorView,
-        depthView,
+        colorTex,
+        depthTex,
     };
 }
 
@@ -178,21 +178,21 @@ export class DrawPass {
         private readonly vertexBuffer: GPUBuffer,
         private readonly pipeline: GPURenderPipeline,
         private readonly bindGroup: GPUBindGroup,
-        private readonly colorView: GPUTexture,
-        private readonly depthView: GPUTexture,
+        private readonly colorTex: GPUTexture,
+        private readonly depthTex: GPUTexture,
         private readonly instanceCount: number,
     ) {}
 
     execute(ctx: RenderContext): void {
         const pass = ctx.encoder.beginRenderPass({
             colorAttachments: [{
-                view: this.colorView,
+                view: this.colorTex,
                 loadOp: 'clear',
                 storeOp: 'store',
                 clearValue: { r: 0, g: 0, b: 0, a: 1 },
             }],
             depthStencilAttachment: {
-                view: this.depthView,
+                view: this.depthTex,
                 depthLoadOp: 'clear',
                 depthStoreOp: 'store',
                 depthClearValue: 1.0,

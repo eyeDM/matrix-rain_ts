@@ -64,8 +64,6 @@ export function createPresentDeviceResources(
     };
 }
 
-//export function writeBlurParams(): void {}
-
 export class PresentPass {
     // cache view to avoid creating it every frame
     private readonly bloomTexView: GPUTextureView;

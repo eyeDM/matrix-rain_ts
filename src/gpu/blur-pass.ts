@@ -1,7 +1,11 @@
+import { BlurParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
 
+/**
+ * Device-lifetime resources
+ */
 export type BlurDeviceResources = {
     readonly pipeline: GPURenderPipeline;
     readonly sampler: GPUSampler;
@@ -48,8 +52,14 @@ export function createBlurDeviceResources(
     return { pipeline, sampler };
 }
 
+/**
+ * Surface-lifetime resources
+ */
 export type BlurSurfaceResources = {
-    readonly bindGroup: GPUBindGroup;
+    readonly texTemp: GPUTexture;
+    readonly texResult: GPUTexture;
+    readonly bindGroupH: GPUBindGroup;
+    readonly bindGroupV: GPUBindGroup;
 };
 
 export function createBlurSurfaceResources(
@@ -58,22 +68,101 @@ export function createBlurSurfaceResources(
     pipeline: GPURenderPipeline,
     sampler: GPUSampler,
     inputTex: GPUTexture,
-    paramsBuffer: GPUBuffer,
+    colorFormat: GPUTextureFormat,
+    viewportWidth: number,
+    viewportHeight: number,
 ): BlurSurfaceResources {
-    const bindGroupLayout = pipeline.getBindGroupLayout(0);
-    const bindGroup = scope.track(
-        device.createBindGroup({
-            label: 'Blur Surface BG',
-            layout: bindGroupLayout,
-            entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: inputTex.createView() },
-                { binding: 2, resource: { buffer: paramsBuffer } },
-            ],
-        })
+    const createBindGroup = (
+        texture: GPUTexture,
+        paramsBuffer: GPUBuffer,
+    ): GPUBindGroup => {
+        const bindGroupLayout = pipeline.getBindGroupLayout(0);
+        return scope.track(
+            device.createBindGroup({
+                label: 'Blur Surface BG',
+                layout: bindGroupLayout,
+                entries: [
+                    { binding: 0, resource: sampler },
+                    { binding: 1, resource: texture.createView() },
+                    { binding: 2, resource: { buffer: paramsBuffer } },
+                ],
+            })
+        );
+    }
+
+    const createParamsBuffer = (label: string): GPUBuffer => {
+        return scope.trackDestroyable(
+            device.createBuffer({
+                label: label,
+                size: BlurParamsLayout.SIZE,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            })
+        );
+    }
+
+    const writeParamsBuffer = (
+        dirX: number,
+        dirY: number,
+        texelSize: number,
+        threshold: number,
+        buffer: GPUBuffer,
+    ): void => {
+        const st = new ArrayBuffer(BlurParamsLayout.SIZE);
+        const dv = new DataView(st);
+        dv.setFloat32(BlurParamsLayout.offsets.dirX, dirX, true);
+        dv.setFloat32(BlurParamsLayout.offsets.dirY, dirY, true);
+        dv.setFloat32(BlurParamsLayout.offsets.texelSize, texelSize, true);
+        dv.setFloat32(BlurParamsLayout.offsets.threshold, threshold, true);
+        device.queue.writeBuffer(buffer, 0, st);
+    };
+
+    // render blur at lower resolution to save bandwidth (half-res)
+    const BLUR_SCALE = 2; // 2 = half-res, 4 = quarter-res
+    const blurW = Math.max(1, Math.floor(viewportWidth / BLUR_SCALE));
+    const blurH = Math.max(1, Math.floor(viewportHeight / BLUR_SCALE));
+
+    const createTexture = (): GPUTexture => {
+        return scope.trackDestroyable(
+            device.createTexture({
+                size: [blurW, blurH],
+                format: colorFormat,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+            })
+        );
+    };
+
+    const texTemp = createTexture();
+    const texResult = createTexture();
+
+    const blurParamsH = createParamsBuffer('Blur Params H');
+    const blurParamsV = createParamsBuffer('Blur Params V');
+
+    // write horizontal params: dir=(1,0)
+    writeParamsBuffer(
+        1.0,
+        0.0,
+        1.0 / viewportWidth, // texelSize for sampling the source scene texture (full-res)
+        0.7,
+        blurParamsH,
+    );
+    // write vertical params: dir=(0,1)
+    writeParamsBuffer(
+        0.0,
+        1.0,
+        1.0 / blurH, // vertical pass samples from the half-res intermediate, so texelSize must match its height
+        0.0, // threshold only in first pass
+        blurParamsV,
     );
 
-    return { bindGroup };
+    const bindGroupH = createBindGroup(inputTex, blurParamsH);
+    const bindGroupV = createBindGroup(texTemp, blurParamsV);
+
+    return {
+        texTemp,
+        texResult,
+        bindGroupH,
+        bindGroupV,
+    };
 }
 
 export class BlurPass {
