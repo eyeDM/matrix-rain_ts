@@ -100,7 +100,7 @@ export function createStreamBuffers(
 
     function writeFrame(dt: number): void {
         // use the writer helper that writes time & flicker params
-        simulationWriter.writeFrameWithFlicker(dt, flickerTime, flickerAmp, flickerFreq);
+        simulationWriter.writePerFrame(dt, flickerTime, flickerAmp, flickerFreq);
         simulationWriter.flush(device.queue, simulationUniforms);
     }
 
