@@ -23,7 +23,7 @@ const HALF: f32 = 0.5;
 struct PresentUniforms {
   width: f32,
   height: f32,
-  time: f32,
+  time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
   vignetteStrength: f32,
   scanlineStrength: f32,
   noiseAmplitude: f32,
@@ -40,11 +40,15 @@ struct PresentUniforms {
 @group(0) @binding(2) var bloomTex: texture_2d<f32>;
 @group(0) @binding(3) var<uniform> present: PresentUniforms;
 
+// NOTE: present.time is periodic [0, 2π) to maintain numerical stability.
+// All time-based effects use periodic functions (sin, hash), so wrapping is semantically correct.
+
 @fragment
 fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let sizei = textureDimensions(tex);
   let size = vec2<f32>(f32(sizei.x), f32(sizei.y));
   var uv = p.xy / size;
+
   // Apply subtle barrel curvature around center
   let center = vec2<f32>(0.5, 0.5);
   let d = uv - center;

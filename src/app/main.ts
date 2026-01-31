@@ -38,6 +38,7 @@ import { AtlasResult, createGlyphAtlas } from '@domain/glyph-atlas';
 import { CanvasSize } from '@runtime/canvas-resizer';
 import { SwapChain } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
+import { TimeManager } from '@runtime/time-manager';
 
 import { createDebugUI, PresentParams } from '@app/debug-ui';
 
@@ -382,15 +383,19 @@ export async function bootstrap(): Promise<void> {
 
     // --- Render loop ---
 
-    let timeAccumulator = 0; // FIXME: don't use it!
+    // Centralized time management with periodic wrapping for numerical stability
+    const timeManager = new TimeManager();
 
     function onEachFrame(ctx: RenderContext): void {
+        // Update time state (wraps to [0, 2π) to prevent f32 precision loss in shaders)
+        timeManager.tick(ctx.dt);
+        const periodicTime = timeManager.getPeriodic();
+
         // update present-time uniform
-        timeAccumulator += ctx.dt;
         presentUniform.update({
             width: layout.viewport.width,
             height: layout.viewport.height,
-            time: timeAccumulator,
+            time: periodicTime,
             vignetteStrength: presentState.vignetteStrength,
             scanlineStrength: presentState.scanlineStrength,
             noiseAmplitude: presentState.noiseAmplitude,
@@ -403,7 +408,7 @@ export async function bootstrap(): Promise<void> {
         // update simulation flicker state on the sim pass so compute shader can use it
         try {
             surface.simPass.setFlickerState(
-                timeAccumulator,
+                periodicTime,
                 presentState.flickerAmplitude,
                 presentState.flickerFreq,
             );
@@ -442,7 +447,7 @@ export async function bootstrap(): Promise<void> {
         presentUniform.update({
             width: layout.viewport.width,
             height: layout.viewport.height,
-            time: timeAccumulator,
+            time: timeManager.getPeriodic(),
             vignetteStrength: presentState.vignetteStrength,
             scanlineStrength: presentState.scanlineStrength,
             noiseAmplitude: presentState.noiseAmplitude,
@@ -481,7 +486,7 @@ export async function bootstrap(): Promise<void> {
             presentUniform.update({
                 width: layout.viewport.width,
                 height: layout.viewport.height,
-                time: timeAccumulator,
+                time: timeManager.getPeriodic(),
                 vignetteStrength: presentState.vignetteStrength,
                 scanlineStrength: presentState.scanlineStrength,
                 noiseAmplitude: presentState.noiseAmplitude,

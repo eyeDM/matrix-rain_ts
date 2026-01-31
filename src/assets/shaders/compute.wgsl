@@ -61,7 +61,7 @@ struct SimulationUniforms  {
   cellWidth: f32,
   cellHeight: f32,
   maxTrail: u32,
-  time: f32,
+  time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
   flickerAmplitude: f32,
   flickerFrequency: f32,
   pad0: f32,
@@ -250,6 +250,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Deterministic per-column flicker: derive a stable phase from the column seed
     // Use lower 16 bits of seed for a quick phase, map to [0, TWO_PI)
+    // NOTE: sim.time is periodic [0, 2π), preventing precision loss in long sessions
     let seedLow: f32 = f32(seeds[columnIdx] & PHASE_MASK) * PHASE_SCALE;
     let phase: f32 = seedLow * TWO_PI;
     let angular = sim.time * sim.flickerFrequency * TWO_PI; // convert Hz*time -> radians

@@ -81,3 +81,4 @@ Each response from the coding agent must include the following sections:
 2.  **Rationale:** A brief technical explanation justifying the code structure, WebGPU/WGSL approach, and addressing any performance or design trade-offs.
 3.  **Code Block:** The complete, production-quality code for the implemented file or section, adhering to all standards.
 4.  **Verification Step:** A simple, direct instruction for the user to confirm the successful completion and correct functioning of the current step.
+5.  **Git-commit message**: Short and clear description of the changes made (technical English, less than 64 symbols).
