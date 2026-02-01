@@ -7,7 +7,7 @@ export type PresentParams = {
     scanlineFreq: number;
     bloomIntensity: number;
     flickerAmplitude: number;
-    flickerFreq: number;
+    flickerFrequency: number;
 };
 
 function mkLabel(text: string): HTMLLabelElement {
@@ -113,8 +113,8 @@ export function createDebugUI(
         0,
         4,
         0.01,
-        initial.flickerFreq,
-        (v) => onPresentChange({ flickerFreq: v })
+        initial.flickerFrequency,
+        (v) => onPresentChange({ flickerFrequency: v })
     );
 
     // tint quick buttons

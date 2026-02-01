@@ -52,24 +52,25 @@
 //
 // ============================================================================`
 
-// MUST match SimulationUniformLayout (align: 4, size: 48)
-struct SimulationUniforms  {
-  dt: f32,
-  rows: u32,
-  cols: u32,
+// MUST match `SimulationParamsLayout` (align: 4, size: 48)
+struct SimulationParams {
   glyphCount: u32,
   cellWidth: f32,
   cellHeight: f32,
+  cols: u32,
+  rows: u32,
   maxTrail: u32,
-  time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
+  // per-frame controls:
+  dt: f32,
+  time: f32,
   flickerAmplitude: f32,
   flickerFrequency: f32,
   pad0: f32,
   pad1: f32,
 };
 
-// MUST match InstanceLayout (align: 16, size: 48)
-struct InstanceData {
+// MUST match `InstanceParamsLayout` (align: 16, size: 48)
+struct InstanceParams {
   offset: vec2<f32>,
   cellSize: vec2<f32>,
   uvRect: vec4<f32>,
@@ -79,7 +80,7 @@ struct InstanceData {
   pad2: f32,
 };
 
-@group(0) @binding(0) var<uniform> sim: SimulationUniforms;
+@group(0) @binding(0) var<uniform> sim: SimulationParams;
 @group(0) @binding(1) var<storage, read> indexes: array<u32>;
 @group(0) @binding(2) var<storage, read_write> seeds: array<u32>;
 @group(0) @binding(3) var<storage, read_write> heads: array<f32>;
@@ -87,7 +88,7 @@ struct InstanceData {
 @group(0) @binding(5) var<storage, read_write> lengths: array<u32>;
 @group(0) @binding(6) var<storage, read_write> energies: array<f32>;
 @group(0) @binding(7) var<storage, read> glyphUVs: array<vec4<f32>>;
-@group(0) @binding(8) var<storage, read_write> instances: array<InstanceData>;
+@group(0) @binding(8) var<storage, read_write> instances: array<InstanceParams>;
 
 // Linear Congruential Generator constants (32-bit)
 const LCG_A: u32 = 1664525u;
@@ -255,7 +256,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let phase: f32 = seedLow * TWO_PI;
     let angular = sim.time * sim.flickerFrequency * TWO_PI; // convert Hz*time -> radians
     let flick = sin(angular + phase) * sim.flickerAmplitude;
-    brightness = max(brightness * (1.0 + flick), 0.0);
+    brightness = max(0.0, brightness * (1.0 + flick));
 
     instances[idx].brightness = brightness;
 

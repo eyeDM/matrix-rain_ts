@@ -19,9 +19,9 @@ const GRAIN_TIME_SCALE: f32 = 0.1;
 const GRAIN_HASH_SCALE: f32 = 43758.5453;
 const HALF: f32 = 0.5;
 
-// MUST match PresentUniformLayout (align: 4, size: 48)
-struct PresentUniforms {
-  width: f32,
+// MUST match `PresentParamsLayout` (align: 4, size: 48)
+struct PresentParams {
+  width: f32, // зачем здесь это?
   height: f32,
   time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
   vignetteStrength: f32,
@@ -38,9 +38,9 @@ struct PresentUniforms {
 @group(0) @binding(0) var samp: sampler;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var bloomTex: texture_2d<f32>;
-@group(0) @binding(3) var<uniform> present: PresentUniforms;
+@group(0) @binding(3) var<uniform> params: PresentParams;
 
-// NOTE: present.time is periodic [0, 2π) to maintain numerical stability.
+// NOTE: params.time is periodic [0, 2π) to maintain numerical stability.
 // All time-based effects use periodic functions (sin, hash), so wrapping is semantically correct.
 
 @fragment
@@ -53,7 +53,7 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let center = vec2<f32>(0.5, 0.5);
   let d = uv - center;
   let r2 = dot(d, d);
-  uv = center + d * (1.0 + present.curvature * r2);
+  uv = center + d * (1.0 + params.curvature * r2);
 
   // Sample (clamp UV to avoid sampling outside)
   uv = clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0));
@@ -62,21 +62,21 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Monochrome luminance -> tinted green phosphor
   let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
-  var tint = vec3<f32>(present.tintR, present.tintG, present.tintB) * lum;
+  var tint = vec3<f32>(params.tintR, params.tintG, params.tintB) * lum;
 
   // Scanline modulation (sinusoidal across Y)
-  let scan = SCAN_BIAS + SCAN_AMPLITUDE * sin((uv.y * present.scanlineFreq) * TWO_PI + present.time * SCANLINE_TIME_SCALE);
-  let scanMod = mix(1.0, scan, present.scanlineStrength);
+  let scan = SCAN_BIAS + SCAN_AMPLITUDE * sin((uv.y * params.scanlineFreq) * TWO_PI + params.time * SCANLINE_TIME_SCALE);
+  let scanMod = mix(1.0, scan, params.scanlineStrength);
 
   // Vignette
   let dist = distance(uv, center);
-  let vig = 1.0 - present.vignetteStrength * smoothstep(0.0, VIGNETTE_EDGE, dist);
+  let vig = 1.0 - params.vignetteStrength * smoothstep(0.0, VIGNETTE_EDGE, dist);
 
   // Film grain (hashed noise)
-  let seed = uv.x * GRAIN_SEED_X + uv.y * GRAIN_SEED_Y + present.time * GRAIN_TIME_SCALE;
+  let seed = uv.x * GRAIN_SEED_X + uv.y * GRAIN_SEED_Y + params.time * GRAIN_TIME_SCALE;
   let n = fract(sin(seed) * GRAIN_HASH_SCALE);
-  let grain = (n - HALF) * present.noiseAmplitude;
+  let grain = (n - HALF) * params.noiseAmplitude;
 
-  let outColor = tint * scanMod * vig + grain + bloom * present.bloomIntensity;
+  let outColor = tint * scanMod * vig + grain + bloom * params.bloomIntensity;
   return vec4<f32>(outColor, 1.0);
 }

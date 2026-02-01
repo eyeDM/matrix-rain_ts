@@ -4,7 +4,9 @@ import { WebGPUContext, initWebGPU } from '@backend/init';
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
 
-import { ScreenUniformBuffer } from '@gpu/screen-uniform-buffer';
+import { ScreenParamsWriter } from '@gpu/screen-params-writer';
+import { SimulationParamsWriter } from '@gpu/simulation-params-writer';
+import { PresentParamsWriter } from '@gpu/present-params-writer';
 
 import {
     SimulationDeviceResources, createSimulationDeviceResources,
@@ -25,7 +27,6 @@ import {
     BlurSurfaceResources, createBlurSurfaceResources,
     BlurPass,
 } from '@gpu/blur-pass';
-import { PresentUniformBuffer } from '@gpu/present-uniform-buffer';
 import {
     HistoryDeviceResources, createHistoryDeviceResources,
     HistorySurfaceResources, createHistorySurfaceResources,
@@ -165,8 +166,45 @@ export async function bootstrap(): Promise<void> {
 
     // * Device-Lifetime resources
 
-    const screen = new ScreenUniformBuffer(gpu.device, resources.deviceScope);
-    screen.update(layout.viewport.width, layout.viewport.height);
+    const screenParamsWriter = new ScreenParamsWriter(
+        gpu.device,
+        resources.deviceScope,
+    );
+    screenParamsWriter.update({
+        width: layout.viewport.width,
+        height: layout.viewport.height,
+    });
+
+    const simParamsWriter = new SimulationParamsWriter(
+        gpu.device,
+        resources.deviceScope,
+    );
+    simParamsWriter.setSurfaceParams({
+        glyphCount: atlas.glyphCount,
+        cellWidth: atlas.cellWidth,
+        cellHeight: atlas.cellHeight,
+        cols: layout.grid.cols,
+        rows: layout.grid.rows,
+        maxTrail: layout.instances.maxTrail,
+    });
+    //simParamsWriter.setFrameParams({0.0}); // надо ли?
+
+    const presentParamsWriter = new PresentParamsWriter(
+        gpu.device,
+        resources.deviceScope,
+    );
+    presentParamsWriter.update({
+        width: layout.viewport.width,
+        height: layout.viewport.height,
+        time: 0,
+        vignetteStrength: 0.15,
+        scanlineStrength: 0.6,
+        noiseAmplitude: 0.02,
+        curvature: 0.03,
+        tint: [0.0, 1.0, 0.0],
+        scanlineFreq: 200.0,
+        bloomIntensity: 0.35,
+    });
 
     const simDeviceResources: SimulationDeviceResources = createSimulationDeviceResources(
         gpu.device,
@@ -200,23 +238,6 @@ export async function bootstrap(): Promise<void> {
         gpu.format,
     );
 
-    const presentUniform = new PresentUniformBuffer(
-        gpu.device,
-        resources.deviceScope,
-    );
-    presentUniform.update({
-        width: layout.viewport.width,
-        height: layout.viewport.height,
-        time: 0,
-        vignetteStrength: 0.15,
-        scanlineStrength: 0.06,
-        noiseAmplitude: 0.02,
-        curvature: 0.03,
-        tint: [0.0, 1.0, 0.0],
-        scanlineFreq: 200.0,
-        bloomIntensity: 0.35,
-    });
-
     // * Surface-Lifetime bundle
 
     function buildSurface(layout: ScreenLayout): {
@@ -235,12 +256,9 @@ export async function bootstrap(): Promise<void> {
             resources.surfaceScope,
             simDeviceResources.pipeline,
             atlas.glyphUVsBuffer,
-            atlas.glyphCount,
-            atlas.cellWidth,
-            atlas.cellHeight,
+            simParamsWriter.buffer,
             layout.grid.cols,
             layout.grid.rows,
-            layout.instances.maxTrail,
             layout.instances.count,
         );
 
@@ -251,7 +269,7 @@ export async function bootstrap(): Promise<void> {
             atlas.sampler,
             atlas.textureView,
             simSurfaceResources.instanceBuffer,
-            screen.buffer,
+            screenParamsWriter.buffer,
             COLOR_FORMAT,
             DEPTH_FORMAT,
             layout.viewport.width,
@@ -281,7 +299,6 @@ export async function bootstrap(): Promise<void> {
 
         const simPass = new SimulationComputePass(
             simDeviceResources.pipeline,
-            simSurfaceResources.streamBuffers,
             simSurfaceResources.bindGroup,
             layout.grid.cols,
         );
@@ -319,14 +336,14 @@ export async function bootstrap(): Promise<void> {
             layout.viewport.height,
         );
         // default decay
-        historyPass.updateDecay(gpu.device, 0.75);
+        historyPass.updateDecay(gpu.device, 0.75); // FIXME
 
         // final present pass will sample the latest history output via a getter
         const presentPass = new PresentPass(
             resources.frameScope,
             presentDeviceResources.pipeline,
             presentDeviceResources.sampler,
-            presentUniform.buffer,
+            presentParamsWriter.buffer,
             () => historyPass.getOutputView(),
             () => swapChain.getCurrentView(),
             blurSurfaceResources.texResult,
@@ -392,7 +409,7 @@ export async function bootstrap(): Promise<void> {
         const periodicTime = timeManager.getPeriodic();
 
         // update present-time uniform
-        presentUniform.update({
+        presentParamsWriter.update({
             width: layout.viewport.width,
             height: layout.viewport.height,
             time: periodicTime,
@@ -406,15 +423,13 @@ export async function bootstrap(): Promise<void> {
         });
 
         // update simulation flicker state on the sim pass so compute shader can use it
-        try {
-            surface.simPass.setFlickerState(
-                periodicTime,
-                presentState.flickerAmplitude,
-                presentState.flickerFreq,
-            );
-        } catch {
-            /* surface may be rebuilt on resize */
-        }
+        simParamsWriter.setFrameParams({
+            dt: ctx.dt,
+            time: periodicTime,
+            flickerAmplitude: presentState.flickerAmplitude,
+            flickerFrequency: presentState.flickerFrequency,
+        });
+        simParamsWriter.flush();
 
         renderGraph.execute(ctx);
         resources.frameScope.destroyAll();
@@ -441,10 +456,22 @@ export async function bootstrap(): Promise<void> {
             atlas.cellHeight,
         );
 
-        screen.update(layout.viewport.width, layout.viewport.height);
+        screenParamsWriter.update({
+            width: layout.viewport.width,
+            height: layout.viewport.height,
+        });
+
+        simParamsWriter.setSurfaceParams({
+            glyphCount: atlas.glyphCount,
+            cellWidth: atlas.cellWidth,
+            cellHeight: atlas.cellHeight,
+            cols: layout.grid.cols,
+            rows: layout.grid.rows,
+            maxTrail: layout.instances.maxTrail,
+        });
 
         // update present uniform size (preserve UI-driven params)
-        presentUniform.update({
+        presentParamsWriter.update({
             width: layout.viewport.width,
             height: layout.viewport.height,
             time: timeManager.getPeriodic(),
@@ -469,21 +496,21 @@ export async function bootstrap(): Promise<void> {
 
     const presentState: PresentParams = {
         vignetteStrength: 0.15,
-        scanlineStrength: 0.06,
+        scanlineStrength: 0.6,
         noiseAmplitude: 0.02,
         curvature: 0.03,
         tint: [0.0, 1.0, 0.0],
         scanlineFreq: 200.0,
         bloomIntensity: 0.35,
         flickerAmplitude: 0.06,
-        flickerFreq: 0.6,
+        flickerFrequency: 0.6,
     };
 
     createDebugUI(
         presentState,
         (partial) => {
             Object.assign(presentState, partial);
-            presentUniform.update({
+            presentParamsWriter.update({
                 width: layout.viewport.width,
                 height: layout.viewport.height,
                 time: timeManager.getPeriodic(),

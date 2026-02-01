@@ -1,26 +1,20 @@
-import { SimulationUniformLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
-import { SimulationUniformWriter } from '@gpu/simulation-uniform-writer';
-
 export type StreamBuffers = {
-    cols: number;
-    rows: number;
-
-    // GPU buffers
     indexes: GPUBuffer; // array<u32> length = cols (optional index buffer)
     seeds: GPUBuffer;   // array<u32> length = cols
     heads: GPUBuffer;   // array<f32> length = cols
     speeds: GPUBuffer;  // array<f32> length = cols
     lengths: GPUBuffer; // array<u32> length = cols
     energy: GPUBuffer;  // array<f32> length = cols
-    simulationUniforms: GPUBuffer;
-    simulationWriter: SimulationUniformWriter;
 
-    setFlickerState(time: number, amplitude: number, frequency: number): void;
-    writeFrame(dt: number): void;
     destroy(): void;
 };
+
+// WebGPU requires buffer sizes to be aligned to 4 bytes
+function alignTo4(n: number): number {
+    return (n + 3) & ~3;
+}
 
 /**
  * Create and initialize storage buffers for the compute simulation.
@@ -31,42 +25,19 @@ export function createStreamBuffers(
     surfaceScope: GpuResourceScope,
     cols: number,
     rows: number,
-    glyphCount: number,
-    cellWidth: number,
-    cellHeight: number,
-    maxTrail: number,
 ): StreamBuffers {
     const MIN_SPEED_CELLS_PER_SEC = 6.0;
     const SPEED_VARIANCE = 40.0;
     const MIN_TRAIL_LENGTH = 3;
     const TRAIL_LENGTH_VARIANCE = 20;
 
-    // Initialize CPU-side arrays
-    const indexes = new Uint32Array(cols);
-    const seeds = new Uint32Array(cols);
-    const heads = new Float32Array(cols);
-    const speeds = new Float32Array(cols);
-    const lengths = new Uint32Array(cols);
-    const energy = new Float32Array(cols);
+    const cryptoAvailable = typeof crypto !== 'undefined'
+        && typeof (crypto as any).getRandomValues === 'function';
 
-    // Populate with sensible defaults/random values
-    const cryptoAvailable = typeof crypto !== 'undefined' && typeof (crypto as any).getRandomValues === 'function';
-    const rndU32 = () => (cryptoAvailable
-        ? (crypto as any).getRandomValues(new Uint32Array(1))[0]
-        : Math.floor(Math.random() * 0xffffffff));
-
-    for (let i = 0; i < cols; i++) {
-        indexes[i] = i;
-        seeds[i] = rndU32();
-        heads[i] = Math.random() * rows; // random starting head position
-        speeds[i] = MIN_SPEED_CELLS_PER_SEC + Math.random() * SPEED_VARIANCE; // cells per second
-        lengths[i] = MIN_TRAIL_LENGTH + Math.floor(Math.random() * TRAIL_LENGTH_VARIANCE); // trail length
-        energy[i] = 0;
-    }
-
-    // WebGPU requires buffer sizes to be aligned to 4 bytes
-    function alignTo4(n: number): number {
-        return (n + 3) & ~3;
+    function rndU32(): number {
+        return cryptoAvailable
+            ? (crypto as any).getRandomValues(new Uint32Array(1))[0]
+            : Math.floor(Math.random() * 0xffffffff);
     }
 
     // Helper to create mapped GPUBuffer and initialize with typed array
@@ -87,23 +58,6 @@ export function createStreamBuffers(
         return buffer;
     }
 
-    // stored flicker state (updated from host each frame)
-    let flickerTime = 0.0;
-    let flickerAmp = 0.0;
-    let flickerFreq = 0.0;
-
-    function setFlickerState(time: number, amplitude: number, frequency: number): void {
-        flickerTime = time;
-        flickerAmp = amplitude;
-        flickerFreq = frequency;
-    }
-
-    function writeFrame(dt: number): void {
-        // use the writer helper that writes time & flicker params
-        simulationWriter.writePerFrame(dt, flickerTime, flickerAmp, flickerFreq);
-        simulationWriter.flush(device.queue, simulationUniforms);
-    }
-
     function safeDestroy(buffer?: GPUBuffer): void {
         if (!buffer) return;
         try {
@@ -113,6 +67,24 @@ export function createStreamBuffers(
         }
     }
 
+    // Initialize CPU-side arrays
+    const indexes = new Uint32Array(cols);
+    const seeds = new Uint32Array(cols);
+    const heads = new Float32Array(cols);
+    const speeds = new Float32Array(cols);
+    const lengths = new Uint32Array(cols);
+    const energy = new Float32Array(cols);
+
+    // Populate with sensible defaults/random values
+    for (let i = 0; i < cols; i++) {
+        indexes[i] = i;
+        seeds[i] = rndU32();
+        heads[i] = Math.random() * rows; // random starting head position
+        speeds[i] = MIN_SPEED_CELLS_PER_SEC + Math.random() * SPEED_VARIANCE; // cells per second
+        lengths[i] = MIN_TRAIL_LENGTH + Math.floor(Math.random() * TRAIL_LENGTH_VARIANCE); // trail length
+        energy[i] = 0;
+    }
+
     const indexesBuf = createMappedBuffer(indexes, GPUBufferUsage.STORAGE);
     const seedsBuf = createMappedBuffer(seeds, GPUBufferUsage.STORAGE);
     const headsBuf = createMappedBuffer(heads, GPUBufferUsage.STORAGE);
@@ -120,39 +92,14 @@ export function createStreamBuffers(
     const lengthsBuf = createMappedBuffer(lengths, GPUBufferUsage.STORAGE);
     const energyBuf = createMappedBuffer(energy, GPUBufferUsage.STORAGE);
 
-    const simulationUniforms = surfaceScope.trackDestroyable(
-        device.createBuffer({
-            label: 'SimulationUniforms',
-            size: SimulationUniformLayout.SIZE,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        })
-    );
-
-    const simulationWriter = new SimulationUniformWriter();
-    simulationWriter.writeStatic(
-        rows,
-        cols,
-        glyphCount,
-        cellWidth,
-        cellHeight,
-        maxTrail,
-    );
-    writeFrame(0.0);
-
     return {
-        cols,
-        rows,
         indexes: indexesBuf,
         seeds: seedsBuf,
         heads: headsBuf,
         speeds: speedsBuf,
         lengths: lengthsBuf,
         energy: energyBuf,
-        simulationUniforms,
-        simulationWriter,
 
-        setFlickerState,
-        writeFrame,
         destroy() {
             safeDestroy(indexesBuf);
             safeDestroy(seedsBuf);
@@ -160,7 +107,6 @@ export function createStreamBuffers(
             safeDestroy(speedsBuf);
             safeDestroy(lengthsBuf);
             safeDestroy(energyBuf);
-            safeDestroy(simulationUniforms);
         },
     };
 }

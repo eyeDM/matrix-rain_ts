@@ -58,10 +58,7 @@ export function createPresentDeviceResources(
         })
     );
 
-    return {
-        pipeline,
-        sampler,
-    };
+    return { pipeline, sampler };
 }
 
 export class PresentPass {
@@ -72,7 +69,7 @@ export class PresentPass {
         private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPURenderPipeline,
         private readonly sampler: GPUSampler,
-        private readonly presentUniformBuffer: GPUBuffer,
+        private readonly paramsBuffer: GPUBuffer,
         /** A callback that returns the current texture view to sample for presentation */
         private readonly getTextureView: () => GPUTextureView,
         /** A callback that returns the current texture view for output */
@@ -92,7 +89,7 @@ export class PresentPass {
                     { binding: 0, resource: this.sampler },
                     { binding: 1, resource: this.getTextureView() },
                     { binding: 2, resource: this.bloomTexView },
-                    { binding: 3, resource: { buffer: this.presentUniformBuffer } },
+                    { binding: 3, resource: { buffer: this.paramsBuffer } },
                 ],
             })
         );

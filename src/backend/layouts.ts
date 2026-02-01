@@ -13,19 +13,33 @@
  * - struct size = padded to struct alignment
  */
 
-// Unified simulation uniforms
-export const SimulationUniformLayout = {
+// Canvas size in pixels.
+// WGSL type: uniform.
+export const CanvasParamsLayout = {
+    ALIGN: 4,
+    SIZE: 16,
+    offsets: {
+        width: 0,  // f32
+        height: 4, // f32
+        _pad0: 8,  // f32
+        _pad1: 12, // f32
+    },
+} as const;
+
+// Unified simulation params.
+// WGSL type: uniform.
+export const SimulationParamsLayout = {
     ALIGN: 4,
     SIZE: 48,
     offsets: {
-        dt: 0,                // f32
-        rows: 4,              // u32
-        cols: 8,              // u32
-        glyphCount: 12,       // u32
-        cellWidth: 16,        // f32
-        cellHeight: 20,       // f32
-        maxTrail: 24,         // u32
-        // per-frame simulation controls
+        glyphCount: 0,        // u32
+        cellWidth: 4,         // f32
+        cellHeight: 8,        // f32
+        cols: 12,             // u32
+        rows: 16,             // u32
+        maxTrail: 20,         // u32
+        // per-frame controls:
+        dt: 24,               // f32
         time: 28,             // f32
         flickerAmplitude: 32, // f32
         flickerFrequency: 36, // f32
@@ -34,8 +48,9 @@ export const SimulationUniformLayout = {
     },
 } as const;
 
-// Instance data layout (storage buffer), one per symbol instance
-export const InstanceLayout = {
+// Instance params layout (storage buffer), one per symbol instance.
+// WGSL type: storage, read_write.
+export const InstanceParamsLayout = {
     ALIGN: 16,
     SIZE: 48,
     offsets: {
@@ -49,19 +64,8 @@ export const InstanceLayout = {
     },
 } as const;
 
-// Canvas size in pixels
-export const ScreenLayout = {
-    ALIGN: 4,
-    SIZE: 16,
-    offsets: {
-        width: 0,  // f32
-        height: 4, // f32
-        _pad0: 8,  // f32
-        _pad1: 12, // f32
-    },
-} as const;
-
-// History parameters used by the history accumulation compute shader
+// History params used by the history accumulation compute shader.
+// WGSL type: uniform.
 export const HistoryParamsLayout = {
     ALIGN: 4,
     SIZE: 16,
@@ -73,8 +77,22 @@ export const HistoryParamsLayout = {
     },
 } as const;
 
-// Present-stage uniform layout: screen params + time + effect controls
-export const PresentUniformLayout = {
+// Blur params for separable Gaussian blur (direction and texel size + threshold).
+// WGSL type: uniform.
+export const BlurParamsLayout = {
+    ALIGN: 4,
+    SIZE: 16,
+    offsets: {
+        dirX: 0,       // f32
+        dirY: 4,       // f32
+        texelSize: 8,  // f32
+        threshold: 12, // f32
+    },
+} as const;
+
+// Present-stage uniform layout: screen params + time + effect controls.
+// WGSL type: uniform.
+export const PresentParamsLayout = {
     ALIGN: 4,
     SIZE: 48,
     offsets: {
@@ -90,17 +108,5 @@ export const PresentUniformLayout = {
         tintB: 36,            // f32
         scanlineFreq: 40,     // f32
         bloomIntensity: 44,   // f32
-    },
-} as const;
-
-// Blur params for separable Gaussian blur (direction and texel size + threshold)
-export const BlurParamsLayout = {
-    ALIGN: 4,
-    SIZE: 16,
-    offsets: {
-        dirX: 0,       // f32
-        dirY: 4,       // f32
-        texelSize: 8,  // f32
-        threshold: 12, // f32
     },
 } as const;

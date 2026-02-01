@@ -1,7 +1,14 @@
 // * Instanced symbol renderer *
 
-// MUST match InstanceLayout (align: 16, size: 48)
-struct InstanceData {
+// MUST match `CanvasParamsLayout` (align: 4, size: 16)
+struct CanvasParams {
+  size: vec2<f32>,
+  pad0: f32,
+  pad1: f32,
+};
+
+// MUST match `InstanceParamsLayout` (align: 16, size: 48)
+struct InstanceParams {
   offset: vec2<f32>,
   cellSize: vec2<f32>,
   uvRect: vec4<f32>,
@@ -9,13 +16,6 @@ struct InstanceData {
   pad0: f32,
   pad1: f32,
   pad2: f32,
-};
-
-// MUST match ScreenLayout (align: 4, size: 16)
-struct Screen {
-  size: vec2<f32>,
-  pad0: f32,
-  pad1: f32,
 };
 
 struct VertexOut {
@@ -26,8 +26,8 @@ struct VertexOut {
 
 @group(0) @binding(0) var atlasSampler: sampler; // sampler for atlas texture
 @group(0) @binding(1) var atlasTexture: texture_2d<f32>; // rgba8unorm
-@group(0) @binding(2) var<storage, read> instances: array<InstanceData>; // per-instance data
-@group(0) @binding(3) var<uniform> screen: Screen; // canvas size in pixels
+@group(0) @binding(2) var<uniform> canvas: CanvasParams; // canvas size in pixels
+@group(0) @binding(3) var<storage, read> instances: array<InstanceParams>; // per-instance params
 
 // Vertex input (vertex buffer 0):
 //  @location(0) pos: vec2<f32>   - quad corner in normalized cell space (-0.5..0.5)
@@ -47,9 +47,9 @@ fn vs_main(
   let pixelPos = inst.offset + (pos + vec2<f32>(0.5, 0.5)) * inst.cellSize;
 
   // Convert pixel space to NDC
-  let ndcX = (pixelPos.x / screen.size.x) * 2.0 - 1.0;
+  let ndcX = (pixelPos.x / canvas.size.x) * 2.0 - 1.0;
   // flip Y because texture/canvas origin is top-left
-  let ndcY = 1.0 - (pixelPos.y / screen.size.y) * 2.0;
+  let ndcY = 1.0 - (pixelPos.y / canvas.size.y) * 2.0;
 
   out.Position = vec4<f32>(ndcX, ndcY, 0.0, 1.0);
 

@@ -1,4 +1,4 @@
-import { InstanceLayout } from '@backend/layouts';
+import { InstanceParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -61,7 +61,6 @@ export function createSimulationDeviceResources(
  */
 export type SimulationSurfaceResources = {
     readonly instanceBuffer: GPUBuffer;
-    readonly streamBuffers: StreamBuffers;
     readonly bindGroup: GPUBindGroup;
 };
 
@@ -70,12 +69,9 @@ export function createSimulationSurfaceResources(
     scope: GpuResourceScope,
     pipeline: GPUComputePipeline,
     glyphUVsBuffer: GPUBuffer,
-    glyphCount: number,
-    cellWidth: number,
-    cellHeight: number,
+    paramsBuffer: GPUBuffer,
     cols: number,
     rows: number,
-    maxTrail: number,
     instancesCount: number,
 ): SimulationSurfaceResources {
     // streamBuffers is columns properties; streamBuffers.columns хранит индекс столбца
@@ -84,10 +80,6 @@ export function createSimulationSurfaceResources(
         scope,
         cols,
         rows,
-        glyphCount,
-        cellWidth,
-        cellHeight,
-        maxTrail,
     );
 
     /**
@@ -97,7 +89,7 @@ export function createSimulationSurfaceResources(
      */
     const instanceBuffer: GPUBuffer = scope.trackDestroyable(
         device.createBuffer({
-            size: instancesCount * InstanceLayout.SIZE,
+            size: instancesCount * InstanceParamsLayout.SIZE,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX,
         })
     );
@@ -107,7 +99,7 @@ export function createSimulationSurfaceResources(
             label: 'Simulation Bind Group',
             layout: pipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: { buffer: streamBuffers.simulationUniforms } },
+                { binding: 0, resource: { buffer: paramsBuffer } },
                 { binding: 1, resource: { buffer: streamBuffers.indexes } },
                 { binding: 2, resource: { buffer: streamBuffers.seeds } },
                 { binding: 3, resource: { buffer: streamBuffers.heads } },
@@ -120,20 +112,17 @@ export function createSimulationSurfaceResources(
         })
     );
 
-    return { instanceBuffer, streamBuffers, bindGroup };
+    return { instanceBuffer, bindGroup };
 }
 
 export class SimulationComputePass {
     constructor(
         private readonly pipeline: GPUComputePipeline,
-        private readonly streamBuffers: StreamBuffers,
         private readonly bindGroup: GPUBindGroup,
         private readonly cols: number,
     ) {}
 
     execute(ctx: RenderContext): void {
-        this.streamBuffers.writeFrame(ctx.dt);
-
         const pass = ctx.encoder.beginComputePass();
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, this.bindGroup);
@@ -141,16 +130,5 @@ export class SimulationComputePass {
             Math.ceil(this.cols / WORKGROUP_SIZE_X),
         );
         pass.end();
-    }
-
-    /**
-     * Set deterministic flicker state forwarded to the underlying stream buffers
-     */
-    setFlickerState(
-        time: number,
-        amplitude: number,
-        frequency: number,
-    ): void {
-        this.streamBuffers.setFlickerState(time, amplitude, frequency);
     }
 }

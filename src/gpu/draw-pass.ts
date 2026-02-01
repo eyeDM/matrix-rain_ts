@@ -1,6 +1,7 @@
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
+import {CanvasParamsLayout} from "@backend/layouts";
 
 /**
  * Device-lifetime resources
@@ -58,7 +59,7 @@ export function createDrawSurfaceResources(
     atlasSampler: GPUSampler,
     atlasTextureView: GPUTextureView,
     instanceBuffer: GPUBuffer,
-    screenBuffer: GPUBuffer,
+    screenParamsBuffer: GPUBuffer,
     colorFormat: GPUTextureFormat,
     depthFormat: GPUTextureFormat,
     viewportWidth: number,
@@ -72,8 +73,8 @@ export function createDrawSurfaceResources(
             entries: [
                 { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Atlas Sampler
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Atlas Texture
-                { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData
-                { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenLayout
+                { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenParams
+                { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData
             ],
         })
     );
@@ -85,8 +86,8 @@ export function createDrawSurfaceResources(
             entries: [
                 { binding: 0, resource: atlasSampler },
                 { binding: 1, resource: atlasTextureView },
-                { binding: 2, resource: { buffer: instanceBuffer } },
-                { binding: 3, resource: { buffer: screenBuffer } },
+                { binding: 2, resource: { buffer: screenParamsBuffer } },
+                { binding: 3, resource: { buffer: instanceBuffer } },
             ],
         })
     );

@@ -8,7 +8,7 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   return vec4<f32>(pos[i], 0.0, 1.0);
 }
 
-// MUST match BlurParamsLayout (align: 4, size: 16)
+// MUST match `BlurParamsLayout` (align: 4, size: 16)
 struct BlurParams {
   dir: vec2<f32>,
   texelSize: f32,
@@ -43,8 +43,8 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Bright-pass threshold applied in the first blur pass by setting threshold>0
   let lum = dot(sum / tot, vec3<f32>(0.2126, 0.7152, 0.0722));
-  let bright = max(lum - params.threshold, 0.0);
-  let out = (sum / tot) * (bright / max(lum, 1e-5));
+  let bright = max(0.0, lum - params.threshold);
+  let out = (sum / tot) * (bright / max(1e-5, lum));
 
   return vec4<f32>(out, 1.0);
 }
