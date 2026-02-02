@@ -44,13 +44,13 @@ export class PresentParamsWriter {
         this.view.setFloat32(PresentParamsLayout.offsets.height, params.height, true);
         this.view.setFloat32(PresentParamsLayout.offsets.time, params.time, true);
         this.view.setFloat32(PresentParamsLayout.offsets.vignetteStrength, params.vignetteStrength, true);
+        this.view.setFloat32(PresentParamsLayout.offsets.scanlineFreq, params.scanlineFreq, true);
         this.view.setFloat32(PresentParamsLayout.offsets.scanlineStrength, params.scanlineStrength, true);
         this.view.setFloat32(PresentParamsLayout.offsets.noiseAmplitude, params.noiseAmplitude, true);
         this.view.setFloat32(PresentParamsLayout.offsets.curvature, params.curvature, true);
         this.view.setFloat32(PresentParamsLayout.offsets.tintR, params.tint[0], true);
         this.view.setFloat32(PresentParamsLayout.offsets.tintG, params.tint[1], true);
         this.view.setFloat32(PresentParamsLayout.offsets.tintB, params.tint[2], true);
-        this.view.setFloat32(PresentParamsLayout.offsets.scanlineFreq, params.scanlineFreq, true);
         this.view.setFloat32(PresentParamsLayout.offsets.bloomIntensity, params.bloomIntensity, true);
     }
 

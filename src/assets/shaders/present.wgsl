@@ -25,13 +25,13 @@ struct PresentParams {
   height: f32,
   time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
   vignetteStrength: f32,
+  scanlineFreq: f32,
   scanlineStrength: f32,
   noiseAmplitude: f32,
   curvature: f32,
   tintR: f32,
   tintG: f32,
   tintB: f32,
-  scanlineFreq: f32,
   bloomIntensity: f32,
 };
 

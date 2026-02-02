@@ -41,7 +41,7 @@ import { SwapChain } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 import { TimeManager } from '@runtime/time-manager';
 
-import { createDebugUI, PresentParams } from '@app/debug-ui';
+import { ConfigParameters, createEffectsPanel } from '@app/debug-ui';
 
 const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // 'bgra8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
@@ -94,6 +94,22 @@ function computeScreenLayout(
         },
     };
 }
+
+const cfg: ConfigParameters = {
+    // SimulationParams
+    flickerAmplitude: 0.06,
+    flickerFrequency: 0.60,
+    // HistoryParams
+    decay: 0.75,
+    // PresentParams
+    vignetteStrength: 0.15,
+    scanlineFreq: 200.00,
+    scanlineStrength: 0.60,
+    noiseAmplitude: 0.20,
+    curvature: 0.03,
+    tint: [0.0, 1.0, 0.0],
+    bloomIntensity: 0.35,
+};
 
 export async function bootstrap(): Promise<void> {
     const canvasEl = document.getElementById('canvas') as HTMLCanvasElement | null;
@@ -187,24 +203,11 @@ export async function bootstrap(): Promise<void> {
         rows: layout.grid.rows,
         maxTrail: layout.instances.maxTrail,
     });
-    //simParamsWriter.setFrameParams({0.0}); // надо ли?
 
     const presentParamsWriter = new PresentParamsWriter(
         gpu.device,
         resources.deviceScope,
     );
-    presentParamsWriter.update({
-        width: layout.viewport.width,
-        height: layout.viewport.height,
-        time: 0,
-        vignetteStrength: 0.15,
-        scanlineStrength: 0.6,
-        noiseAmplitude: 0.02,
-        curvature: 0.03,
-        tint: [0.0, 1.0, 0.0],
-        scanlineFreq: 200.0,
-        bloomIntensity: 0.35,
-    });
 
     const simDeviceResources: SimulationDeviceResources = createSimulationDeviceResources(
         gpu.device,
@@ -336,7 +339,7 @@ export async function bootstrap(): Promise<void> {
             layout.viewport.height,
         );
         // default decay
-        historyPass.updateDecay(gpu.device, 0.75); // FIXME
+        historyPass.updateDecay(gpu.device, cfg.decay);
 
         // final present pass will sample the latest history output via a getter
         const presentPass = new PresentPass(
@@ -408,28 +411,28 @@ export async function bootstrap(): Promise<void> {
         timeManager.tick(ctx.dt);
         const periodicTime = timeManager.getPeriodic();
 
+        // update simulation flicker state on the sim pass so compute shader can use it
+        simParamsWriter.setFrameParams({
+            dt: ctx.dt,
+            time: periodicTime,
+            flickerAmplitude: cfg.flickerAmplitude,
+            flickerFrequency: cfg.flickerFrequency,
+        });
+        simParamsWriter.flush();
+
         // update present-time uniform
         presentParamsWriter.update({
             width: layout.viewport.width,
             height: layout.viewport.height,
             time: periodicTime,
-            vignetteStrength: presentState.vignetteStrength,
-            scanlineStrength: presentState.scanlineStrength,
-            noiseAmplitude: presentState.noiseAmplitude,
-            curvature: presentState.curvature,
-            tint: presentState.tint,
-            scanlineFreq: presentState.scanlineFreq,
-            bloomIntensity: presentState.bloomIntensity,
+            vignetteStrength: cfg.vignetteStrength,
+            scanlineFreq: cfg.scanlineFreq,
+            scanlineStrength: cfg.scanlineStrength,
+            noiseAmplitude: cfg.noiseAmplitude,
+            curvature: cfg.curvature,
+            tint: cfg.tint,
+            bloomIntensity: cfg.bloomIntensity,
         });
-
-        // update simulation flicker state on the sim pass so compute shader can use it
-        simParamsWriter.setFrameParams({
-            dt: ctx.dt,
-            time: periodicTime,
-            flickerAmplitude: presentState.flickerAmplitude,
-            flickerFrequency: presentState.flickerFrequency,
-        });
-        simParamsWriter.flush();
 
         renderGraph.execute(ctx);
         resources.frameScope.destroyAll();
@@ -471,18 +474,18 @@ export async function bootstrap(): Promise<void> {
         });
 
         // update present uniform size (preserve UI-driven params)
-        presentParamsWriter.update({
+        /*presentParamsWriter.update({ // это и так onEachFrame делается
             width: layout.viewport.width,
             height: layout.viewport.height,
             time: timeManager.getPeriodic(),
-            vignetteStrength: presentState.vignetteStrength,
-            scanlineStrength: presentState.scanlineStrength,
-            noiseAmplitude: presentState.noiseAmplitude,
-            curvature: presentState.curvature,
-            tint: presentState.tint,
-            scanlineFreq: presentState.scanlineFreq,
-            bloomIntensity: presentState.bloomIntensity,
-        });
+            vignetteStrength: cfg.vignetteStrength,
+            scanlineFreq: cfg.scanlineFreq,
+            scanlineStrength: cfg.scanlineStrength,
+            noiseAmplitude: cfg.noiseAmplitude,
+            curvature: cfg.curvature,
+            tint: cfg.tint,
+            bloomIntensity: cfg.bloomIntensity,
+        });*/
 
         // 1. Destroy ALL surface-lifetime GPU resources
         resources.surfaceScope.destroyAll();
@@ -494,38 +497,16 @@ export async function bootstrap(): Promise<void> {
 
     // --- Debug UI (runtime parameter tuning) ---
 
-    const presentState: PresentParams = {
-        vignetteStrength: 0.15,
-        scanlineStrength: 0.6,
-        noiseAmplitude: 0.02,
-        curvature: 0.03,
-        tint: [0.0, 1.0, 0.0],
-        scanlineFreq: 200.0,
-        bloomIntensity: 0.35,
-        flickerAmplitude: 0.06,
-        flickerFrequency: 0.6,
-    };
+    createEffectsPanel(
+        cfg,
+        (changedConfig: Partial<ConfigParameters>) => {
+            const oldCfg = cfg;
+            Object.assign(cfg, changedConfig);
 
-    createDebugUI(
-        presentState,
-        (partial) => {
-            Object.assign(presentState, partial);
-            presentParamsWriter.update({
-                width: layout.viewport.width,
-                height: layout.viewport.height,
-                time: timeManager.getPeriodic(),
-                vignetteStrength: presentState.vignetteStrength,
-                scanlineStrength: presentState.scanlineStrength,
-                noiseAmplitude: presentState.noiseAmplitude,
-                curvature: presentState.curvature,
-                tint: presentState.tint,
-                scanlineFreq: presentState.scanlineFreq,
-                bloomIntensity: presentState.bloomIntensity,
-            });
-        },
-        (decayVal) => {
-            // delegate to the active surface's updater; surface may be rebuilt on resize
-            surface.historyPass.updateDecay(gpu.device, decayVal);
+            if (cfg.decay === oldCfg.decay) {
+                // delegate to the active surface's updater; surface may be rebuilt on resize
+                surface.historyPass.updateDecay(gpu.device, cfg.decay);
+            }
         },
     );
 }

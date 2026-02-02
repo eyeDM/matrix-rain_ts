@@ -83,7 +83,7 @@ export function createHistorySurfaceResources(
         })
     );
 
-    const paramsBuffer = scope.trackDestroyable(
+    const paramsBuffer = scope.trackDestroyable( // FIXME: move to HistoryParamsWriter
         device.createBuffer({
             label: 'History Params',
             size: HistoryParamsLayout.SIZE,
@@ -162,7 +162,9 @@ export class HistoryComputePass {
     }
 
     /**
-     * A small updater to modify the decay param
+     * A small updater to modify the decay param.
+     *
+     * FIXME: move to HistoryParamsWriter
      *
      * @param device
      * @param decayVal

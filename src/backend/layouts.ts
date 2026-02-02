@@ -100,13 +100,13 @@ export const PresentParamsLayout = {
         height: 4,            // f32
         time: 8,              // f32
         vignetteStrength: 12, // f32
-        scanlineStrength: 16, // f32
-        noiseAmplitude: 20,   // f32
-        curvature: 24,        // f32
-        tintR: 28,            // f32
-        tintG: 32,            // f32
-        tintB: 36,            // f32
-        scanlineFreq: 40,     // f32
+        scanlineFreq: 16,     // f32
+        scanlineStrength: 20, // f32
+        noiseAmplitude: 24,   // f32
+        curvature: 28,        // f32
+        tintR: 32,            // f32
+        tintG: 36,            // f32
+        tintB: 40,            // f32
         bloomIntensity: 44,   // f32
     },
 } as const;
