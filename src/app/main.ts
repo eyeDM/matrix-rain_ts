@@ -41,7 +41,7 @@ import { SwapChain } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 import { TimeManager } from '@runtime/time-manager';
 
-import { ConfigParameters, createEffectsPanel } from '@app/debug-ui';
+import { ConfigParameters, createEffectsPanel } from '@app/effects-panel';
 
 const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // 'bgra8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
