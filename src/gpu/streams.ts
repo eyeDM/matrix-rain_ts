@@ -11,6 +11,13 @@ export type StreamBuffers = {
     destroy(): void;
 };
 
+function rndU32Crypto(): number {
+    return (crypto as any).getRandomValues(new Uint32Array(1))[0];
+}
+function rndU32Math(): number {
+    return Math.floor(Math.random() * 0xffffffff);
+}
+
 // WebGPU requires buffer sizes to be aligned to 4 bytes
 function alignTo4(n: number): number {
     return (n + 3) & ~3;
@@ -30,15 +37,6 @@ export function createStreamBuffers(
     const SPEED_VARIANCE = 40.0;
     const MIN_TRAIL_LENGTH = 3;
     const TRAIL_LENGTH_VARIANCE = 20;
-
-    const cryptoAvailable = typeof crypto !== 'undefined'
-        && typeof (crypto as any).getRandomValues === 'function';
-
-    function rndU32(): number {
-        return cryptoAvailable
-            ? (crypto as any).getRandomValues(new Uint32Array(1))[0]
-            : Math.floor(Math.random() * 0xffffffff);
-    }
 
     // Helper to create mapped GPUBuffer and initialize with typed array
     function createMappedBuffer(
@@ -74,6 +72,11 @@ export function createStreamBuffers(
     const speeds = new Float32Array(cols);
     const lengths = new Uint32Array(cols);
     const energy = new Float32Array(cols);
+
+    const cryptoAvailable = typeof crypto !== 'undefined'
+        && typeof (crypto as any).getRandomValues === 'function';
+
+    const rndU32 = cryptoAvailable ? rndU32Crypto : rndU32Math;
 
     // Populate with sensible defaults/random values
     for (let i = 0; i < cols; i++) {
