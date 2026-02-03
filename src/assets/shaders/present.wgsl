@@ -1,3 +1,68 @@
+// ============================================================================
+// Final-frame presentation with a stylized CRT aesthetic.
+//
+// Purpose:
+//   This shader implements a fullscreen post-processing “CRT / retro display”
+//   effect applied to an already rendered image.
+//   It renders a fullscreen triangle and, in the fragment shader, simulates:
+//   - monochrome phosphor display with color tint,
+//   - barrel (CRT-style) screen curvature,
+//   - animated scanlines,
+//   - edge vignette,
+//   - film grain / noise,
+//   - additive bloom from a separate texture.
+//
+// The shader is designed for numerical stability:
+//  the time parameter is wrapped to [0, 2π), which is sufficient for all periodic effects.
+//
+// It is well suited for retro games, terminal displays, and old-monitor-style UI overlays.
+//
+// --------------------------------------------------
+//
+// Parameters:
+//
+//   time:
+//   - Purpose: periodic time value used to animate scanlines and grain.
+//   - Effect: controls phase of sinusoidal and hash-based functions.
+//   - Reasonable range: [0, 2π); wrapping is required for f32 precision stability.
+//
+//   vignetteStrength:
+//   - Purpose: controls the strength of edge darkening.
+//   - Effect: 0 disables vignette, 1 produces strong edge falloff.
+//   - Reasonable range: [0, 1]; values >1 cause excessive darkening.
+//
+//   scanlineFreq:
+//   - Purpose: vertical frequency of scanlines.
+//   - Effect: determines the number of scanlines across the screen.
+//   - Reasonable range: ~200–1500 for Full HD; too low produces banding, too high may cause aliasing.
+//
+//   scanlineStrength:
+//   - Purpose: blend factor for scanline modulation.
+//   - Effect: 0 disables scanlines, 1 applies full modulation.
+//   - Reasonable range: [0, 1]; values >1 exaggerate contrast unnaturally.
+//
+//   noiseAmplitude:
+//   - Purpose: amplitude of film grain noise.
+//   - Effect: added additively to the final color.
+//   - Reasonable range: [0, 0.1]; values >0.2 quickly overwhelm image detail.
+//
+//   curvature:
+//   - Purpose: strength of barrel distortion (CRT curvature).
+//   - Effect: increases geometric distortion toward screen edges.
+//   - Reasonable range: [0, 0.3]; values >0.5 cause severe stretching and edge loss.
+//
+//   tintR, tintG, tintB:
+//   - Purpose: phosphor color tint applied to monochrome luminance.
+//   - Effect: scales luminance per color channel.
+//   - Reasonable range: [0, 1.5]; classic green CRT look is approximately (0.2, 1.0, 0.2).
+//
+//   bloomIntensity:
+//   - Purpose: intensity of the additive bloom contribution.
+//   - Effect: amplifies bright areas using bloomTex.
+//   - Reasonable range: [0, 1]; values >1 lead to overexposure and loss of detail.
+//
+// ============================================================================
+
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   var pos = array<vec2<f32>, 3>(
@@ -9,20 +74,20 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 }
 
 const TWO_PI: f32 = 6.283185307179586;
+
+const LUMA_BT709: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722); // ITU-R Recommendation 709
 const SCAN_BIAS: f32 = 0.5;
 const SCAN_AMPLITUDE: f32 = 0.5; // used to map sin() from -1..1 to 0..1
 const SCANLINE_TIME_SCALE: f32 = 1.5; // temporal speed factor for scanline animation
-const VIGNETTE_EDGE: f32 = 0.7071;
-const GRAIN_SEED_X: f32 = 12.9898;
+const VIGNETTE_EDGE: f32 = 0.7071; // ≈ √(0.5² + 0.5²) // radius normalization for square screen
+const GRAIN_SEED_X: f32 = 12.9898; // destroying the correlation in X and Y
 const GRAIN_SEED_Y: f32 = 78.233;
-const GRAIN_TIME_SCALE: f32 = 0.1;
-const GRAIN_HASH_SCALE: f32 = 43758.5453;
+const GRAIN_TIME_SCALE: f32 = 0.1; // "analogue feel"
+const GRAIN_HASH_SCALE: f32 = 43758.5453; // scale to turn sin() into a pseudo-random hash
 const HALF: f32 = 0.5;
 
 // MUST match `PresentParamsLayout` (align: 4, size: 48)
 struct PresentParams {
-  width: f32, // зачем здесь это?
-  height: f32,
   time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
   vignetteStrength: f32,
   scanlineFreq: f32,
@@ -61,7 +126,7 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let bloom = textureSample(bloomTex, samp, uv).rgb;
 
   // Monochrome luminance -> tinted green phosphor
-  let lum = dot(col, vec3<f32>(0.2126, 0.7152, 0.0722));
+  let lum = dot(col, LUMA_BT709);
   var tint = vec3<f32>(params.tintR, params.tintG, params.tintB) * lum;
 
   // Scanline modulation (sinusoidal across Y)

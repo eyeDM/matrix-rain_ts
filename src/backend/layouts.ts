@@ -96,17 +96,17 @@ export const PresentParamsLayout = {
     ALIGN: 4,
     SIZE: 48,
     offsets: {
-        width: 0,             // f32
-        height: 4,            // f32
-        time: 8,              // f32
-        vignetteStrength: 12, // f32
-        scanlineFreq: 16,     // f32
-        scanlineStrength: 20, // f32
-        noiseAmplitude: 24,   // f32
-        curvature: 28,        // f32
-        tintR: 32,            // f32
-        tintG: 36,            // f32
-        tintB: 40,            // f32
-        bloomIntensity: 44,   // f32
+        time: 0,              // f32
+        vignetteStrength: 4,  // f32
+        scanlineFreq: 8,      // f32
+        scanlineStrength: 12, // f32
+        noiseAmplitude: 16,   // f32
+        curvature: 20,        // f32
+        tintR: 24,            // f32
+        tintG: 28,            // f32
+        tintB: 32,            // f32
+        bloomIntensity: 36,   // f32
+        _pad0: 40,            // f32
+        _pad1: 44,            // f32
     },
 } as const;

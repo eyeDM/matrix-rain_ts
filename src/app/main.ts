@@ -98,17 +98,17 @@ function computeScreenLayout(
 const cfg: ConfigParameters = {
     // SimulationParams
     flickerAmplitude: 0.06,
-    flickerFrequency: 0.60,
+    flickerFrequency: 0.6,
     // HistoryParams
     decay: 0.75,
     // PresentParams
-    vignetteStrength: 0.15,
-    scanlineFreq: 200.00,
-    scanlineStrength: 0.60,
-    noiseAmplitude: 0.20,
-    curvature: 0.03,
-    tint: [0.0, 1.0, 0.0],
-    bloomIntensity: 0.35,
+    vignetteStrength: 0.1,
+    scanlineFreq: 200.0,
+    scanlineStrength: 0.6,
+    noiseAmplitude: 0.1,
+    curvature: 0.04,
+    tint: [0.05, 1.5, 0.05],
+    bloomIntensity: 0.2,
 };
 
 export async function bootstrap(): Promise<void> {
@@ -422,8 +422,6 @@ export async function bootstrap(): Promise<void> {
 
         // update present-time uniform
         presentParamsWriter.update({
-            width: layout.viewport.width,
-            height: layout.viewport.height,
             time: periodicTime,
             vignetteStrength: cfg.vignetteStrength,
             scanlineFreq: cfg.scanlineFreq,
@@ -472,20 +470,6 @@ export async function bootstrap(): Promise<void> {
             rows: layout.grid.rows,
             maxTrail: layout.instances.maxTrail,
         });
-
-        // update present uniform size (preserve UI-driven params)
-        /*presentParamsWriter.update({ // это и так onEachFrame делается
-            width: layout.viewport.width,
-            height: layout.viewport.height,
-            time: timeManager.getPeriodic(),
-            vignetteStrength: cfg.vignetteStrength,
-            scanlineFreq: cfg.scanlineFreq,
-            scanlineStrength: cfg.scanlineStrength,
-            noiseAmplitude: cfg.noiseAmplitude,
-            curvature: cfg.curvature,
-            tint: cfg.tint,
-            bloomIntensity: cfg.bloomIntensity,
-        });*/
 
         // 1. Destroy ALL surface-lifetime GPU resources
         resources.surfaceScope.destroyAll();
