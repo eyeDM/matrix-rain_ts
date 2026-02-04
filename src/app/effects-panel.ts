@@ -14,6 +14,10 @@ export type ConfigParameters = {
     bloomIntensity: number;
 };
 
+interface EffectsPanelHandle {
+    destroy(): void;
+}
+
 type Specs = { min: number, max: number, step: number };
 
 const ConfigParameterSpecs = {
@@ -26,42 +30,16 @@ const ConfigParameterSpecs = {
     noiseAmplitude: { min: 0, max: 0.2, step: 0.01 },
     curvature: { min: 0, max: 0.2, step: 0.01 },
     bloomIntensity: { min: 0, max: 1, step: 0.01 },
-    //_tpl: { min: 0, max: 0, step: 0 },
 };
-
-function makeLabel(text: string): HTMLLabelElement {
-    const l = document.createElement('label');
-    l.style.display = 'flex';
-    l.style.justifyContent = 'flex-end';
-    l.style.columnGap = '8px';
-    l.style.alignItems = 'center';
-    l.style.fontSize = '12px';
-    l.style.color = '#bfe3b4';
-    l.style.margin = '4px 0';
-    l.textContent = text;
-    return l;
-}
-
-function makeSlider(min: number, max: number, step: number, value: number): HTMLInputElement {
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = String(min);
-    input.max = String(max);
-    input.step = String(step);
-    input.value = String(value);
-    input.style.width = '160px';
-    return input;
-}
 
 export function createEffectsPanel(
     config: ConfigParameters,
     onParameterChange: (changedConfig: Partial<ConfigParameters>) => void,
-) {
+): EffectsPanelHandle {
     const container = document.createElement('div');
     container.style.position = 'fixed';
     container.style.right = '10px';
     container.style.top = '10px';
-    //container.style.width = '300px';
     container.style.background = 'rgba(22, 22, 22, 0.66)';
     container.style.border = '1px solid rgba(100, 200, 100, 0.2)';
     container.style.padding = '10px';
@@ -75,6 +53,30 @@ export function createEffectsPanel(
     title.style.color = '#c8f2c8';
     title.style.marginBottom = '6px';
     container.appendChild(title);
+
+    function makeLabel(text: string): HTMLLabelElement {
+        const l = document.createElement('label');
+        l.style.display = 'flex';
+        l.style.justifyContent = 'flex-end';
+        l.style.columnGap = '8px';
+        l.style.alignItems = 'center';
+        l.style.fontSize = '12px';
+        l.style.color = '#bfe3b4';
+        l.style.margin = '4px 0';
+        l.textContent = text;
+        return l;
+    }
+
+    function makeSlider(min: number, max: number, step: number, value: number): HTMLInputElement {
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.min = String(min);
+        input.max = String(max);
+        input.step = String(step);
+        input.value = String(value);
+        input.style.width = '160px';
+        return input;
+    }
 
     // helper to create a slider + value for present params
     function makeControl(
@@ -181,4 +183,47 @@ export function createEffectsPanel(
     return {
         destroy() { container.remove(); }
     };
+}
+
+export function initEffectsPanel(
+    config: ConfigParameters,
+    onParameterChange: (changedConfig: Partial<ConfigParameters>) => void,
+) {
+    let effectsPanel: EffectsPanelHandle | null = null;
+
+    console.info("Press 'C' to toggle Effects Panel");
+
+    /**
+     * Determines whether a keyboard event originated from a text-input context.
+     */
+    function isFromEditableElement(event: KeyboardEvent): boolean {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return false;
+        }
+
+        const tagName = target.tagName;
+        return (
+            tagName === 'INPUT' ||
+            tagName === 'TEXTAREA' ||
+            target.isContentEditable
+        );
+    }
+
+    window.addEventListener('keydown', (event: KeyboardEvent) => {
+        if (event.key.toLowerCase() !== 'c') {
+            return;
+        }
+
+        if (isFromEditableElement(event)) {
+            return;
+        }
+
+        if (effectsPanel === null) {
+            effectsPanel = createEffectsPanel(config, onParameterChange);
+        } else {
+            effectsPanel.destroy();
+            effectsPanel = null;
+        }
+    });
 }

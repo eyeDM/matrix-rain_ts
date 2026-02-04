@@ -42,7 +42,7 @@ import { SwapChain } from '@runtime/swap-chain';
 import { startRenderLoop } from '@runtime/render-loop';
 import { TimeManager } from '@runtime/time-manager';
 
-import { ConfigParameters, createEffectsPanel } from '@app/effects-panel';
+import { ConfigParameters, initEffectsPanel } from '@app/effects-panel';
 
 const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // 'bgra8unorm'
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
@@ -417,7 +417,7 @@ export async function bootstrap(): Promise<void> {
         const periodicTime = timeManager.getPeriodic();
 
         // update simulation flicker state on the sim pass so compute shader can use it
-        // FIXME: update ONLY `dt` and `time`
+        // TODO: update ONLY `dt` and `time`
         simParamsWriter.setFrameParams({
             dt: ctx.dt,
             time: periodicTime,
@@ -427,7 +427,7 @@ export async function bootstrap(): Promise<void> {
         simParamsWriter.flush();
 
         // update present-time uniform
-        // FIXME: update ONLY `time`
+        // TODO: update ONLY `time`
         presentParamsWriter.update({
             time: periodicTime,
             vignetteStrength: cfg.vignetteStrength,
@@ -489,10 +489,10 @@ export async function bootstrap(): Promise<void> {
 
     // --- Debug UI (runtime parameter tuning) ---
 
-    createEffectsPanel(
+    initEffectsPanel(
         cfg,
         (changedConfig: Partial<ConfigParameters>) => {
-            const oldCfg = cfg;
+            const oldCfg = { ...cfg };
             Object.assign(cfg, changedConfig);
 
             if (cfg.decay === oldCfg.decay) {
