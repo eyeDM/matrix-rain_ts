@@ -86,47 +86,20 @@ GPU (WebGPU, WGSL)
 
 ---
 
-## Project Structure (FIXME: needs to be updated)
+## Project Structure
 ```
 matrix-rain_ts/
 ├─ public/
 │  └─ favicon.svg
 │
 ├─ src/
-│  ├─ app/
-│  │  └─ main.ts                # Application bootstrap
-│  │
-│  ├─ runtime/                  # App-level orchestration
-│  │  ├─ render-loop.ts         # requestAnimationFrame loop
-│  │  ├─ swap-chain.ts          # Swapchain + resize handling
-│  │  └─ canvas-resizer.ts
-│  │
-│  ├─ gpu/                      # WebGPU execution layer
-│  │  ├─ render-graph.ts        # DAG-based render pass execution + reads / writes DSL
-│  │  │
-│  │  ├─ screen-uniform-controller.ts
-│  │  ├─ simulation-uniform-writer.ts    # SimulationUniforms owner
-│  │  ├─ streams.ts             # Simulation buffers
-│  │  ├─ simulation-pass.ts     # Compute pass (GPU execution)
-│  │  │
-│  │  ├─ draw-pass.ts           # Offscreen render pass
-│  │  │
-│  │  └─ present-pass.ts        # Final composite pass
-│  │
-│  ├─ backend/                  # WebGPU platform abstractions
-│  │  ├─ init.ts                # Adapter / device / context initialization
-│  │  ├─ layouts.ts             # Canonical CPU↔GPU memory layouts
-│  │  ├─ resource-tracker.ts    # GPU resource tracker
-│  │  └─ shader-loader.ts       # WGSL loader
-│  │
+│  ├─ app/              # Application bootstrap
+│  ├─ runtime/          # App-level orchestration
+│  ├─ gpu/              # WebGPU execution layer
+│  ├─ backend/          # WebGPU platform abstractions
 │  ├─ domain/
-│  │  └─ glyph-atlas.ts         # Glyph atlas
-│  │
-│  └─ assets/                   # Static GPU assets
+│  └─ assets/           # Static GPU assets
 │     └─ shaders/
-│        ├─ compute.wgsl
-│        ├─ draw.wgsl
-│        └─ present.wgsl
 │
 ├─ README.md
 ├─ index.html

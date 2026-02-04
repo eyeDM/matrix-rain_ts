@@ -61,6 +61,9 @@ export function createPresentDeviceResources(
     return { pipeline, sampler };
 }
 
+/**
+ * Final composite pass
+ */
 export class PresentPass {
     // cache view to avoid creating it every frame
     private readonly bloomTexView: GPUTextureView;

@@ -171,7 +171,7 @@ export function createDrawSurfaceResources(
 }
 
 /**
- * Draw pass: renders all glyph instances into an offscreen color target
+ * Renders all glyph instances into an offscreen color target
  */
 export class DrawPass {
     constructor(
