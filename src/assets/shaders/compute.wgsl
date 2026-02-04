@@ -50,7 +50,7 @@
 //   - one exp() per instance (trail falloff)
 //   - no atomics or inter-thread synchronization
 //
-// ============================================================================`
+// ============================================================================
 
 // MUST match `SimulationParamsLayout` (align: 4, size: 48)
 struct SimulationParams {

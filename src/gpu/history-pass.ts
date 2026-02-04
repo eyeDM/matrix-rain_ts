@@ -1,4 +1,3 @@
-import { HistoryParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -57,7 +56,6 @@ export function createHistoryDeviceResources(
 export type HistorySurfaceResources = {
     readonly historyTexA: GPUTexture;
     readonly historyTexB: GPUTexture;
-    readonly paramsBuffer: GPUBuffer;
 };
 
 export function createHistorySurfaceResources(
@@ -83,15 +81,7 @@ export function createHistorySurfaceResources(
         })
     );
 
-    const paramsBuffer = scope.trackDestroyable( // FIXME: move to HistoryParamsWriter
-        device.createBuffer({
-            label: 'History Params',
-            size: HistoryParamsLayout.SIZE,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        })
-    );
-
-    return { historyTexA, historyTexB, paramsBuffer };
+    return { historyTexA, historyTexB };
 }
 
 export class HistoryComputePass {
@@ -159,24 +149,6 @@ export class HistoryComputePass {
         pass.end();
 
         this.swapPingPong();
-    }
-
-    /**
-     * A small updater to modify the decay param.
-     *
-     * FIXME: move to HistoryParamsWriter
-     *
-     * @param device
-     * @param decayVal
-     */
-    updateDecay(
-        device: GPUDevice,
-        decayVal: number,
-    ) {
-        const decayStaging = new ArrayBuffer(HistoryParamsLayout.SIZE);
-        const view = new DataView(decayStaging);
-        view.setFloat32(HistoryParamsLayout.offsets.decay, decayVal, true);
-        device.queue.writeBuffer(this.paramsBuffer, 0, decayStaging);
     }
 
     /**

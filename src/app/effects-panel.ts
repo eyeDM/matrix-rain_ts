@@ -19,7 +19,7 @@ type Specs = { min: number, max: number, step: number };
 const ConfigParameterSpecs = {
     flickerAmplitude: { min: 0, max: 0.5, step: 0.001 },
     flickerFrequency: { min: 0, max: 4, step: 0.01 },
-    decay: { min: 0.6, max: 0.99, step: 0.01 },
+    decay: { min: 0, max: 0.99, step: 0.01 },
     vignetteStrength: { min: 0, max: 1, step: 0.01 },
     scanlineFreq: { min: 200, max: 1500, step: 10.0 },
     scanlineStrength: { min: 0, max: 1, step: 0.01 },

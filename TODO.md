@@ -14,14 +14,6 @@
 * Позиционный (разные символы для головы, середины, хвоста)
 * Временной (задаётся "средой")
 
-## Depth Illusion (Pseudo-3D Without 3D)
-
-Simulate depth using scale, speed, blur, and brightness.
-
-## Color Evolution & Chromatic Variation
-
-Move beyond flat green without losing Matrix identity.
-
 ## Scalability & Stress Optimization
 
 ### Objective

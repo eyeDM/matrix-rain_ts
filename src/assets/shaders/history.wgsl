@@ -1,3 +1,29 @@
+// ============================================================================
+// Simple history accumulation (temporal accumulation) with exponential decay.
+//
+// Purpose:
+//   For each pixel, it blends the current scene value (sceneTex)
+//   with the previous frame (prevTex) and writes the result
+//   to the destination texture. This technique is commonly used
+//   for temporal smoothing, trail effects, light accumulation, noise reduction,
+//   or post-processing effects with inertia.
+//
+// --------------------------------------------------
+//
+// Parameters:
+//
+//   `decay` is the history decay coefficient. It defines how much
+//   of the previous frame is preserved during blending.
+//
+//   Effect:
+//   - decay = 0.0 → history is completely ignored; the output equals the current scene (no accumulation).
+//   - 0.0 < decay < 1.0 → exponential decay: past frames fade out gradually, producing temporal inertia.
+//   - decay ≈ 1.0 → history is almost fully preserved; strong trails and image “sticking” may occur.
+//   - decay > 1.0 → history amplification, leading to exponential growth of values and visible artifacts (not recommended).
+//   - decay < 0.0 → inversion of the history contribution; visually incorrect and numerically unstable.
+//
+// ============================================================================
+
 // MUST match `HistoryParamsLayout` (align: 4, size: 16)
 struct HistoryParams {
   decay: f32,

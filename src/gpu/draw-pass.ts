@@ -1,7 +1,6 @@
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
-import {CanvasParamsLayout} from "@backend/layouts";
 
 /**
  * Device-lifetime resources

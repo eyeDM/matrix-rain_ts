@@ -6,6 +6,7 @@ import { GpuResources } from '@backend/resource-tracker';
 
 import { ScreenParamsWriter } from '@gpu/screen-params-writer';
 import { SimulationParamsWriter } from '@gpu/simulation-params-writer';
+import { HistoryParamsWriter } from '@gpu/history-params-writer';
 import { PresentParamsWriter } from '@gpu/present-params-writer';
 
 import {
@@ -100,7 +101,7 @@ const cfg: ConfigParameters = {
     flickerAmplitude: 0.06,
     flickerFrequency: 0.6,
     // HistoryParams
-    decay: 0.75,
+    decay: 0.2,
     // PresentParams
     vignetteStrength: 0.1,
     scanlineFreq: 200.0,
@@ -203,6 +204,12 @@ export async function bootstrap(): Promise<void> {
         rows: layout.grid.rows,
         maxTrail: layout.instances.maxTrail,
     });
+
+    const historyParamsWriter = new HistoryParamsWriter(
+        gpu.device,
+        resources.deviceScope,
+    );
+    historyParamsWriter.update({decay: cfg.decay});
 
     const presentParamsWriter = new PresentParamsWriter(
         gpu.device,
@@ -334,12 +341,10 @@ export async function bootstrap(): Promise<void> {
             drawSurfaceResources.colorTex,
             historySurfaceResources.historyTexA,
             historySurfaceResources.historyTexB,
-            historySurfaceResources.paramsBuffer,
+            historyParamsWriter.buffer,
             layout.viewport.width,
             layout.viewport.height,
         );
-        // default decay
-        historyPass.updateDecay(gpu.device, cfg.decay);
 
         // final present pass will sample the latest history output via a getter
         const presentPass = new PresentPass(
@@ -412,6 +417,7 @@ export async function bootstrap(): Promise<void> {
         const periodicTime = timeManager.getPeriodic();
 
         // update simulation flicker state on the sim pass so compute shader can use it
+        // FIXME: update ONLY `dt` and `time`
         simParamsWriter.setFrameParams({
             dt: ctx.dt,
             time: periodicTime,
@@ -421,6 +427,7 @@ export async function bootstrap(): Promise<void> {
         simParamsWriter.flush();
 
         // update present-time uniform
+        // FIXME: update ONLY `time`
         presentParamsWriter.update({
             time: periodicTime,
             vignetteStrength: cfg.vignetteStrength,
@@ -457,6 +464,7 @@ export async function bootstrap(): Promise<void> {
             atlas.cellHeight,
         );
 
+        // 1. Update SOME Device-Lifetime GPU resources
         screenParamsWriter.update({
             width: layout.viewport.width,
             height: layout.viewport.height,
@@ -471,10 +479,10 @@ export async function bootstrap(): Promise<void> {
             maxTrail: layout.instances.maxTrail,
         });
 
-        // 1. Destroy ALL surface-lifetime GPU resources
+        // 2. Destroy ALL Surface-Lifetime GPU resources
         resources.surfaceScope.destroyAll();
 
-        // 2. Rebuild surface layer
+        // 3. Rebuild surface layer
         surface = buildSurface(layout);
         renderGraph = surface.renderGraph;
     });
@@ -488,8 +496,7 @@ export async function bootstrap(): Promise<void> {
             Object.assign(cfg, changedConfig);
 
             if (cfg.decay === oldCfg.decay) {
-                // delegate to the active surface's updater; surface may be rebuilt on resize
-                surface.historyPass.updateDecay(gpu.device, cfg.decay);
+                historyParamsWriter.update({decay: cfg.decay});
             }
         },
     );
