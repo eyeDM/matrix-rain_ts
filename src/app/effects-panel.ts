@@ -18,19 +18,64 @@ interface EffectsPanelHandle {
     destroy(): void;
 }
 
-type Specs = { min: number, max: number, step: number };
+type Specs = { min: number; max: number; step: number; label: string; };
 
-const ConfigParameterSpecs = {
-    flickerAmplitude: { min: 0, max: 0.5, step: 0.001 },
-    flickerFrequency: { min: 0, max: 4, step: 0.01 },
-    decay: { min: 0, max: 0.99, step: 0.01 },
-    vignetteStrength: { min: 0, max: 1, step: 0.01 },
-    scanlineFreq: { min: 200, max: 1500, step: 10.0 },
-    scanlineStrength: { min: 0, max: 1, step: 0.01 },
-    noiseAmplitude: { min: 0, max: 0.2, step: 0.01 },
-    curvature: { min: 0, max: 0.2, step: 0.01 },
-    bloomIntensity: { min: 0, max: 1, step: 0.01 },
+const ConfigParameterSpecs: {
+    [K in Exclude<keyof ConfigParameters, 'tint'>]: Specs;
+} = {
+    flickerAmplitude: { min: 0, max: 0.5, step: 0.001, label: 'Flicker amp' },
+    flickerFrequency: { min: 0, max: 4, step: 0.01, label: 'Flicker freq' },
+    decay: { min: 0, max: 0.99, step: 0.01, label: 'Decay' },
+    vignetteStrength: { min: 0, max: 1, step: 0.01, label: 'Vignette' },
+    scanlineFreq: { min: 200, max: 1500, step: 10.0, label: 'Scanline freq' },
+    scanlineStrength: { min: 0, max: 1, step: 0.01, label: 'Scanline' },
+    noiseAmplitude: { min: 0, max: 0.2, step: 0.01, label: 'Noise' },
+    curvature: { min: 0, max: 0.2, step: 0.01, label: 'Curvature' },
+    bloomIntensity: { min: 0, max: 1, step: 0.01, label: 'Bloom' },
 };
+
+function makeLabel(text: string): HTMLLabelElement {
+    const l = document.createElement('label');
+    l.style.display = 'flex';
+    l.style.justifyContent = 'flex-end';
+    l.style.columnGap = '8px';
+    l.style.alignItems = 'center';
+    l.style.fontSize = '12px';
+    l.style.color = '#bfe3b4';
+    l.style.margin = '4px 0';
+    l.textContent = text;
+    return l;
+}
+
+function makeSlider(
+    specs: Specs,
+    value: number,
+    onChange: (value: number) => void,
+): HTMLElement {
+    const label = makeLabel(specs.label);
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = String(specs.min);
+    slider.max = String(specs.max);
+    slider.step = String(specs.step);
+    slider.value = String(value);
+    slider.style.width = '160px';
+
+    const valueEl = document.createElement('span');
+    valueEl.textContent = value.toFixed(2);
+
+    slider.addEventListener('input', () => {
+        const newValue = parseFloat(slider.value);
+        valueEl.textContent = newValue.toFixed(2);
+        onChange(newValue);
+    });
+
+    label.appendChild(slider);
+    label.appendChild(valueEl);
+
+    return label;
+}
 
 export function createEffectsPanel(
     config: ConfigParameters,
@@ -54,112 +99,18 @@ export function createEffectsPanel(
     title.style.marginBottom = '6px';
     container.appendChild(title);
 
-    function makeLabel(text: string): HTMLLabelElement {
-        const l = document.createElement('label');
-        l.style.display = 'flex';
-        l.style.justifyContent = 'flex-end';
-        l.style.columnGap = '8px';
-        l.style.alignItems = 'center';
-        l.style.fontSize = '12px';
-        l.style.color = '#bfe3b4';
-        l.style.margin = '4px 0';
-        l.textContent = text;
-        return l;
-    }
+    (Object.keys(ConfigParameterSpecs) as Array<
+        Exclude<keyof ConfigParameters, 'tint'>
+    >).forEach((key) => {
+        const specs = ConfigParameterSpecs[key];
+        const value = config[key];
 
-    function makeSlider(min: number, max: number, step: number, value: number): HTMLInputElement {
-        const input = document.createElement('input');
-        input.type = 'range';
-        input.min = String(min);
-        input.max = String(max);
-        input.step = String(step);
-        input.value = String(value);
-        input.style.width = '160px';
-        return input;
-    }
-
-    // helper to create a slider + value for present params
-    function makeControl(
-        label: string,
-        specs: Specs,
-        value: number,
-        onChange: (newValue: number) => void,
-    ) {
-        const labelEl = makeLabel(label);
-        const slider = makeSlider(specs.min, specs.max, specs.step, value);
-        const valueEl = document.createElement('span');
-        valueEl.textContent = parseFloat(slider.value).toFixed(2);
-        labelEl.appendChild(slider);
-        labelEl.appendChild(valueEl);
-        container.appendChild(labelEl);
-        slider.addEventListener('input', () => {
-            const newValue = parseFloat(slider.value);
-            valueEl.textContent = newValue.toFixed(2);
-            onChange(newValue);
-        });
-        return { slider, valueEl };
-    }
-
-    makeControl(
-        'Flicker amp',
-        ConfigParameterSpecs.flickerAmplitude,
-        config.flickerAmplitude,
-        (value) => onParameterChange({flickerAmplitude: value}),
-    );
-    makeControl(
-        'Flicker freq',
-        ConfigParameterSpecs.flickerFrequency,
-        config.flickerFrequency,
-        (value) => onParameterChange({flickerFrequency: value}),
-    );
-    makeControl(
-        'Decay',
-        ConfigParameterSpecs.decay,
-        config.decay,
-        (value) => onParameterChange({decay: value}),
-    );
-    makeControl(
-        'Vignette',
-        ConfigParameterSpecs.vignetteStrength,
-        config.vignetteStrength,
-        (value) => onParameterChange({vignetteStrength: value}),
-    );
-    /*makeControl(
-        'Scanline freq',
-        ConfigParameterSpecs.scanlineFreq,
-        config.scanlineFreq,
-        (value) => onParameterChange({scanlineFreq: value}),
-    );*/
-    makeControl(
-        'Scanline',
-        ConfigParameterSpecs.scanlineStrength,
-        config.scanlineStrength,
-        (value) => onParameterChange({scanlineStrength: value}),
-    );
-    makeControl(
-        'Noise',
-        ConfigParameterSpecs.noiseAmplitude,
-        config.noiseAmplitude,
-        (value) => onParameterChange({noiseAmplitude: value}),
-    );
-    makeControl(
-        'Curvature',
-        ConfigParameterSpecs.curvature,
-        config.curvature,
-        (value) => onParameterChange({curvature: value}),
-    );
-    makeControl(
-        'Bloom',
-        ConfigParameterSpecs.bloomIntensity,
-        config.bloomIntensity,
-        (value) => onParameterChange({bloomIntensity: value}),
-    );
-    /*makeControl(
-        '_Label',
-        ConfigParameterSpecs._tpl,
-        config._tpl,
-        (value) => onParameterChange({_tpl: value}),
-    );*/
+        container.appendChild(
+            makeSlider(specs, value, (newValue) => {
+                onParameterChange({ [key]: newValue });
+            }),
+        );
+    });
 
     // tint quick buttons
     const btnGreen = document.createElement('button');
@@ -174,21 +125,32 @@ export function createEffectsPanel(
     tintRow.style.display = 'flex';
     tintRow.style.gap = '6px';
     tintRow.style.marginTop = '8px';
-    tintRow.appendChild(btnGreen);
-    tintRow.appendChild(btnWhite);
+
+    const makeTintButton = (label: string, tint: ConfigParameters['tint']) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.onclick = () => onParameterChange({ tint });
+        return btn;
+    };
+
+    tintRow.appendChild(makeTintButton('Green', [0.0, 1.0, 0.0]));
+    tintRow.appendChild(makeTintButton('White', [1.0, 1.0, 1.0]));
+
     container.appendChild(tintRow);
 
     document.body.appendChild(container);
 
     return {
-        destroy() { container.remove(); }
+        destroy(): void {
+            container.remove();
+        },
     };
 }
 
 export function initEffectsPanel(
     config: ConfigParameters,
     onParameterChange: (changedConfig: Partial<ConfigParameters>) => void,
-) {
+): void {
     let effectsPanel: EffectsPanelHandle | null = null;
 
     console.info("Press 'C' to toggle Effects Panel");
