@@ -65,21 +65,19 @@ export function createHistorySurfaceResources(
     viewportWidth: number,
     viewportHeight: number,
 ): HistorySurfaceResources {
-    const historyTexA = scope.trackDestroyable(
-        device.createTexture({
-            size: [viewportWidth, viewportHeight],
-            format: colorFormat,
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
-        })
-    );
+    const createTexture = (label: string): GPUTexture => {
+        return scope.trackDestroyable(
+            device.createTexture({
+                label: label,
+                size: [viewportWidth, viewportHeight],
+                format: colorFormat,
+                usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+            })
+        );
+    };
 
-    const historyTexB = scope.trackDestroyable(
-        device.createTexture({
-            size: [viewportWidth, viewportHeight],
-            format: colorFormat,
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
-        })
-    );
+    const historyTexA = createTexture('History Texture A');
+    const historyTexB = createTexture('History Texture B');
 
     return { historyTexA, historyTexB };
 }

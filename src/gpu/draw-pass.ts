@@ -148,14 +148,15 @@ export function createDrawSurfaceResources(
 
     const colorTex = scope.trackDestroyable(
         device.createTexture({
+            label: 'Draw Color Texture',
             size: [viewportWidth, viewportHeight],
             format: colorFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-            //usage: GPUTextureUsage.RENDER_ATTACHMENT,
         })
     );
     const depthTex = scope.trackDestroyable(
         device.createTexture({
+            label: 'Draw Depth Texture',
             size: [viewportWidth, viewportHeight],
             format: depthFormat,
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
