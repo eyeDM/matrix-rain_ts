@@ -3,6 +3,7 @@
 import { WebGPUContext, initWebGPU } from '@backend/init';
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
+import { InstanceParamsLayout } from '@backend/layouts';
 
 import { ScreenParamsWriter } from '@gpu/screen-params-writer';
 import { SimulationParamsWriter } from '@gpu/simulation-params-writer';
@@ -75,12 +76,22 @@ function computeScreenLayout(
     canvasSize: CanvasSize,
     cellWidth: number,
     cellHeight: number,
+    limits: GPUSupportedLimits,
 ): ScreenLayout {
     const cols = Math.floor(canvasSize.width / cellWidth);
     const rows = Math.ceil(canvasSize.height / cellHeight);
 
-    const MIN_TRAIL = 4;
-    const maxTrail = Math.max(MIN_TRAIL, rows);
+    const maxInstancesByBuffer =
+        Math.floor(limits.maxBufferSize / InstanceParamsLayout.SIZE);
+
+    const maxTrail = Math.min(
+        rows,
+        Math.floor(maxInstancesByBuffer / cols),
+    );
+
+    if (maxTrail < 1) {
+        throw new Error('Instance buffer cannot fit even one trail');
+    }
 
     return {
         viewport: {
@@ -175,6 +186,7 @@ export async function bootstrap(): Promise<void> {
         size,
         atlas.cellWidth,
         atlas.cellHeight,
+        gpu.device.limits,
     );
 
     // --- Resources management ---
@@ -462,6 +474,7 @@ export async function bootstrap(): Promise<void> {
             newSize,
             atlas.cellWidth,
             atlas.cellHeight,
+            gpu.device.limits,
         );
 
         // 1. Update SOME Device-Lifetime GPU resources
