@@ -55,6 +55,8 @@ CPU (TypeScript)
 GPU (WebGPU, WGSL)
  ├─ Compute pass: simulation
  ├─ Render pass: offscreen draw
+ ├─ Blur pass
+ ├─ History pass: history accumulation
  └─ Present pass: fullscreen composite
 ```
 
@@ -94,6 +96,7 @@ matrix-rain_ts/
 │
 ├─ src/
 │  ├─ app/              # Application bootstrap
+│  │  └─ index.html
 │  ├─ runtime/          # App-level orchestration
 │  ├─ gpu/              # WebGPU execution layer
 │  ├─ backend/          # WebGPU platform abstractions
@@ -102,7 +105,6 @@ matrix-rain_ts/
 │     └─ shaders/
 │
 ├─ README.md
-├─ index.html
 ├─ package.json
 ├─ tsconfig.json
 └─ vite.config.ts
