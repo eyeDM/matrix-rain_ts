@@ -13,6 +13,17 @@ export interface WebGPUContext {
     readonly format: GPUTextureFormat;
 }
 
+function pickDeviceLimits(adapter: GPUAdapter) {
+    const limits = adapter.limits;
+
+    // Upper reasonable bound for instance storage
+    const TARGET_MAX_BUFFER = 512 * 1024 * 1024; // 512 MiB
+
+    return {
+        maxBufferSize: Math.min(limits.maxBufferSize, TARGET_MAX_BUFFER),
+    };
+}
+
 /**
  * Initialize WebGPU: request adapter & device, get canvas context,
  * detect preferred format and configure the swap chain.
@@ -37,9 +48,7 @@ export async function initWebGPU(
     }
 
     const device = await adapter.requestDevice({
-        requiredLimits: {
-            maxBufferSize: 1024 * 1024 * 1024, // 1GiB // FIXME
-        }
+        requiredLimits: pickDeviceLimits(adapter),
     });
 
     const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
