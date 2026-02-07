@@ -229,7 +229,7 @@ export async function createGlyphAtlas(
         label: 'Glyph Atlas Texture',
         size: { width: atlasWidth, height: atlasHeight, depthOrArrayLayers: 1 },
         format: 'rgba8unorm',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
     });
 
     // Convert canvas to ImageBitmap

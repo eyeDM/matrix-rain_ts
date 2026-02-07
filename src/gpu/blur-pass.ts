@@ -121,9 +121,10 @@ export function createBlurSurfaceResources(
     const blurW = Math.max(1, Math.floor(viewportWidth / BLUR_SCALE));
     const blurH = Math.max(1, Math.floor(viewportHeight / BLUR_SCALE));
 
-    const createTexture = (): GPUTexture => {
+    const createTexture = (label: string): GPUTexture => {
         return scope.trackDestroyable(
             device.createTexture({
+                label: label,
                 size: [blurW, blurH],
                 format: colorFormat,
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
@@ -131,8 +132,8 @@ export function createBlurSurfaceResources(
         );
     };
 
-    const texTemp = createTexture();
-    const texResult = createTexture();
+    const texTemp = createTexture('Blur Temporary Texture');
+    const texResult = createTexture('Blur Result Texture');
 
     const blurParamsH = createParamsBuffer('Blur Params H');
     const blurParamsV = createParamsBuffer('Blur Params V');

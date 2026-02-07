@@ -36,9 +36,11 @@ export async function initWebGPU(
         throw new Error('Couldn\'t request WebGPU adapter.');
     }
 
-    // No optional features required for Stage 1. Keep explicit list here for future use.
-    const requiredFeatures: GPUFeatureName[] = [];
-    const device = await adapter.requestDevice({ requiredFeatures });
+    const device = await adapter.requestDevice({
+        requiredLimits: {
+            maxBufferSize: 1024 * 1024 * 1024, // 1GiB // FIXME
+        }
+    });
 
     const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
     if (!context) {
