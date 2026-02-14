@@ -86,7 +86,7 @@ const GRAIN_TIME_SCALE: f32 = 0.1; // "analogue feel"
 const GRAIN_HASH_SCALE: f32 = 43758.5453; // scale to turn sin() into a pseudo-random hash
 const HALF: f32 = 0.5;
 
-// MUST match `PresentParamsLayout` (align: 4, size: 48)
+/* {@see PresentParamsLayout@backend/layouts} */
 struct PresentParams {
   time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
   vignetteStrength: f32,

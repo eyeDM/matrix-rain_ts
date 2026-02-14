@@ -1,22 +1,64 @@
-// * Instanced symbol renderer *
+// ============================================================================
+// Matrix-style procedural render shader.
+// ============================================================================
 
-// MUST match `CanvasParamsLayout` (align: 4, size: 16)
-struct CanvasParams {
-  size: vec2<f32>,
-  pad0: f32,
-  pad1: f32,
+/* --- Data layouts --- */
+
+/* {@see DrawParamsLayout@backend/layouts} */
+struct DrawParams {
+  canvasSize: vec2<f32>,   // pixels
+  cellSize: vec2<f32>,     // pixels
+
+  cols: u32,
+  rows: u32,
+  maxTrail: u32,
+  glyphCount: u32,
+
+  flickerAmplitude: f32,
+  flickerFrequency: f32,   // Hz
+
+  dt: f32,                 // seconds
+  time: f32,               // seconds (wrapped to reasonable range)
 };
 
-// MUST match `InstanceParamsLayout` (align: 16, size: 48)
-struct InstanceParams {
-  offset: vec2<f32>,
-  cellSize: vec2<f32>,
-  uvRect: vec4<f32>,
-  brightness: f32,
-  pad0: f32,
-  pad1: f32,
-  pad2: f32,
+/* {@see ColumnStateLayout@backend/layouts} */
+struct ColumnState {
+  head: f32,     // head position in row-space
+  speed: f32,    // unused here, but kept for alignment/future
+  energy: f32,   // current energy
+  length: u32,   // trail length in cells
+  seed: u32,     // deterministic seed
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
 };
+
+/* --- Constants (must match simulation) --- */
+
+const TRAIL_DECAY: f32 = 3.2;
+const HEAD_BRIGHTNESS_BOOST: f32 = 1.15;
+
+// Constants for deterministic per-column flicker
+const PHASE_MASK: u32 = 0xffffu; // use lower 16 bits of seed
+const PHASE_SCALE: f32 = 1.0 / 65536.0; // reciprocal of (PHASE_MASK + 1)
+const TWO_PI: f32 = 6.283185307179586;
+
+// PCG hash / Murmur-style mix (stateless, deterministic)
+fn hash_u32(x: u32) -> u32 {
+  var v = x;
+  v ^= v >> 16u;
+  v *= 0x7feb352du;
+  v ^= v >> 15u;
+  v *= 0x846ca68bu;
+  v ^= v >> 16u;
+  return v;
+}
+
+@group(0) @binding(0) var atlasSampler: sampler;
+@group(0) @binding(1) var atlasTexture: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> params: DrawParams;
+@group(0) @binding(3) var<storage, read> columns: array<ColumnState>;
+@group(0) @binding(4) var<storage, read> glyphUVs: array<vec4<f32>>;
 
 struct VertexOut {
   @builtin(position) Position: vec4<f32>,
@@ -24,61 +66,129 @@ struct VertexOut {
   @location(1) v_brightness: f32,
 };
 
-@group(0) @binding(0) var atlasSampler: sampler; // sampler for atlas texture
-@group(0) @binding(1) var atlasTexture: texture_2d<f32>; // rgba8unorm
-@group(0) @binding(2) var<uniform> canvas: CanvasParams; // canvas size in pixels
-@group(0) @binding(3) var<storage, read> instances: array<InstanceParams>; // per-instance params
+/*
+Vertex buffer layout (slot 0):
+  @location(0) pos : vec2<f32>   // quad corner in [-0.5 .. +0.5]
+  @location(1) uv  : vec2<f32>   // quad UV in [0 .. 1]
+*/
 
-// Vertex input (vertex buffer 0):
-//  @location(0) pos: vec2<f32>   - quad corner in normalized cell space (-0.5..0.5)
-//  @location(1) uv: vec2<f32>    - quad corner UV in cell space (0..1)
 @vertex
 fn vs_main(
   @location(0) pos: vec2<f32>,
   @location(1) uv: vec2<f32>,
   @builtin(instance_index) instanceIdx: u32
 ) -> VertexOut {
+
   var out: VertexOut;
 
-  // Load instance
-  let inst = instances[instanceIdx];
+  /* --- Instance → (colIdx, t) --- */
 
-  // Convert normalized cell-space pos (-0.5..0.5) to pixel-space
-  let pixelPos = inst.offset + (pos + vec2<f32>(0.5, 0.5)) * inst.cellSize;
+  let colIdx: u32 = instanceIdx % params.cols;
+  let t: u32 = instanceIdx / params.cols;
+
+  let column = columns[colIdx];
+
+  /* --- Reject nonexistent trail segments --- */
+
+  if (
+    t >= column.length
+    || t > u32(column.head) // segments that are even "higher" than the head
+  ) {
+    // Push outside clip space
+    out.Position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
+    out.v_uv = vec2<f32>(0.0);
+    out.v_brightness = 0.0;
+    return out;
+  }
+
+  /* --- Compute row (wrap vertically) --- */
+
+  let headRow = i32(floor(column.head));
+  var row = headRow - i32(t);
+
+  if (row < 0) {
+    row += i32(params.rows);
+  }
+
+  /* --- Pixel-space position --- */
+
+  let pixelOffset = vec2<f32>(
+    f32(colIdx) * params.cellSize.x,
+    f32(row)    * params.cellSize.y
+  );
+
+  let pixelPos = pixelOffset + (pos + vec2<f32>(0.5, 0.5)) * params.cellSize;
+
+  /* --- Pixel → NDC --- */
 
   // Convert pixel space to NDC
-  let ndcX = (pixelPos.x / canvas.size.x) * 2.0 - 1.0;
+  let ndcX = (pixelPos.x / params.canvasSize.x) * 2.0 - 1.0;
   // flip Y because texture/canvas origin is top-left
-  let ndcY = 1.0 - (pixelPos.y / canvas.size.y) * 2.0;
+  let ndcY = 1.0 - (pixelPos.y / params.canvasSize.y) * 2.0;
 
   out.Position = vec4<f32>(ndcX, ndcY, 0.0, 1.0);
 
+  /* --- Glyph selection --- */
+
+  let gh = hash_u32(column.seed ^ (t + 1u));
+  let glyphIdx = gh % params.glyphCount;
+  let uvRect = glyphUVs[glyphIdx];
+
   // Compute atlas UV by interpolating between uvRect corners
-  let uv00 = inst.uvRect.xy;
-  let uv11 = inst.uvRect.zw;
+  let uv00 = uvRect.xy;
+  let uv11 = uvRect.zw;
+
   // Interpolate inside the glyph cell and clamp slightly inside the cell to avoid sampling neighbor pixels
   // Use explicit linear interpolation to avoid relying on `mix` availability
   let rawUV = uv00 + uv * (uv11 - uv00);
   let eps = 1e-5;
-  out.v_uv = clamp(rawUV, uv00 + vec2<f32>(eps, eps), uv11 - vec2<f32>(eps, eps));
 
-  out.v_brightness = inst.brightness;
+  out.v_uv = clamp(
+    rawUV,
+    uv00 + vec2<f32>(eps, eps),
+    uv11 - vec2<f32>(eps, eps)
+  );
 
+  /* --- Brightness --- */
+
+  let x = select(
+    0.0,
+    f32(t) / max(1.0, f32(column.length - 1u)),
+    column.length > 1u
+  );
+
+  var brightness = column.energy * exp(-TRAIL_DECAY * x);
+
+  if (t == 0u) {
+    brightness *= HEAD_BRIGHTNESS_BOOST;
+  }
+
+  // Deterministic per-column flicker: derive a stable phase from the column seed.
+  // Use lower 16 bits of seed for a quick phase, map to [0, TWO_PI).
+  // NOTE: params.time is periodic [0, 2π), preventing precision loss in long sessions.
+  let seedLow = f32(column.seed & PHASE_MASK) * PHASE_SCALE;
+  let phase = seedLow * TWO_PI;
+  let angular = params.time * params.flickerFrequency * TWO_PI; // convert Hz*time -> radians
+  let flick = sin(angular + phase) * params.flickerAmplitude;
+
+  brightness = max(0.0, brightness * (1.0 + flick));
+
+  out.v_brightness = brightness;
   return out;
 }
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-  // Sample the glyph from the atlas texture
-  let glyphColor = textureSample(atlasTexture, atlasSampler, in.v_uv).a; // Use alpha channel if atlas is monochrome
+  // Glyph alpha (atlas assumed monochrome in alpha)
+  let glyphAlpha = textureSample(atlasTexture, atlasSampler, in.v_uv).a;
 
-  // The final color is a green base color scaled by the glyph's alpha/luminosity
+  let luminance = in.v_brightness;
+
   let baseColor = vec3<f32>(0.0, 1.0, 0.0); // Bright green base
 
   // Mix the color with the sampled glyph visibility
-  let luminance = in.v_brightness;
-  let finalColor = baseColor * luminance;
-  let alpha = glyphColor * luminance;
+  let color = baseColor * luminance;
+  let alpha = glyphAlpha * luminance;
 
-  return vec4<f32>(finalColor, alpha);
+  return vec4<f32>(color, alpha);
 }

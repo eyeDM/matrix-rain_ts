@@ -1,12 +1,35 @@
+import { DrawParamsLayout, ColumnStateLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
+
+//
+// @location(0) pos : vec2<f32>
+// @location(1) uv  : vec2<f32>
+//
+const QuadVertexBufferLayout: GPUVertexBufferLayout = {
+    arrayStride: 4 * 4, // 4 floats * 4 bytes
+    stepMode: 'vertex',
+    attributes: [
+        {
+            shaderLocation: 0, // pos
+            offset: 0,
+            format: 'float32x2',
+        },
+        {
+            shaderLocation: 1, // uv
+            offset: 2 * 4,
+            format: 'float32x2',
+        },
+    ],
+};
 
 /**
  * Device-lifetime resources
  */
 export type DrawDeviceResources = {
     readonly vertexBuffer: GPUBuffer;
+    readonly bindGroupLayout: GPUBindGroupLayout;
 };
 
 export function createDrawDeviceResources(
@@ -18,11 +41,11 @@ export function createDrawDeviceResources(
     const vertexData = new Float32Array([
         // posX, posY, uvU, uvV
         -0.5, -0.5, 0.0, 0.0,
-         0.5, -0.5, 1.0, 0.0,
+        0.5, -0.5, 1.0, 0.0,
         -0.5,  0.5, 0.0, 1.0,
 
-         0.5, -0.5, 1.0, 0.0,
-         0.5,  0.5, 1.0, 1.0,
+        0.5, -0.5, 1.0, 0.0,
+        0.5,  0.5, 1.0, 1.0,
         -0.5,  0.5, 0.0, 1.0,
     ]);
 
@@ -38,7 +61,65 @@ export function createDrawDeviceResources(
     new Float32Array(vertexBuffer.getMappedRange()).set(vertexData);
     vertexBuffer.unmap();
 
-    return { vertexBuffer };
+    const bindGroupLayout = scope.track(
+        device.createBindGroupLayout({
+            label: 'DrawPass BGL',
+            entries: [
+                /* --- Atlas sampler --- */
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    sampler: {
+                        type: 'filtering',
+                    },
+                },
+
+                /* --- Atlas texture --- */
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: {
+                        sampleType: 'float',
+                        viewDimension: '2d',
+                        multisampled: false,
+                    },
+                },
+
+                /* --- RenderParams uniform --- */
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: DrawParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- ColumnState[] storage --- */
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'read-only-storage',
+                        minBindingSize: ColumnStateLayout.SIZE,
+                    },
+                },
+
+                /* --- Glyph UV rects --- */
+                {
+                    binding: 4,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'read-only-storage',
+                        // minBindingSize intentionally omitted:
+                        // array length varies with glyph count
+                    },
+                },
+            ],
+        })
+    );
+
+    return { vertexBuffer, bindGroupLayout };
 }
 
 /**
@@ -55,45 +136,64 @@ export function createDrawSurfaceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
     shader: GPUShaderModule,
-    atlasSampler: GPUSampler,
-    atlasTextureView: GPUTextureView,
-    instanceBuffer: GPUBuffer,
-    screenParamsBuffer: GPUBuffer,
+    bindGroupLayout: GPUBindGroupLayout,
+    resources: {
+        atlasSampler: GPUSampler,
+        atlasTextureView: GPUTextureView,
+        drawParamsBuffer: GPUBuffer,
+        columnStateBuffer: GPUBuffer,
+        glyphUVsBuffer: GPUBuffer,
+    },
     colorFormat: GPUTextureFormat,
     depthFormat: GPUTextureFormat,
     viewportWidth: number,
     viewportHeight: number,
 ): DrawSurfaceResources {
-    // --- Bind group layout & pipeline ---
-
-    const bindGroupLayout = scope.track(
-        device.createBindGroupLayout({
-            label: 'Render BGL',
-            entries: [
-                { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } }, // Atlas Sampler
-                { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } }, // Atlas Texture
-                { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }, // ScreenParams
-                { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } }, // InstanceData
-            ],
-        })
-    );
-
     const bindGroup = scope.track(
         device.createBindGroup({
-            label: 'Render Bind Group',
+            label: 'DrawPass Bind Group',
             layout: bindGroupLayout,
             entries: [
-                { binding: 0, resource: atlasSampler },
-                { binding: 1, resource: atlasTextureView },
-                { binding: 2, resource: { buffer: screenParamsBuffer } },
-                { binding: 3, resource: { buffer: instanceBuffer } },
+                {
+                    binding: 0,
+                    resource: resources.atlasSampler,
+                },
+                {
+                    binding: 1,
+                    resource: resources.atlasTextureView,
+                },
+                {
+                    binding: 2,
+                    resource: {
+                        buffer: resources.drawParamsBuffer,
+                        offset: 0,
+                        size: DrawParamsLayout.SIZE,
+                    },
+                },
+                {
+                    binding: 3,
+                    resource: {
+                        buffer: resources.columnStateBuffer,
+                        offset: 0,
+                        // size intentionally omitted:
+                        // full buffer visible to shader
+                    },
+                },
+                {
+                    binding: 4,
+                    resource: {
+                        buffer: resources.glyphUVsBuffer,
+                        offset: 0,
+                        // size omitted: array length varies
+                    },
+                },
             ],
         })
     );
 
     const pipelineLayout = scope.track(
         device.createPipelineLayout({
-            label: 'Render Pipeline Layout',
+            label: 'DrawPass Pipeline Layout',
             bindGroupLayouts: [bindGroupLayout],
         })
     );
@@ -105,42 +205,49 @@ export function createDrawSurfaceResources(
             vertex: {
                 module: shader,
                 entryPoint: 'vs_main',
-                buffers: [
-                    // Quad
-                    {
-                        arrayStride: 4 * 4, // 4 floats (pos, uv) * 4 bytes/float
-                        attributes: [
-                            { shaderLocation: 0, offset: 0, format: 'float32x2' }, // pos: @location(0)
-                            { shaderLocation: 1, offset: 2 * 4, format: 'float32x2' }, // uv: @location(1)
-                        ],
-                    },
-                ],
+                buffers: [QuadVertexBufferLayout],
             },
             fragment: {
                 module: shader,
                 entryPoint: 'fs_main',
-                targets: [{
-                    format: colorFormat,
-                    blend: {
-                        color: {
-                            srcFactor: 'src-alpha',
-                            dstFactor: 'one-minus-src-alpha',
-                            operation: 'add',
+                targets: [
+                    {
+                        format: colorFormat,
+                        blend: {
+                            color: {
+                                srcFactor: 'src-alpha',
+                                dstFactor: 'one-minus-src-alpha',
+                                operation: 'add',
+                            },
+                            alpha: {
+                                srcFactor: 'one',
+                                dstFactor: 'one-minus-src-alpha',
+                                operation: 'add',
+                            },
                         },
-                        alpha: {
-                            srcFactor: 'one',
-                            dstFactor: 'one-minus-src-alpha',
-                            operation: 'add',
-                        },
+                        writeMask: GPUColorWrite.ALL,
                     },
-                }],
+                ],
             },
             depthStencil: {
                 format: depthFormat,
                 depthWriteEnabled: true,
                 depthCompare: 'less',
             },
-            primitive: { topology: 'triangle-list' },
+            primitive: {
+                topology: 'triangle-list',
+                cullMode: 'none',
+                frontFace: 'ccw',
+            },
+            /* ---------- Depth ---------- */
+            // Depth intentionally disabled:
+            // - symbols are alpha-blended
+            // - ordering is irrelevant
+            // - saves bandwidth and memory
+            //depthStencil: undefined,
+            multisample: {
+                count: 1,
+            },
         })
     );
 

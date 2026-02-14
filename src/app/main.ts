@@ -1,12 +1,12 @@
 // Bootstrap entry — initialize WebGPU
 
+import { ColumnStateLayout } from '@backend/layouts';
 import { WebGPUContext, initWebGPU } from '@backend/init';
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
-import { InstanceParamsLayout } from '@backend/layouts';
 
-import { ScreenParamsWriter } from '@gpu/screen-params-writer';
-import { SimulationParamsWriter } from '@gpu/simulation-params-writer';
+import { ColumnsState } from '@gpu/column-state';
+import { DrawParamsWriter } from '@gpu/draw-params-writer';
 import { HistoryParamsWriter } from '@gpu/history-params-writer';
 import { PresentParamsWriter } from '@gpu/present-params-writer';
 
@@ -59,13 +59,13 @@ interface ScreenLayout {
     };
 
     readonly grid: {
-        cols: number;
+        cols: number; // compute dispatch size
         rows: number;
     };
 
     readonly instances: {
-        count: number;
-        maxTrail: number;
+        count: number; // for render
+        maxTrail: number; // logical shader limit
     };
 }
 
@@ -78,19 +78,21 @@ function computeScreenLayout(
     cellHeight: number,
     limits: GPUSupportedLimits,
 ): ScreenLayout {
-    const cols = Math.floor(canvasSize.width / cellWidth);
-    const rows = Math.ceil(canvasSize.height / cellHeight);
+    if (cellWidth <= 0 || cellHeight <= 0) {
+        throw new Error('Cell size must be > 0');
+    }
 
-    const maxInstancesByBuffer =
-        Math.floor(limits.maxBufferSize / InstanceParamsLayout.SIZE);
+    const cols = Math.max(1, Math.floor(canvasSize.width / cellWidth));
+    const rows = Math.max(1, Math.ceil(canvasSize.height / cellHeight));
 
-    const maxTrail = Math.min(
-        rows,
-        Math.floor(maxInstancesByBuffer / cols),
-    );
+    const HARD_TRAIL_CAP = 128; // safe upper bound for vertex shader loops
+    const maxTrail = Math.min(rows, HARD_TRAIL_CAP);
 
-    if (maxTrail < 1) {
-        throw new Error('Instance buffer cannot fit even one trail');
+    const requiredColumnStateBytes = cols * ColumnStateLayout.SIZE;
+    if (requiredColumnStateBytes > limits.maxStorageBufferBindingSize) {
+        throw new Error(
+            `ColumnState buffer exceeds maxStorageBufferBindingSize: ${requiredColumnStateBytes}`,
+        );
     }
 
     return {
@@ -99,16 +101,18 @@ function computeScreenLayout(
             height: canvasSize.height,
             dpr: canvasSize.dpr,
         },
+
         grid: { cols, rows },
+
         instances: {
             count: cols * maxTrail,
-            maxTrail: maxTrail,
-        },
+            maxTrail,
+        }
     };
 }
 
 const cfg: ConfigParameters = {
-    // SimulationParams
+    // DrawParams
     flickerAmplitude: 0.06,
     flickerFrequency: 0.6,
     // HistoryParams
@@ -122,6 +126,22 @@ const cfg: ConfigParameters = {
     tint: [0.05, 1.5, 0.05],
     bloomIntensity: 0.2,
 };
+
+/*const cfg: ConfigParameters = {
+    // DrawParams
+    flickerAmplitude: 0.0,
+    flickerFrequency: 0.0,
+    // HistoryParams
+    decay: 0.0,
+    // PresentParams
+    vignetteStrength: 0.0,
+    scanlineFreq: 0.0,
+    scanlineStrength: 0.0,
+    noiseAmplitude: 0.0,
+    curvature: 0.0,
+    tint: [0.05, 1.5, 0.05],
+    bloomIntensity: 0.0,
+};*/
 
 export async function bootstrap(): Promise<void> {
     const canvasEl = document.getElementById('canvas') as HTMLCanvasElement | null;
@@ -148,8 +168,8 @@ export async function bootstrap(): Promise<void> {
 
     await Promise.all([
         shaderLoader.load(
-            'matrix-compute',
-            new URL('./../assets/shaders/compute.wgsl', import.meta.url).href
+            'matrix-simulation',
+            new URL('./../assets/shaders/simulation.wgsl', import.meta.url).href
         ),
         shaderLoader.load(
             'matrix-draw',
@@ -195,26 +215,30 @@ export async function bootstrap(): Promise<void> {
 
     // * Device-Lifetime resources
 
-    const screenParamsWriter = new ScreenParamsWriter(
-        gpu.device,
-        resources.deviceScope,
-    );
-    screenParamsWriter.update({
-        width: layout.viewport.width,
-        height: layout.viewport.height,
-    });
+    //const screenParamsWriter = new ScreenParamsWriter(
+    //    gpu.device,
+    //    resources.deviceScope,
+    //);
+    //screenParamsWriter.update({
+    //    width: layout.viewport.width,
+    //    height: layout.viewport.height,
+    //});
 
-    const simParamsWriter = new SimulationParamsWriter(
+    const drawParamsWriter = new DrawParamsWriter(
         gpu.device,
         resources.deviceScope,
     );
-    simParamsWriter.setSurfaceParams({
-        glyphCount: atlas.glyphCount,
+    drawParamsWriter.setScreenParams({
+        canvasWidth: layout.viewport.width,
+        canvasHeight: layout.viewport.height,
         cellWidth: atlas.cellWidth,
         cellHeight: atlas.cellHeight,
-        cols: layout.grid.cols,
-        rows: layout.grid.rows,
+        gridCols: layout.grid.cols,
+        gridRows: layout.grid.rows,
         maxTrail: layout.instances.maxTrail,
+        glyphCount: atlas.glyphCount,
+        flickerAmplitude: cfg.flickerAmplitude,
+        flickerFrequency: cfg.flickerFrequency,
     });
 
     const historyParamsWriter = new HistoryParamsWriter(
@@ -231,7 +255,7 @@ export async function bootstrap(): Promise<void> {
     const simDeviceResources: SimulationDeviceResources = createSimulationDeviceResources(
         gpu.device,
         resources.deviceScope,
-        shaderLoader.get('matrix-compute'),
+        shaderLoader.get('matrix-simulation'),
     );
 
     const drawDeviceResources: DrawDeviceResources = createDrawDeviceResources(
@@ -272,26 +296,40 @@ export async function bootstrap(): Promise<void> {
         renderGraph: RenderGraph;
     } {
         // --- Resources ---
+        const columnsState = new ColumnsState(
+            gpu.device,
+            resources.surfaceScope,
+            layout.grid.cols,
+            layout.grid.rows,
+            layout.instances.maxTrail,
+        );
 
         const simSurfaceResources: SimulationSurfaceResources = createSimulationSurfaceResources(
             gpu.device,
             resources.surfaceScope,
             simDeviceResources.pipeline,
-            atlas.glyphUVsBuffer,
-            simParamsWriter.buffer,
-            layout.grid.cols,
-            layout.grid.rows,
-            layout.instances.count,
+            {
+                atlasSampler: atlas.sampler,
+                atlasTextureView: atlas.textureView,
+                drawParamsBuffer: drawParamsWriter.buffer,
+                columnStateBuffer: columnsState.buffer,
+                glyphUVsBuffer: atlas.glyphUVsBuffer,
+            },
         );
 
         const drawSurfaceResources: DrawSurfaceResources = createDrawSurfaceResources(
             gpu.device,
             resources.surfaceScope,
             shaderLoader.get('matrix-draw'),
-            atlas.sampler,
-            atlas.textureView,
-            simSurfaceResources.instanceBuffer,
-            screenParamsWriter.buffer,
+            drawDeviceResources.bindGroupLayout,
+            {
+                atlasSampler: atlas.sampler,
+                atlasTextureView: atlas.textureView,
+                drawParamsBuffer: drawParamsWriter.buffer,
+                columnStateBuffer: columnsState.buffer,
+                glyphUVsBuffer: atlas.glyphUVsBuffer,
+            },
+            //screenParamsWriter.buffer,
             COLOR_FORMAT,
             DEPTH_FORMAT,
             layout.viewport.width,
@@ -375,11 +413,11 @@ export async function bootstrap(): Promise<void> {
 
         graphBuilder
             .addPass(simPass)
-            .writes(simSurfaceResources.instanceBuffer);
+            .writes(columnsState.buffer);
 
         graphBuilder
             .addPass(drawPass)
-            .reads(simSurfaceResources.instanceBuffer)
+            .reads(columnsState.buffer)
             .writes(drawSurfaceResources.colorTex);
 
         graphBuilder
@@ -416,7 +454,6 @@ export async function bootstrap(): Promise<void> {
     }
 
     let surface = buildSurface(layout);
-    let renderGraph = surface.renderGraph;
 
     // --- Render loop ---
 
@@ -428,15 +465,11 @@ export async function bootstrap(): Promise<void> {
         timeManager.tick(ctx.dt);
         const periodicTime = timeManager.getPeriodic();
 
-        // update simulation flicker state on the sim pass so compute shader can use it
-        // TODO: update ONLY `dt` and `time`
-        simParamsWriter.setFrameParams({
+        drawParamsWriter.setFrameParams({
             dt: ctx.dt,
             time: periodicTime,
-            flickerAmplitude: cfg.flickerAmplitude,
-            flickerFrequency: cfg.flickerFrequency,
         });
-        simParamsWriter.flush();
+        drawParamsWriter.flush();
 
         // update present-time uniform
         // TODO: update ONLY `time`
@@ -451,7 +484,7 @@ export async function bootstrap(): Promise<void> {
             bloomIntensity: cfg.bloomIntensity,
         });
 
-        renderGraph.execute(ctx);
+        surface.renderGraph.execute(ctx);
         resources.frameScope.destroyAll();
     }
 
@@ -478,18 +511,17 @@ export async function bootstrap(): Promise<void> {
         );
 
         // 1. Update SOME Device-Lifetime GPU resources
-        screenParamsWriter.update({
-            width: layout.viewport.width,
-            height: layout.viewport.height,
-        });
-
-        simParamsWriter.setSurfaceParams({
-            glyphCount: atlas.glyphCount,
+        drawParamsWriter.setScreenParams({
+            canvasWidth: layout.viewport.width,
+            canvasHeight: layout.viewport.height,
             cellWidth: atlas.cellWidth,
             cellHeight: atlas.cellHeight,
-            cols: layout.grid.cols,
-            rows: layout.grid.rows,
+            gridCols: layout.grid.cols,
+            gridRows: layout.grid.rows,
             maxTrail: layout.instances.maxTrail,
+            glyphCount: atlas.glyphCount,
+            flickerAmplitude: cfg.flickerAmplitude,
+            flickerFrequency: cfg.flickerFrequency,
         });
 
         // 2. Destroy ALL Surface-Lifetime GPU resources
@@ -497,7 +529,6 @@ export async function bootstrap(): Promise<void> {
 
         // 3. Rebuild surface layer
         surface = buildSurface(layout);
-        renderGraph = surface.renderGraph;
     });
 
     // --- Debug UI (runtime parameter tuning) ---

@@ -24,7 +24,7 @@
 //
 // ============================================================================
 
-// MUST match `HistoryParamsLayout` (align: 4, size: 16)
+/* {@see HistoryParamsLayout@backend/layouts} */
 struct HistoryParams {
   decay: f32,
   pad0: f32,
