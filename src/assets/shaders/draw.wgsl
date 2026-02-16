@@ -35,7 +35,6 @@ struct ColumnState {
 
 /* --- Constants (must match simulation) --- */
 
-const TRAIL_DECAY: f32 = 3.2;
 const HEAD_BRIGHTNESS_BOOST: f32 = 1.15;
 
 // Constants for deterministic per-column flicker
@@ -81,18 +80,18 @@ fn vs_main(
 
   var out: VertexOut;
 
-  /* --- Instance → (colIdx, t) --- */
+  /* --- Instance → (colIdx, cellIdx) --- */
 
   let colIdx: u32 = instanceIdx % params.cols;
-  let t: u32 = instanceIdx / params.cols;
+  let cellIdx: u32 = instanceIdx / params.cols;
 
   let column = columns[colIdx];
 
   /* --- Reject nonexistent trail segments --- */
 
   if (
-    t >= column.length
-    || t > u32(column.head) // segments that are even "higher" than the head
+    cellIdx >= column.length
+    || cellIdx > u32(column.head) // segments that are even "higher" than the head
   ) {
     // Push outside clip space
     out.Position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
@@ -104,7 +103,7 @@ fn vs_main(
   /* --- Compute row (wrap vertically) --- */
 
   let headRow = i32(floor(column.head));
-  var row = headRow - i32(t);
+  var row = headRow - i32(cellIdx);
 
   if (row < 0) {
     row += i32(params.rows);
@@ -130,7 +129,7 @@ fn vs_main(
 
   /* --- Glyph selection --- */
 
-  let gh = hash_u32(column.seed ^ (t + 1u));
+  let gh = hash_u32(column.seed ^ (cellIdx + 1u));
   let glyphIdx = gh % params.glyphCount;
   let uvRect = glyphUVs[glyphIdx];
 
@@ -151,15 +150,33 @@ fn vs_main(
 
   /* --- Brightness --- */
 
-  let x = select(
+  let len = f32(column.length);
+  let cellPos = select(
     0.0,
-    f32(t) / max(1.0, f32(column.length - 1u)),
+    f32(cellIdx) / (len - 1.0),
     column.length > 1u
   );
 
-  var brightness = column.energy * exp(-TRAIL_DECAY * x);
+  // 1. weight along trail (parabolic falloff)
+  let p = 2.4;
+  let w = pow(1.0 - cellPos, p);
 
-  if (t == 0u) {
+  // 2. approximate normalization
+  let norm = len / (p + 1.0);
+
+  // 3. energy per cell
+  let Ecell = column.energy * w / norm;
+
+  // 4. map energy -> brightness (soft saturation)
+  let k = 0.9;
+  var brightness = 1.0 - exp(-k * Ecell);
+
+  // 5. ensure head dominance
+  let headClamp = 0.18;
+  brightness *= (1.0 - headClamp * cellPos);
+
+  // head boost
+  if (cellIdx == 0u) {
     brightness *= HEAD_BRIGHTNESS_BOOST;
   }
 

@@ -6,7 +6,7 @@ const SPEED_MIN = 4.0;
 const SPEED_VARIANCE = 16.0;
 
 const CELL_ENERGY_MIN = 1.25; // per cell
-const CELL_ENERGY_VARIANCE = 2.0;
+const CELL_ENERGY_VARIANCE = 2.5;
 
 const TRAIL_LENGTH_MIN = 4;
 const TRAIL_LENGTH_VARIANCE = 20;

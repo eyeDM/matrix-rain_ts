@@ -40,8 +40,7 @@ const SPEED_MIN: f32 = 4.0;
 const SPEED_VARIANCE: f32 = 16.0;
 
 const CELL_ENERGY_MIN: f32 = 1.25;
-const CELL_ENERGY_VARIANCE: f32 = 2.0;
-const ENERGY_PER_CELL: f32 = 1.25;
+const CELL_ENERGY_VARIANCE: f32 = 2.5;
 
 const HALF_LIFE_MIN: f32 = 1.0;
 const HALF_LIFE_BASE: f32 = 8.0;
@@ -98,7 +97,7 @@ fn change_energy(state : ptr<function, ColumnState>) {
   let lambda: f32 = LN2 / halfLife;
   let energyNew: f32 = (*state).energy * exp(-lambda * params.dt);
 
-  let energyMax: f32 = CELL_ENERGY_MIN * f32((*state).length);
+  let energyMax: f32 = CELL_ENERGY_MIN * f32((*state).length) * CELL_ENERGY_VARIANCE;
   (*state).energy = clamp(energyNew, 0.0, energyMax);
 }
 
