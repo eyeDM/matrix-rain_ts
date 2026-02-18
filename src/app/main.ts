@@ -45,7 +45,7 @@ import { TimeManager } from '@runtime/time-manager';
 
 import { ConfigParameters, initEffectsPanel } from '@app/effects-panel';
 
-const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // 'bgra8unorm'
+const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // HDR format
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 
 /**
@@ -67,6 +67,16 @@ interface ScreenLayout {
         count: number; // for render
         maxTrail: number; // logical shader limit
     };
+}
+
+interface SurfaceBundle {
+    readonly simPass: SimulationComputePass;
+    readonly drawPass: DrawPass;
+    readonly blurPassH: BlurPass;
+    readonly blurPassV: BlurPass;
+    readonly historyPass: HistoryComputePass;
+    readonly presentPass: PresentPass;
+    readonly renderGraph: RenderGraph;
 }
 
 /**
@@ -124,7 +134,7 @@ const cfg: ConfigParameters = {
     noiseAmplitude: 0.1,
     curvature: 0.04,
     tint: [0.05, 1.5, 0.05],
-    bloomIntensity: 0.2,
+    bloomIntensity: 0.8,
 };
 
 /*const cfg: ConfigParameters = {
@@ -215,15 +225,6 @@ export async function bootstrap(): Promise<void> {
 
     // * Device-Lifetime resources
 
-    //const screenParamsWriter = new ScreenParamsWriter(
-    //    gpu.device,
-    //    resources.deviceScope,
-    //);
-    //screenParamsWriter.update({
-    //    width: layout.viewport.width,
-    //    height: layout.viewport.height,
-    //});
-
     const drawParamsWriter = new DrawParamsWriter(
         gpu.device,
         resources.deviceScope,
@@ -286,15 +287,7 @@ export async function bootstrap(): Promise<void> {
 
     // * Surface-Lifetime bundle
 
-    function buildSurface(layout: ScreenLayout): {
-        simPass: SimulationComputePass;
-        drawPass: DrawPass;
-        blurPassH: BlurPass;
-        blurPassV: BlurPass;
-        historyPass: HistoryComputePass;
-        presentPass: PresentPass;
-        renderGraph: RenderGraph;
-    } {
+    function buildSurface(layout: ScreenLayout): SurfaceBundle {
         // --- Resources ---
         const columnsState = new ColumnsState(
             gpu.device,
@@ -329,7 +322,6 @@ export async function bootstrap(): Promise<void> {
                 columnStateBuffer: columnsState.buffer,
                 glyphUVsBuffer: atlas.glyphUVsBuffer,
             },
-            //screenParamsWriter.buffer,
             COLOR_FORMAT,
             DEPTH_FORMAT,
             layout.viewport.width,
@@ -341,7 +333,7 @@ export async function bootstrap(): Promise<void> {
             resources.surfaceScope,
             blurDeviceResources.pipeline,
             blurDeviceResources.sampler,
-            drawSurfaceResources.colorTex,
+            drawSurfaceResources.brightTex,
             COLOR_FORMAT,
             layout.viewport.width,
             layout.viewport.height,
@@ -368,6 +360,7 @@ export async function bootstrap(): Promise<void> {
             drawSurfaceResources.pipeline,
             drawSurfaceResources.bindGroup,
             drawSurfaceResources.colorTex,
+            drawSurfaceResources.brightTex,
             drawSurfaceResources.depthTex,
             layout.instances.count,
         );
@@ -418,11 +411,11 @@ export async function bootstrap(): Promise<void> {
         graphBuilder
             .addPass(drawPass)
             .reads(columnsState.buffer)
-            .writes(drawSurfaceResources.colorTex);
+            .writes(drawSurfaceResources.colorTex, drawSurfaceResources.brightTex);
 
         graphBuilder
             .addPass(blurPassH)
-            .reads(drawSurfaceResources.colorTex)
+            .reads(drawSurfaceResources.brightTex)
             .writes(blurSurfaceResources.texTemp);
 
         graphBuilder

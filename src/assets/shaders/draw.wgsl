@@ -42,6 +42,8 @@ const PHASE_MASK: u32 = 0xffffu; // use lower 16 bits of seed
 const PHASE_SCALE: f32 = 1.0 / 65536.0; // reciprocal of (PHASE_MASK + 1)
 const TWO_PI: f32 = 6.283185307179586;
 
+const BLOOM_THRESHOLD: f32 = 1.2;
+
 // PCG hash / Murmur-style mix (stateless, deterministic)
 fn hash_u32(x: u32) -> u32 {
   var v = x;
@@ -59,26 +61,21 @@ fn hash_u32(x: u32) -> u32 {
 @group(0) @binding(3) var<storage, read> columns: array<ColumnState>;
 @group(0) @binding(4) var<storage, read> glyphUVs: array<vec4<f32>>;
 
-struct VertexOut {
+struct VSOut {
   @builtin(position) Position: vec4<f32>,
   @location(0) v_uv: vec2<f32>,
-  @location(1) v_brightness: f32,
+  @location(1) v_brightness_ldr: f32,
+  @location(2) v_brightness_hdr: f32,
 };
-
-/*
-Vertex buffer layout (slot 0):
-  @location(0) pos : vec2<f32>   // quad corner in [-0.5 .. +0.5]
-  @location(1) uv  : vec2<f32>   // quad UV in [0 .. 1]
-*/
 
 @vertex
 fn vs_main(
   @location(0) pos: vec2<f32>,
   @location(1) uv: vec2<f32>,
   @builtin(instance_index) instanceIdx: u32
-) -> VertexOut {
+) -> VSOut {
 
-  var out: VertexOut;
+  var out: VSOut;
 
   /* --- Instance → (colIdx, cellIdx) --- */
 
@@ -96,7 +93,8 @@ fn vs_main(
     // Push outside clip space
     out.Position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
     out.v_uv = vec2<f32>(0.0);
-    out.v_brightness = 0.0;
+    out.v_brightness_ldr = 0.0;
+    out.v_brightness_hdr = 0.0;
     return out;
   }
 
@@ -167,17 +165,19 @@ fn vs_main(
   // 3. energy per cell
   let Ecell = column.energy * w / norm;
 
+  out.v_brightness_hdr = Ecell;
+
   // 4. map energy -> brightness (soft saturation)
-  let k = 0.9;
-  var brightness = 1.0 - exp(-k * Ecell);
+  let k = 1.6;
+  var brightnessLDR = 1.0 - exp(-k * Ecell);
 
   // 5. ensure head dominance
   let headClamp = 0.18;
-  brightness *= (1.0 - headClamp * cellPos);
+  brightnessLDR *= (1.0 - headClamp * cellPos);
 
   // head boost
   if (cellIdx == 0u) {
-    brightness *= HEAD_BRIGHTNESS_BOOST;
+    brightnessLDR *= HEAD_BRIGHTNESS_BOOST;
   }
 
   // Deterministic per-column flicker: derive a stable phase from the column seed.
@@ -188,24 +188,33 @@ fn vs_main(
   let angular = params.time * params.flickerFrequency * TWO_PI; // convert Hz*time -> radians
   let flick = sin(angular + phase) * params.flickerAmplitude;
 
-  brightness = max(0.0, brightness * (1.0 + flick));
-
-  out.v_brightness = brightness;
+  out.v_brightness_ldr = max(0.0, brightnessLDR * (1.0 + flick));
   return out;
 }
 
+struct FSOut {
+  @location(0) color: vec4<f32>,
+  @location(1) bright: vec4<f32>,
+};
+
 @fragment
-fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+fn fs_main(in: VSOut) -> FSOut {
   // Glyph alpha (atlas assumed monochrome in alpha)
   let glyphAlpha = textureSample(atlasTexture, atlasSampler, in.v_uv).a;
-
-  let luminance = in.v_brightness;
 
   let baseColor = vec3<f32>(0.0, 1.0, 0.0); // Bright green base
 
   // Mix the color with the sampled glyph visibility
-  let color = baseColor * luminance;
-  let alpha = glyphAlpha * luminance;
+  let color = baseColor * in.v_brightness_ldr;
+  let alpha = glyphAlpha * in.v_brightness_ldr;
 
-  return vec4<f32>(color, alpha);
+  let hdrColor = baseColor * in.v_brightness_hdr;
+
+  // Extract only the "bright" part
+  let brightColor = max(hdrColor - vec3<f32>(BLOOM_THRESHOLD), vec3<f32>(0.0));
+
+  var out : FSOut;
+  out.color = vec4<f32>(color, alpha);
+  out.bright = vec4<f32>(brightColor * glyphAlpha, glyphAlpha);
+  return out;
 }

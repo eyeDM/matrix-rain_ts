@@ -129,6 +129,7 @@ export type DrawSurfaceResources = {
     readonly bindGroup: GPUBindGroup;
     readonly pipeline: GPURenderPipeline;
     readonly colorTex: GPUTexture;
+    readonly brightTex: GPUTexture;
     readonly depthTex: GPUTexture;
 };
 
@@ -211,6 +212,7 @@ export function createDrawSurfaceResources(
                 module: shader,
                 entryPoint: 'fs_main',
                 targets: [
+                    // colorTex
                     {
                         format: colorFormat,
                         blend: {
@@ -222,6 +224,23 @@ export function createDrawSurfaceResources(
                             alpha: {
                                 srcFactor: 'one',
                                 dstFactor: 'one-minus-src-alpha',
+                                operation: 'add',
+                            },
+                        },
+                        writeMask: GPUColorWrite.ALL,
+                    },
+                    // brightTex
+                    {
+                        format: colorFormat,
+                        blend: {
+                            color: {
+                                srcFactor: 'one',
+                                dstFactor: 'one',
+                                operation: 'add',
+                            },
+                            alpha: {
+                                srcFactor: 'one',
+                                dstFactor: 'one',
                                 operation: 'add',
                             },
                         },
@@ -261,6 +280,14 @@ export function createDrawSurfaceResources(
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
     );
+    const brightTex = scope.trackDestroyable(
+        device.createTexture({
+            label: 'Draw Bright Texture',
+            size: [viewportWidth, viewportHeight],
+            format: colorFormat,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        })
+    );
     const depthTex = scope.trackDestroyable(
         device.createTexture({
             label: 'Draw Depth Texture',
@@ -274,6 +301,7 @@ export function createDrawSurfaceResources(
         bindGroup,
         pipeline,
         colorTex,
+        brightTex,
         depthTex,
     };
 }
@@ -282,25 +310,43 @@ export function createDrawSurfaceResources(
  * Renders all glyph instances into an offscreen color target
  */
 export class DrawPass {
+    // cache view to avoid creating it every frame
+    private readonly colorTexView: GPUTextureView;
+    private readonly brightTexView: GPUTextureView;
+    private readonly depthTexView: GPUTextureView;
+
     constructor(
         private readonly vertexBuffer: GPUBuffer,
         private readonly pipeline: GPURenderPipeline,
         private readonly bindGroup: GPUBindGroup,
-        private readonly colorTex: GPUTexture,
-        private readonly depthTex: GPUTexture,
+        colorTex: GPUTexture,
+        brightTex: GPUTexture,
+        depthTex: GPUTexture,
         private readonly instanceCount: number,
-    ) {}
+    ) {
+        this.colorTexView = colorTex.createView();
+        this.brightTexView = brightTex.createView();
+        this.depthTexView = depthTex.createView();
+    }
 
     execute(ctx: RenderContext): void {
         const pass = ctx.encoder.beginRenderPass({
-            colorAttachments: [{
-                view: this.colorTex,
-                loadOp: 'clear',
-                storeOp: 'store',
-                clearValue: { r: 0, g: 0, b: 0, a: 1 },
-            }],
+            colorAttachments: [
+                {
+                    view: this.colorTexView,
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                },
+                {
+                    view: this.brightTexView,
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                },
+            ],
             depthStencilAttachment: {
-                view: this.depthTex,
+                view: this.depthTexView,
                 depthLoadOp: 'clear',
                 depthStoreOp: 'store',
                 depthClearValue: 1.0,
