@@ -46,7 +46,6 @@ import { TimeManager } from '@runtime/time-manager';
 import { ConfigParameters, initEffectsPanel } from '@app/effects-panel';
 
 const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // HDR format
-const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 
 /**
  * Immutable screen layout derived from canvas and atlas sizes.
@@ -323,7 +322,6 @@ export async function bootstrap(): Promise<void> {
                 glyphUVsBuffer: atlas.glyphUVsBuffer,
             },
             COLOR_FORMAT,
-            DEPTH_FORMAT,
             layout.viewport.width,
             layout.viewport.height,
         );
@@ -361,7 +359,6 @@ export async function bootstrap(): Promise<void> {
             drawSurfaceResources.bindGroup,
             drawSurfaceResources.colorTex,
             drawSurfaceResources.brightTex,
-            drawSurfaceResources.depthTex,
             layout.instances.count,
         );
 

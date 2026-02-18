@@ -130,7 +130,6 @@ export type DrawSurfaceResources = {
     readonly pipeline: GPURenderPipeline;
     readonly colorTex: GPUTexture;
     readonly brightTex: GPUTexture;
-    readonly depthTex: GPUTexture;
 };
 
 export function createDrawSurfaceResources(
@@ -146,7 +145,6 @@ export function createDrawSurfaceResources(
         glyphUVsBuffer: GPUBuffer,
     },
     colorFormat: GPUTextureFormat,
-    depthFormat: GPUTextureFormat,
     viewportWidth: number,
     viewportHeight: number,
 ): DrawSurfaceResources {
@@ -248,11 +246,6 @@ export function createDrawSurfaceResources(
                     },
                 ],
             },
-            depthStencil: {
-                format: depthFormat,
-                depthWriteEnabled: true,
-                depthCompare: 'less',
-            },
             primitive: {
                 topology: 'triangle-list',
                 cullMode: 'none',
@@ -288,21 +281,12 @@ export function createDrawSurfaceResources(
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
     );
-    const depthTex = scope.trackDestroyable(
-        device.createTexture({
-            label: 'Draw Depth Texture',
-            size: [viewportWidth, viewportHeight],
-            format: depthFormat,
-            usage: GPUTextureUsage.RENDER_ATTACHMENT,
-        })
-    );
 
     return {
         bindGroup,
         pipeline,
         colorTex,
         brightTex,
-        depthTex,
     };
 }
 
@@ -313,7 +297,6 @@ export class DrawPass {
     // cache view to avoid creating it every frame
     private readonly colorTexView: GPUTextureView;
     private readonly brightTexView: GPUTextureView;
-    private readonly depthTexView: GPUTextureView;
 
     constructor(
         private readonly vertexBuffer: GPUBuffer,
@@ -321,12 +304,10 @@ export class DrawPass {
         private readonly bindGroup: GPUBindGroup,
         colorTex: GPUTexture,
         brightTex: GPUTexture,
-        depthTex: GPUTexture,
         private readonly instanceCount: number,
     ) {
         this.colorTexView = colorTex.createView();
         this.brightTexView = brightTex.createView();
-        this.depthTexView = depthTex.createView();
     }
 
     execute(ctx: RenderContext): void {
@@ -345,12 +326,6 @@ export class DrawPass {
                     clearValue: { r: 0, g: 0, b: 0, a: 1 },
                 },
             ],
-            depthStencilAttachment: {
-                view: this.depthTexView,
-                depthLoadOp: 'clear',
-                depthStoreOp: 'store',
-                depthClearValue: 1.0,
-            },
         });
 
         pass.setPipeline(this.pipeline);
