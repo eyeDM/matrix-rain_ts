@@ -133,7 +133,7 @@ const cfg: ConfigParameters = {
     noiseAmplitude: 0.1,
     curvature: 0.04,
     tint: [0.05, 1.5, 0.05],
-    bloomIntensity: 0.8,
+    bloomIntensity: 0.4,
 };
 
 /*const cfg: ConfigParameters = {

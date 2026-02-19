@@ -64,15 +64,15 @@ export const HistoryParamsLayout = {
     },
 } as const;
 
-// Blur params for separable Gaussian blur (direction and texel size + threshold)
+// Blur params for separable Gaussian blur (direction + texel size)
 export const BlurParamsLayout = {
     ALIGN: 4,
     SIZE: 16,
     offsets: {
-        dirX: 0,       // f32
-        dirY: 4,       // f32
-        texelSize: 8,  // f32
-        threshold: 12, // f32
+        dirX: 0,      // f32
+        dirY: 4,      // f32
+        texelSize: 8, // f32
+        _pad0: 12,    // f32
     },
 } as const;
 

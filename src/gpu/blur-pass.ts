@@ -46,7 +46,12 @@ export function createBlurDeviceResources(
     );
 
     const sampler = scope.track(
-        device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+        device.createSampler({
+            magFilter: 'linear',
+            minFilter: 'linear',
+            addressModeU: 'clamp-to-edge',
+            addressModeV: 'clamp-to-edge',
+        })
     );
 
     return { pipeline, sampler };
@@ -104,7 +109,6 @@ export function createBlurSurfaceResources(
         dirX: number,
         dirY: number,
         texelSize: number,
-        threshold: number,
         buffer: GPUBuffer,
     ): void => {
         const st = new ArrayBuffer(BlurParamsLayout.SIZE);
@@ -112,7 +116,6 @@ export function createBlurSurfaceResources(
         dv.setFloat32(BlurParamsLayout.offsets.dirX, dirX, true);
         dv.setFloat32(BlurParamsLayout.offsets.dirY, dirY, true);
         dv.setFloat32(BlurParamsLayout.offsets.texelSize, texelSize, true);
-        dv.setFloat32(BlurParamsLayout.offsets.threshold, threshold, true);
         device.queue.writeBuffer(buffer, 0, st);
     };
 
@@ -143,7 +146,6 @@ export function createBlurSurfaceResources(
         1.0,
         0.0,
         1.0 / viewportWidth, // texelSize for sampling the source scene texture (full-res)
-        0.8,
         blurParamsH,
     );
     // write vertical params: dir=(0,1)
@@ -151,7 +153,6 @@ export function createBlurSurfaceResources(
         0.0,
         1.0,
         1.0 / blurH, // vertical pass samples from the half-res intermediate, so texelSize must match its height
-        0.0, // threshold only in first pass
         blurParamsV,
     );
 

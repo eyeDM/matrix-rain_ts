@@ -1,3 +1,7 @@
+// Separable Gaussian blur pass for bloom. This shader assumes the input texture
+// is already bright-pass filtered in HDR space. It performs only linear blurring
+// (no thresholding or renormalization), preserving energy and avoiding halo artifacts.
+
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   var pos = array<vec2<f32>, 3>(
@@ -10,9 +14,9 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 
 /* {@see BlurParamsLayout@backend/layouts} */
 struct BlurParams {
-  dir: vec2<f32>,
-  texelSize: f32,
-  threshold: f32,
+  dir: vec2<f32>,  // (1,0) for horizontal, (0,1) for vertical
+  texelSize: f32,  // 1.0 / resolution along blur axis
+  pad0: f32,
 };
 
 @group(0) @binding(0) var samp: sampler;
@@ -25,26 +29,22 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let size = vec2<f32>(f32(sizei.x), f32(sizei.y));
   let uv = p.xy / size;
 
-  // Gaussian-ish weights (5 taps) to reduce sample cost
+  // 5-tap Gaussian-like kernel (energy-preserving)
   let w = array<f32,5>(0.06, 0.24, 0.38, 0.24, 0.06);
 
   var sum = vec3<f32>(0.0);
   var tot = 0.0;
 
-  // center offset index 2
   for (var i: i32 = 0; i < 5; i = i + 1) {
     let offset = f32(i - 2) * params.texelSize * params.dir;
-    let sampleUV = clamp(uv + offset, vec2<f32>(0.0), vec2<f32>(1.0));
+    let sampleUV = uv + offset; // sampler handles edge clamping
     let c = textureSample(tex, samp, sampleUV).rgb;
+
     let weight = w[i];
     sum = sum + c * weight;
     tot = tot + weight;
   }
 
-  // Bright-pass threshold applied in the first blur pass by setting threshold>0
-  let lum = dot(sum / tot, vec3<f32>(0.2126, 0.7152, 0.0722));
-  let bright = max(0.0, lum - params.threshold);
-  let out = (sum / tot) * (bright / max(1e-5, lum));
-
-  return vec4<f32>(out, 1.0);
+  let color = sum / tot;
+  return vec4<f32>(color, 1.0);
 }
