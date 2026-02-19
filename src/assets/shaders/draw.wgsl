@@ -193,7 +193,7 @@ fn vs_main(
   // NOTE: params.time is periodic [0, 2π), preventing precision loss in long sessions.
   let seedLow = f32(column.seed & PHASE_MASK) * PHASE_SCALE;
   let phase = seedLow * TWO_PI;
-  let angular = params.time * params.flickerFrequency * TWO_PI; // convert Hz*time -> radians
+  let angular = params.time * params.flickerFrequency;
   let flick = sin(angular + phase) * params.flickerAmplitude;
 
   out.v_brightness_ldr = max(0.0, brightnessLDR * (1.0 + flick));
