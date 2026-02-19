@@ -151,9 +151,13 @@ fn vs_main(
   /* --- Brightness --- */
 
   let len = f32(column.length);
+
+  // avoid division by zero for single-cell trails
+  let denom = max(len - 1.0, 1.0);
+
   let cellPos = select(
     0.0,
-    f32(cellIdx) / (len - 1.0),
+    f32(cellIdx) / denom,
     column.length > 1u
   );
 
@@ -161,8 +165,12 @@ fn vs_main(
   let p = 2.4;
   let w = pow(1.0 - cellPos, p);
 
-  // 2. approximate normalization
-  let norm = len / (p + 1.0);
+  // 2. improved discrete normalization (Euler–Maclaurin)
+  let norm = select(
+    1.0, // length == 1
+    (len + 1.0) / (p + 1.0),
+    column.length > 1u
+  );
 
   // 3. energy per cell
   let Ecell = column.energy * w / norm;
