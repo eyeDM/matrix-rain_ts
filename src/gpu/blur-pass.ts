@@ -143,7 +143,7 @@ export function createBlurSurfaceResources(
         1.0,
         0.0,
         1.0 / viewportWidth, // texelSize for sampling the source scene texture (full-res)
-        0.4,
+        0.8,
         blurParamsH,
     );
     // write vertical params: dir=(0,1)

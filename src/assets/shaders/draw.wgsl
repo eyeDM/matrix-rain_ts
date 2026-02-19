@@ -66,6 +66,7 @@ struct VSOut {
   @location(0) v_uv: vec2<f32>,
   @location(1) v_brightness_ldr: f32,
   @location(2) v_brightness_hdr: f32,
+  @location(3) v_brightness_alpha: f32,
 };
 
 @vertex
@@ -95,6 +96,7 @@ fn vs_main(
     out.v_uv = vec2<f32>(0.0);
     out.v_brightness_ldr = 0.0;
     out.v_brightness_hdr = 0.0;
+    out.v_brightness_alpha = 0.0;
     return out;
   }
 
@@ -165,8 +167,6 @@ fn vs_main(
   // 3. energy per cell
   let Ecell = column.energy * w / norm;
 
-  out.v_brightness_hdr = Ecell;
-
   // 4. map energy -> brightness (soft saturation)
   let k = 1.6;
   var brightnessLDR = 1.0 - exp(-k * Ecell);
@@ -189,6 +189,8 @@ fn vs_main(
   let flick = sin(angular + phase) * params.flickerAmplitude;
 
   out.v_brightness_ldr = max(0.0, brightnessLDR * (1.0 + flick));
+  out.v_brightness_hdr = max(0.0, Ecell * (1.0 + flick));
+  out.v_brightness_alpha = brightnessLDR;
   return out;
 }
 
@@ -199,16 +201,16 @@ struct FSOut {
 
 @fragment
 fn fs_main(in: VSOut) -> FSOut {
+  // Bright green base
+  let baseColor = vec3<f32>(0.0, 1.0, 0.0);
+
   // Glyph alpha (atlas assumed monochrome in alpha)
   let glyphAlpha = textureSample(atlasTexture, atlasSampler, in.v_uv).a;
 
-  let baseColor = vec3<f32>(0.0, 1.0, 0.0); // Bright green base
-
   // Mix the color with the sampled glyph visibility
   let color = baseColor * in.v_brightness_ldr;
-  let alpha = glyphAlpha * in.v_brightness_ldr;
-
   let hdrColor = baseColor * in.v_brightness_hdr;
+  let alpha = glyphAlpha * in.v_brightness_alpha;
 
   // Extract only the "bright" part
   let brightColor = max(hdrColor - vec3<f32>(BLOOM_THRESHOLD), vec3<f32>(0.0));
