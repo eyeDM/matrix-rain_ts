@@ -3,6 +3,9 @@ import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
 
+const COLOR_FORMAT_LDR: GPUTextureFormat = 'bgra8unorm-srgb';
+const COLOR_FORMAT_HDR: GPUTextureFormat = 'rgba16float';
+
 //
 // @location(0) pos : vec2<f32>
 // @location(1) uv  : vec2<f32>
@@ -144,7 +147,6 @@ export function createDrawSurfaceResources(
         columnStateBuffer: GPUBuffer,
         glyphUVsBuffer: GPUBuffer,
     },
-    colorFormat: GPUTextureFormat,
     viewportWidth: number,
     viewportHeight: number,
 ): DrawSurfaceResources {
@@ -212,7 +214,7 @@ export function createDrawSurfaceResources(
                 targets: [
                     // colorTex
                     {
-                        format: colorFormat,
+                        format: COLOR_FORMAT_LDR,
                         blend: {
                             color: {
                                 srcFactor: 'src-alpha',
@@ -229,7 +231,7 @@ export function createDrawSurfaceResources(
                     },
                     // brightTex
                     {
-                        format: colorFormat,
+                        format: COLOR_FORMAT_HDR,
                         blend: {
                             color: {
                                 srcFactor: 'one',
@@ -269,7 +271,7 @@ export function createDrawSurfaceResources(
         device.createTexture({
             label: 'Draw Color Texture',
             size: [viewportWidth, viewportHeight],
-            format: colorFormat,
+            format: COLOR_FORMAT_LDR,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
     );
@@ -277,7 +279,7 @@ export function createDrawSurfaceResources(
         device.createTexture({
             label: 'Draw Bright Texture',
             size: [viewportWidth, viewportHeight],
-            format: colorFormat,
+            format: COLOR_FORMAT_HDR,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
     );

@@ -63,15 +63,19 @@
 //
 // ============================================================================
 
-@vertex
-fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
-  var pos = array<vec2<f32>, 3>(
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>( 3.0, -1.0),
-    vec2<f32>(-1.0,  3.0),
-  );
-  return vec4<f32>(pos[i], 0.0, 1.0);
-}
+/* {@see PresentParamsLayout@backend/layouts} */
+struct PresentParams {
+  time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
+  vignetteStrength: f32,
+  scanlineFreq: f32,
+  scanlineStrength: f32,
+  noiseAmplitude: f32,
+  curvature: f32,
+  tintR: f32,
+  tintG: f32,
+  tintB: f32,
+  bloomIntensity: f32,
+};
 
 const TWO_PI: f32 = 6.283185307179586;
 
@@ -86,19 +90,32 @@ const GRAIN_TIME_SCALE: f32 = 0.1; // "analogue feel"
 const GRAIN_HASH_SCALE: f32 = 43758.5453; // scale to turn sin() into a pseudo-random hash
 const HALF: f32 = 0.5;
 
-/* {@see PresentParamsLayout@backend/layouts} */
-struct PresentParams {
-  time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
-  vignetteStrength: f32,
-  scanlineFreq: f32,
-  scanlineStrength: f32,
-  noiseAmplitude: f32,
-  curvature: f32,
-  tintR: f32,
-  tintG: f32,
-  tintB: f32,
-  bloomIntensity: f32,
-};
+// Convert linear RGB → sRGB (IEC 61966-2-1 transfer function).
+// The mapping is piecewise to approximate human brightness perception:
+//  - for very dark values (≤ 0.0031308) a linear slope 12.92 avoids banding,
+//  - above that, a power curve with exponent 1/2.4 models display gamma.
+// Constants are defined by the sRGB standard:
+//  0.0031308 — linear→nonlinear breakpoint,
+//  12.92     — slope of the linear segment,
+//  0.055     — offset ("a") ensuring continuity between segments.
+fn linear_to_srgb(x: vec3<f32>) -> vec3<f32> {
+  let a = 0.055;
+  return select(
+    12.92 * x,
+    (1.0 + a) * pow(x, vec3<f32>(1.0 / 2.4)) - a,
+    x > vec3<f32>(0.0031308)
+  );
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var pos = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>( 3.0, -1.0),
+    vec2<f32>(-1.0,  3.0),
+  );
+  return vec4<f32>(pos[i], 0.0, 1.0);
+}
 
 @group(0) @binding(0) var samp: sampler;
 @group(0) @binding(1) var tex: texture_2d<f32>;
@@ -142,6 +159,7 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let n = fract(sin(seed) * GRAIN_HASH_SCALE);
   let grain = (n - HALF) * params.noiseAmplitude;
 
-  let outColor = tint * scanMod * vig + grain + bloom * params.bloomIntensity;
-  return vec4<f32>(outColor, 1.0);
+  let outLinear = tint * scanMod * vig + grain + bloom * params.bloomIntensity;
+  let outSRGB = linear_to_srgb(max(outLinear, vec3<f32>(0.0)));
+  return vec4<f32>(outSRGB, 1.0);
 }

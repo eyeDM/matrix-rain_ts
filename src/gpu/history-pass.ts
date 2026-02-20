@@ -2,6 +2,8 @@ import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
 
+const COLOR_FORMAT_HDR: GPUTextureFormat = 'rgba16float';
+
 /**
  * Device-lifetime resources for the history accumulation compute pass.
  */
@@ -14,7 +16,6 @@ export function createHistoryDeviceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
     shader: GPUShaderModule,
-    colorFormat: GPUTextureFormat,
 ): HistoryDeviceResources {
     const bindGroupLayout = scope.track(
         device.createBindGroupLayout({
@@ -23,7 +24,7 @@ export function createHistoryDeviceResources(
                 { binding: 0, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } }, // sampler
                 { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } }, // scene
                 { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } }, // prev history
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: colorFormat } }, // dst history
+                { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: COLOR_FORMAT_HDR } }, // dst history
                 { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // params
             ],
         })
@@ -61,7 +62,6 @@ export type HistorySurfaceResources = {
 export function createHistorySurfaceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
-    colorFormat: GPUTextureFormat,
     viewportWidth: number,
     viewportHeight: number,
 ): HistorySurfaceResources {
@@ -70,7 +70,7 @@ export function createHistorySurfaceResources(
             device.createTexture({
                 label: label,
                 size: [viewportWidth, viewportHeight],
-                format: colorFormat,
+                format: COLOR_FORMAT_HDR,
                 usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
             })
         );

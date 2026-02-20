@@ -45,8 +45,6 @@ import { TimeManager } from '@runtime/time-manager';
 
 import { ConfigParameters, initEffectsPanel } from '@app/effects-panel';
 
-const COLOR_FORMAT: GPUTextureFormat = 'rgba16float'; // HDR format
-
 /**
  * Immutable screen layout derived from canvas and atlas sizes.
  */
@@ -130,7 +128,7 @@ const cfg: ConfigParameters = {
     vignetteStrength: 0.1,
     scanlineFreq: 200.0,
     scanlineStrength: 0.6,
-    noiseAmplitude: 0.1,
+    noiseAmplitude: 0.01,
     curvature: 0.04,
     tint: [0.05, 1.5, 0.05],
     bloomIntensity: 0.4,
@@ -267,14 +265,12 @@ export async function bootstrap(): Promise<void> {
         gpu.device,
         resources.deviceScope,
         shaderLoader.get('matrix-history'),
-        COLOR_FORMAT,
     );
 
     const blurDeviceResources: BlurDeviceResources = createBlurDeviceResources(
         gpu.device,
         resources.deviceScope,
         shaderLoader.get('matrix-blur'),
-        COLOR_FORMAT,
     );
 
     const presentDeviceResources: PresentDeviceResources = createPresentDeviceResources(
@@ -321,7 +317,6 @@ export async function bootstrap(): Promise<void> {
                 columnStateBuffer: columnsState.buffer,
                 glyphUVsBuffer: atlas.glyphUVsBuffer,
             },
-            COLOR_FORMAT,
             layout.viewport.width,
             layout.viewport.height,
         );
@@ -332,7 +327,6 @@ export async function bootstrap(): Promise<void> {
             blurDeviceResources.pipeline,
             blurDeviceResources.sampler,
             drawSurfaceResources.brightTex,
-            COLOR_FORMAT,
             layout.viewport.width,
             layout.viewport.height,
         );
@@ -340,7 +334,6 @@ export async function bootstrap(): Promise<void> {
         const historySurfaceResources: HistorySurfaceResources = createHistorySurfaceResources(
             gpu.device,
             resources.surfaceScope,
-            COLOR_FORMAT,
             layout.viewport.width,
             layout.viewport.height,
         );

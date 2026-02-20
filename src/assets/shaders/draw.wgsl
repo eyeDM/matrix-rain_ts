@@ -223,7 +223,7 @@ fn fs_main(in: VSOut) -> FSOut {
   // Extract only the "bright" part
   let brightColor = max(hdrColor - vec3<f32>(BLOOM_THRESHOLD), vec3<f32>(0.0));
 
-  var out : FSOut;
+  var out: FSOut;
   out.color = vec4<f32>(color, alpha);
   out.bright = vec4<f32>(brightColor * glyphAlpha, glyphAlpha);
   return out;

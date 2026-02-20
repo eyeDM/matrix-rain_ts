@@ -31,6 +31,13 @@ struct ColumnState {
   pad2: u32,
 };
 
+/* --- RNG --- */
+
+struct RNG {
+    base: u32,
+    counter: u32,
+};
+
 /* --- Constants --- */
 
 const TRAIL_LENGTH_MIN: u32 = 4u;
@@ -48,13 +55,6 @@ const ENERGY_SPEED_FACTOR: f32 = 0.25;
 const ENERGY_LENGTH_FACTOR: f32 = 0.05;
 
 const LN2: f32 = 0.69314718056;
-
-/* --- RNG --- */
-
-struct RNG {
-    base: u32,
-    counter: u32,
-};
 
 // PCG hash / Murmur-style mix (stateless, deterministic)
 fn hash_u32(x: u32) -> u32 {
@@ -86,7 +86,7 @@ fn rng_next_f32(rng: ptr<function, RNG>) -> f32 {
 
 /* --- Simulation --- */
 
-fn change_energy(state : ptr<function, ColumnState>) {
+fn change_energy(state: ptr<function, ColumnState>) {
   let halfLife: f32 = max(
     HALF_LIFE_MIN,
     HALF_LIFE_BASE /
@@ -102,8 +102,8 @@ fn change_energy(state : ptr<function, ColumnState>) {
 }
 
 fn respawn_column(
-  state : ptr<function, ColumnState>,
-  rng   : ptr<function, RNG>
+  state: ptr<function, ColumnState>,
+  rng: ptr<function, RNG>
 ) {
   let r0 = rng_next_f32(rng);
   let r1 = rng_next_f32(rng);
@@ -127,7 +127,7 @@ fn respawn_column(
 @group(0) @binding(1) var<uniform> params : DrawParams;
 
 @compute @workgroup_size(64)
-fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let colIdx: u32 = gid.x;
   if (colIdx >= params.cols) {
     return;

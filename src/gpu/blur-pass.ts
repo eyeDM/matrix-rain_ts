@@ -3,6 +3,8 @@ import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
 
+const COLOR_FORMAT_HDR: GPUTextureFormat = 'rgba16float';
+
 /**
  * Device-lifetime resources
  */
@@ -15,7 +17,6 @@ export function createBlurDeviceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
     shader: GPUShaderModule,
-    format: GPUTextureFormat,
 ): BlurDeviceResources {
     const bindGroupLayout = scope.track(
         device.createBindGroupLayout({
@@ -40,7 +41,11 @@ export function createBlurDeviceResources(
             label: 'Blur Pipeline',
             layout: pipelineLayout,
             vertex: { module: shader, entryPoint: 'vs_main' },
-            fragment: { module: shader, entryPoint: 'fs_main', targets: [{ format }] },
+            fragment: {
+                module: shader,
+                entryPoint: 'fs_main',
+                targets: [{ format: COLOR_FORMAT_HDR }],
+            },
             primitive: { topology: 'triangle-list' },
         })
     );
@@ -73,7 +78,6 @@ export function createBlurSurfaceResources(
     pipeline: GPURenderPipeline,
     sampler: GPUSampler,
     inputTex: GPUTexture,
-    colorFormat: GPUTextureFormat,
     viewportWidth: number,
     viewportHeight: number,
 ): BlurSurfaceResources {
@@ -129,7 +133,7 @@ export function createBlurSurfaceResources(
             device.createTexture({
                 label: label,
                 size: [blurW, blurH],
-                format: colorFormat,
+                format: COLOR_FORMAT_HDR,
                 usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
             })
         );

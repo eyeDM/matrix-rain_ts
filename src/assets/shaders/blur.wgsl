@@ -2,6 +2,13 @@
 // is already bright-pass filtered in HDR space. It performs only linear blurring
 // (no thresholding or renormalization), preserving energy and avoiding halo artifacts.
 
+/* {@see BlurParamsLayout@backend/layouts} */
+struct BlurParams {
+  dir: vec2<f32>,  // (1,0) for horizontal, (0,1) for vertical
+  texelSize: f32,  // 1.0 / resolution along blur axis
+  pad0: f32,
+};
+
 @vertex
 fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   var pos = array<vec2<f32>, 3>(
@@ -11,13 +18,6 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   );
   return vec4<f32>(pos[i], 0.0, 1.0);
 }
-
-/* {@see BlurParamsLayout@backend/layouts} */
-struct BlurParams {
-  dir: vec2<f32>,  // (1,0) for horizontal, (0,1) for vertical
-  texelSize: f32,  // 1.0 / resolution along blur axis
-  pad0: f32,
-};
 
 @group(0) @binding(0) var samp: sampler;
 @group(0) @binding(1) var tex: texture_2d<f32>;
