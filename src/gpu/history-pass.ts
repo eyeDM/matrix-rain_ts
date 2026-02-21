@@ -111,11 +111,11 @@ export class HistoryComputePass {
     }
 
     getPrevView(): GPUTextureView {
-        return this.ping === 0 ? this.historyViewA : this.historyViewB;
+        return this.ping === 1 ? this.historyViewA : this.historyViewB;
     }
 
     getOutputView(): GPUTextureView {
-        return this.ping === 1 ? this.historyViewA : this.historyViewB;
+        return this.ping === 0 ? this.historyViewA : this.historyViewB;
     }
 
     execute(ctx: RenderContext): void {

@@ -355,18 +355,6 @@ export async function bootstrap(): Promise<void> {
             layout.instances.count,
         );
 
-        const blurPassH = new BlurPass(
-            blurDeviceResources.pipeline,
-            blurSurfaceResources.bindGroupH,
-            blurSurfaceResources.texTemp,
-        );
-
-        const blurPassV = new BlurPass(
-            blurDeviceResources.pipeline,
-            blurSurfaceResources.bindGroupV,
-            blurSurfaceResources.texResult,
-        );
-
         const historyPass = new HistoryComputePass(
             resources.frameScope,
             historyDeviceResources.pipeline,
@@ -377,6 +365,18 @@ export async function bootstrap(): Promise<void> {
             historyParamsWriter.buffer,
             layout.viewport.width,
             layout.viewport.height,
+        );
+
+        const blurPassH = new BlurPass(
+            blurDeviceResources.pipeline,
+            blurSurfaceResources.bindGroupH,
+            blurSurfaceResources.texTemp,
+        );
+
+        const blurPassV = new BlurPass(
+            blurDeviceResources.pipeline,
+            blurSurfaceResources.bindGroupV,
+            blurSurfaceResources.texResult,
         );
 
         // final present pass will sample the latest history output via a getter
@@ -404,6 +404,11 @@ export async function bootstrap(): Promise<void> {
             .writes(drawSurfaceResources.colorTex, drawSurfaceResources.brightTex);
 
         graphBuilder
+            .addPass(historyPass)
+            .reads(drawSurfaceResources.colorTex)
+            .writes(historySurfaceResources.historyTexA, historySurfaceResources.historyTexB);
+
+        graphBuilder
             .addPass(blurPassH)
             .reads(drawSurfaceResources.brightTex)
             .writes(blurSurfaceResources.texTemp);
@@ -412,11 +417,6 @@ export async function bootstrap(): Promise<void> {
             .addPass(blurPassV)
             .reads(blurSurfaceResources.texTemp)
             .writes(blurSurfaceResources.texResult);
-
-        graphBuilder
-            .addPass(historyPass)
-            .reads(drawSurfaceResources.colorTex)
-            .writes(historySurfaceResources.historyTexA, historySurfaceResources.historyTexB);
 
         graphBuilder
             .addPass(presentPass)
@@ -522,7 +522,7 @@ export async function bootstrap(): Promise<void> {
             const oldCfg = { ...cfg };
             Object.assign(cfg, changedConfig);
 
-            if (cfg.decay === oldCfg.decay) {
+            if (cfg.decay !== oldCfg.decay) {
                 historyParamsWriter.update({decay: cfg.decay});
             }
         },
