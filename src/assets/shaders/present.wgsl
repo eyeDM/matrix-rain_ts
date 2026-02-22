@@ -80,7 +80,7 @@ struct PresentParams {
 const TWO_PI: f32 = 6.283185307179586;
 
 const LUMA_BT709: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722); // ITU-R Recommendation 709
-const SCAN_BIAS: f32 = 0.5;
+const SCAN_BIAS: f32 = 1.0;
 const SCAN_AMPLITUDE: f32 = 0.5; // used to map sin() from -1..1 to 0..1
 const SCANLINE_TIME_SCALE: f32 = 1.5; // temporal speed factor for scanline animation
 const VIGNETTE_EDGE: f32 = 0.7071; // ≈ √(0.5² + 0.5²) // radius normalization for square screen
@@ -89,6 +89,10 @@ const GRAIN_SEED_Y: f32 = 78.233;
 const GRAIN_TIME_SCALE: f32 = 0.1; // "analogue feel"
 const GRAIN_HASH_SCALE: f32 = 43758.5453; // scale to turn sin() into a pseudo-random hash
 const HALF: f32 = 0.5;
+
+fn tonemap_reinhard(x: vec3<f32>) -> vec3<f32> {
+    return x / (1.0 + x);
+}
 
 // Convert linear RGB → sRGB (IEC 61966-2-1 transfer function).
 // The mapping is piecewise to approximate human brightness perception:
@@ -159,7 +163,11 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let n = fract(sin(seed) * GRAIN_HASH_SCALE);
   let grain = (n - HALF) * params.noiseAmplitude;
 
-  let outLinear = tint * scanMod * vig + grain + bloom * params.bloomIntensity;
-  let outSRGB = linear_to_srgb(max(outLinear, vec3<f32>(0.0)));
+  let outLinear = (tint * scanMod + bloom * params.bloomIntensity) * vig + grain;
+
+  // tonemap+gamma
+  let mapped = tonemap_reinhard(max(outLinear, vec3<f32>(0.0)));
+  let outSRGB = linear_to_srgb(mapped);
+
   return vec4<f32>(outSRGB, 1.0);
 }
