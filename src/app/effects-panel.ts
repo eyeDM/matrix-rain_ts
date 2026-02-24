@@ -142,42 +142,79 @@ export function createEffectsPanel(
         container.appendChild(element);
     });
 
-    // tint quick buttons
-    const tintRow = document.createElement('div');
-    tintRow.style.display = 'flex';
-    tintRow.style.gap = '6px';
-    tintRow.style.marginTop = '8px';
+    /* --- Preset buttons --- */
 
-    const makeTintButton = (
+    const buttonsRow = document.createElement('div');
+    buttonsRow.style.display = 'flex';
+    buttonsRow.style.gap = '6px';
+    buttonsRow.style.marginTop = '8px';
+
+    const addButton = (
         label: string,
-        tint: ConfigParameters['tint'],
+        onClick: () => void,
     ) => {
-        const btn = document.createElement('button');
-        btn.textContent = label;
-        btn.onclick = () => onParameterChange({ tint });
-        return btn;
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.onclick = onClick;
+        buttonsRow.appendChild(button);
     };
 
-    tintRow.appendChild(makeTintButton('Green', [0.0, 1.0, 0.0]));
-    tintRow.appendChild(makeTintButton('White', [1.0, 1.0, 1.0]));
+    // Tint quick buttons
+    addButton(
+        'Green',
+        () => onParameterChange({ tint: [0.05, 1.5, 0.05] })
+    );
+    addButton(
+        'Orange',
+        () => onParameterChange({ tint: [1.5, 0.85, 0.05] })
+    );
+    addButton(
+        'White',
+        () => onParameterChange({ tint: [1.0, 1.0, 1.0] })
+    );
 
-    container.appendChild(tintRow);
+    // Min values button
+    addButton(
+        'Set Min',
+        () => {
+            const minValues: Partial<ConfigParameters> = {};
+
+            (Object.keys(ConfigParameterSpecs) as Array<
+                Exclude<keyof ConfigParameters, 'tint'>
+            >).forEach((key) => {
+                const specs = ConfigParameterSpecs[key];
+                minValues[key] = specs.min;
+            });
+
+            onParameterChange(minValues);
+
+            // sync UI sliders
+            (Object.keys(sliderHandles) as Array<
+                Exclude<keyof ConfigParameters, 'tint'>
+            >).forEach((key) => {
+                const handle = sliderHandles[key];
+                if (handle !== undefined) {
+                    handle.setValue(ConfigParameterSpecs[key].min);
+                }
+            });
+        }
+    );
 
     // Reset button
-    const resetBtn = document.createElement('button');
-    resetBtn.textContent = 'Reset';
-    resetBtn.style.marginTop = '8px';
-    resetBtn.onclick = () => {
-        onParameterChange(initialConfig);
+    addButton(
+        'Reset',
+        () => {
+            onParameterChange(initialConfig);
 
-        (Object.keys(sliderHandles) as Array<
-            Exclude<keyof ConfigParameters, 'tint'>
-        >).forEach((key) => {
-            sliderHandles[key]?.setValue(initialConfig[key]);
-        });
-    };
+            (Object.keys(sliderHandles) as Array<
+                Exclude<keyof ConfigParameters, 'tint'>
+            >).forEach((key) => {
+                sliderHandles[key]?.setValue(initialConfig[key]);
+            });
+        }
+    );
 
-    container.appendChild(resetBtn);
+    container.appendChild(buttonsRow);
 
     document.body.appendChild(container);
 

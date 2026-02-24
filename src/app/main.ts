@@ -134,22 +134,6 @@ const cfg: ConfigParameters = {
     bloomIntensity: 0.4,
 };
 
-/*const cfg: ConfigParameters = {
-    // DrawParams
-    flickerAmplitude: 0.0,
-    flickerFrequency: 0.0,
-    // HistoryParams
-    decay: 0.0,
-    // PresentParams
-    vignetteStrength: 0.0,
-    scanlineFreq: 0.0,
-    scanlineStrength: 0.0,
-    noiseAmplitude: 0.0,
-    curvature: 0.0,
-    tint: [0.05, 1.5, 0.05],
-    bloomIntensity: 0.0,
-};*/
-
 export async function bootstrap(): Promise<void> {
     const canvasEl = document.getElementById('canvas') as HTMLCanvasElement | null;
     if (!canvasEl) {
