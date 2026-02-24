@@ -14,11 +14,12 @@ export type ConfigParameters = {
     bloomIntensity: number;
 };
 
-interface EffectsPanelHandle {
-    destroy(): void;
-}
-
-type Specs = { min: number; max: number; step: number; label: string; };
+type Specs = {
+    min: number;
+    max: number;
+    step: number;
+    label: string;
+};
 
 const ConfigParameterSpecs: {
     [K in Exclude<keyof ConfigParameters, 'tint'>]: Specs;
@@ -47,11 +48,15 @@ function makeLabel(text: string): HTMLLabelElement {
     return l;
 }
 
+type SliderHandle = {
+    setValue(value: number): void;
+};
+
 function makeSlider(
     specs: Specs,
     value: number,
     onChange: (value: number) => void,
-): HTMLElement {
+): { element: HTMLElement; handle: SliderHandle } {
     const label = makeLabel(specs.label);
 
     const slider = document.createElement('input');
@@ -63,6 +68,8 @@ function makeSlider(
     slider.style.width = '160px';
 
     const valueEl = document.createElement('span');
+    valueEl.style.textAlign = 'right';
+    valueEl.style.width = '40px';
     valueEl.textContent = value.toFixed(2);
 
     slider.addEventListener('input', () => {
@@ -74,13 +81,31 @@ function makeSlider(
     label.appendChild(slider);
     label.appendChild(valueEl);
 
-    return label;
+    return {
+        element: label,
+        handle: {
+            setValue(newValue: number): void {
+                slider.value = String(newValue);
+                valueEl.textContent = newValue.toFixed(2);
+            },
+        },
+    };
+}
+
+interface EffectsPanelHandle {
+    destroy(): void;
 }
 
 export function createEffectsPanel(
     config: ConfigParameters,
     onParameterChange: (changedConfig: Partial<ConfigParameters>) => void,
 ): EffectsPanelHandle {
+    // Immutable snapshot of initial values
+    const initialConfig: ConfigParameters = {
+        ...config,
+        tint: [...config.tint],
+    };
+
     const container = document.createElement('div');
     container.style.position = 'fixed';
     container.style.right = '10px';
@@ -99,34 +124,34 @@ export function createEffectsPanel(
     title.style.marginBottom = '6px';
     container.appendChild(title);
 
+    const sliderHandles: Partial<
+        Record<Exclude<keyof ConfigParameters, 'tint'>, SliderHandle>
+    > = {};
+
     (Object.keys(ConfigParameterSpecs) as Array<
         Exclude<keyof ConfigParameters, 'tint'>
     >).forEach((key) => {
         const specs = ConfigParameterSpecs[key];
         const value = config[key];
 
-        container.appendChild(
-            makeSlider(specs, value, (newValue) => {
-                onParameterChange({ [key]: newValue });
-            }),
-        );
+        const { element, handle } = makeSlider(specs, value, (newValue) => {
+            onParameterChange({ [key]: newValue });
+        });
+
+        sliderHandles[key] = handle;
+        container.appendChild(element);
     });
 
     // tint quick buttons
-    const btnGreen = document.createElement('button');
-    btnGreen.textContent = 'Green';
-    btnGreen.onclick = () => onParameterChange({tint: [0.0, 1.0, 0.0]});
-
-    const btnWhite = document.createElement('button');
-    btnWhite.textContent = 'White';
-    btnWhite.onclick = () => onParameterChange({tint: [1.0, 1.0, 1.0]});
-
     const tintRow = document.createElement('div');
     tintRow.style.display = 'flex';
     tintRow.style.gap = '6px';
     tintRow.style.marginTop = '8px';
 
-    const makeTintButton = (label: string, tint: ConfigParameters['tint']) => {
+    const makeTintButton = (
+        label: string,
+        tint: ConfigParameters['tint'],
+    ) => {
         const btn = document.createElement('button');
         btn.textContent = label;
         btn.onclick = () => onParameterChange({ tint });
@@ -137,6 +162,22 @@ export function createEffectsPanel(
     tintRow.appendChild(makeTintButton('White', [1.0, 1.0, 1.0]));
 
     container.appendChild(tintRow);
+
+    // Reset button
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Reset';
+    resetBtn.style.marginTop = '8px';
+    resetBtn.onclick = () => {
+        onParameterChange(initialConfig);
+
+        (Object.keys(sliderHandles) as Array<
+            Exclude<keyof ConfigParameters, 'tint'>
+        >).forEach((key) => {
+            sliderHandles[key]?.setValue(initialConfig[key]);
+        });
+    };
+
+    container.appendChild(resetBtn);
 
     document.body.appendChild(container);
 
