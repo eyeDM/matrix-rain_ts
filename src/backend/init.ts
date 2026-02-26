@@ -2,22 +2,55 @@
  * Initialize WebGPU module
  *
  * Responsibilities:
- * 1. Request GPU adapter and device.
- * 2. Get and configure the GPUCanvasContext.
- * 3. Provide a `configureCanvas` helper for handling HiDPI and resizing.
+ * 1. Request GPU adapter and logical device.
+ * 2. Acquire GPUCanvasContext from the provided canvas.
+ * 3. Resolve the preferred swapchain texture format.
+ * 4. Apply conservative device limits for predictable memory usage.
+ * 5. Provide a minimal, stable context bundle used by the rest of the renderer.
+ *
+ * Design notes:
+ * - This module does NOT create pipelines or GPU resources beyond the device.
+ * - All higher-level GPU resources must be created by dedicated subsystems.
+ * - The function fails fast on any unsupported or invalid state to avoid
+ *   partially initialized GPU pipelines.
+ *
+ * Failure modes:
+ * - navigator.gpu missing → WebGPU not supported in current browser
+ * - adapter acquisition fails → no compatible GPU backend available
+ * - device creation fails → limits/features not supported
+ * - context acquisition fails → canvas is incompatible or lost
+ *
+ * Consumers are expected to catch errors and use a graceful fallback UI.
  */
 
 export interface WebGPUContext {
+    /** Logical GPU device used for all resource creation and command submission */
     readonly device: GPUDevice;
+
+    /** Canvas context used as presentation surface (swapchain target) */
     readonly context: GPUCanvasContext;
+
+    /** Preferred GPU texture format for the presentation surface */
     readonly format: GPUTextureFormat;
 }
 
+/**
+ * Select a safe subset of device limits.
+ *
+ * Rationale:
+ * Some mobile/low-end GPUs report extremely large theoretical limits which
+ * may lead to unstable allocations or memory pressure in real-world usage.
+ * We clamp critical limits to a conservative upper bound.
+ *
+ * Currently constrained:
+ * - maxBufferSize: capped to 512 MiB to prevent excessive allocations for
+ *   storage buffers (e.g., column state buffers).
+ */
 function pickDeviceLimits(adapter: GPUAdapter) {
     const limits = adapter.limits;
 
-    // Upper reasonable bound for instance storage
-    const TARGET_MAX_BUFFER = 512 * 1024 * 1024; // 512 MiB
+    // Upper reasonable bound for instance/storage buffers (512 MiB)
+    const TARGET_MAX_BUFFER = 512 * 1024 * 1024;
 
     return {
         maxBufferSize: Math.min(limits.maxBufferSize, TARGET_MAX_BUFFER),
@@ -26,19 +59,23 @@ function pickDeviceLimits(adapter: GPUAdapter) {
 
 /**
  * Initialize WebGPU: request adapter & device, get canvas context,
- * detect preferred format and configure the swap chain.
+ * detect preferred presentation format.
  *
- * @param canvas - HTMLCanvasElement to attach the WebGPU context to.
- * @returns device, context and preferred format, plus the configuration helper.
+ * @param canvas - HTMLCanvasElement used as rendering surface.
+ *
+ * @returns WebGPUContext
+ *
+ * @throws Error if WebGPU is unavailable or initialization fails.
  */
 export async function initWebGPU(
     canvas: HTMLCanvasElement
 ): Promise<WebGPUContext> {
+    // Feature detection — required for graceful degradation
     if (!navigator.gpu) {
         throw new Error('WebGPU not supported.');
     }
 
-    // Request a high-performance adapter
+    // Request a high-performance adapter (discrete GPU preferred where available)
     const adapter = await navigator.gpu.requestAdapter({
         powerPreference: 'high-performance',
     });
@@ -47,15 +84,21 @@ export async function initWebGPU(
         throw new Error('Couldn\'t request WebGPU adapter.');
     }
 
+    // Create logical device with constrained limits
     const device = await adapter.requestDevice({
         requiredLimits: pickDeviceLimits(adapter),
     });
 
+    // Acquire WebGPU canvas context
     const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
+
     if (!context) {
-        throw new Error('Failed to acquire GPUCanvasContext from the provided canvas.');
+        throw new Error(
+            'Failed to acquire GPUCanvasContext from the provided canvas.'
+        );
     }
 
+    // Resolve preferred presentation format for current platform/browser
     const format = navigator.gpu.getPreferredCanvasFormat();
 
     return {
@@ -67,7 +110,16 @@ export async function initWebGPU(
 
 /**
  * Displays a full-screen fallback message when WebGPU is not available.
- * This uses standard DOM/CSS and does not rely on GPU features.
+ *
+ * This is used as a graceful degradation path for browsers that:
+ * - do not implement WebGPU (e.g. iOS Safari),
+ * - have it disabled,
+ * - or fail adapter/device initialization.
+ *
+ * The overlay is intentionally:
+ * - pure DOM/CSS (no GPU dependency),
+ * - idempotent (safe to call multiple times),
+ * - visually aligned with the Matrix theme.
  */
 export function showWebGPUNotSupported(): void {
     // Avoid duplicating overlay if called multiple times
