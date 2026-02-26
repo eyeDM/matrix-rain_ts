@@ -1,7 +1,7 @@
 // Bootstrap entry — initialize WebGPU
 
 import { ColumnStateLayout } from '@backend/layouts';
-import { WebGPUContext, initWebGPU } from '@backend/init';
+import { WebGPUContext, initWebGPU, showWebGPUNotSupported } from '@backend/init';
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
 
@@ -144,7 +144,15 @@ export async function bootstrap(): Promise<void> {
 
     // --- WebGPU ---
 
-    const gpu: WebGPUContext = await initWebGPU(canvas);
+    let gpu: WebGPUContext;
+    try {
+        gpu = await initWebGPU(canvas);
+    } catch (err) {
+        // Covers adapter/device acquisition failures
+        console.error('WebGPU initialization failed:', err);
+        showWebGPUNotSupported();
+        return;
+    }
 
     const swapChain = new SwapChain(
         canvas,

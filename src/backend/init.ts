@@ -64,3 +64,49 @@ export async function initWebGPU(
         format,
     };
 }
+
+/**
+ * Displays a full-screen fallback message when WebGPU is not available.
+ * This uses standard DOM/CSS and does not rely on GPU features.
+ */
+export function showWebGPUNotSupported(): void {
+    // Avoid duplicating overlay if called multiple times
+    if (document.getElementById('webgpu-fallback')) {
+        return;
+    }
+
+    const container = document.createElement('div');
+    container.id = 'webgpu-fallback';
+
+    container.style.position = 'fixed';
+    container.style.inset = '0';
+    container.style.background = '#000';
+    container.style.color = '#00ff99';
+    container.style.fontFamily = 'monospace';
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.padding = '24px';
+    container.style.textAlign = 'center';
+    container.style.zIndex = '9999';
+
+    container.innerHTML = `
+        <h1 style="font-size: 20px; margin-bottom: 16px;">
+            WebGPU is not supported in this browser
+        </h1>
+        <p style="max-width: 480px; line-height: 1.4; margin-bottom: 16px;">
+            This visualization requires WebGPU, which is not available in your current browser.
+        </p>
+        <p style="max-width: 480px; line-height: 1.4;">
+            Recommended browsers:
+        </p>
+        <ul style="list-style: none; padding: 0; margin: 12px 0 0 0;">
+            <li>• Google Chrome (latest version)</li>
+            <li>• Microsoft Edge (latest version)</li>
+            <li>• Chromium-based browsers with WebGPU enabled</li>
+        </ul>
+    `;
+
+    document.body.appendChild(container);
+}
