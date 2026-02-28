@@ -143,15 +143,19 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Sample (clamp UV to avoid sampling outside)
   uv = clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0));
-  let col = textureSample(tex, samp, uv).rgb;
-  let bloom = textureSample(bloomTex, samp, uv).rgb;
 
-  // Monochrome luminance -> tinted green phosphor
+  let col = textureSample(tex, samp, uv).rgb;
   let lum = dot(col, LUMA_BT709);
-  var tint = vec3<f32>(params.tintR, params.tintG, params.tintB) * lum;
+
+  let bloom = textureSample(bloomTex, samp, uv).rgb;
+  let bloomLum = dot(bloom, LUMA_BT709);
+
+  let energy = lum + bloomLum * params.bloomIntensity;
 
   // Scanline modulation (sinusoidal across Y)
-  let scan = SCAN_BIAS + SCAN_AMPLITUDE * sin((uv.y * params.scanlineFreq) * TWO_PI + params.time * SCANLINE_TIME_SCALE);
+  let scan = SCAN_BIAS +
+    SCAN_AMPLITUDE * sin((uv.y * params.scanlineFreq) * TWO_PI + params.time * SCANLINE_TIME_SCALE);
+
   let scanMod = mix(1.0, scan, params.scanlineStrength);
 
   // Vignette
@@ -163,7 +167,10 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let n = fract(sin(seed) * GRAIN_HASH_SCALE);
   let grain = (n - HALF) * params.noiseAmplitude;
 
-  let outLinear = (tint * scanMod + bloom * params.bloomIntensity) * vig + grain;
+  // Monochrome luminance -> tinted green phosphor
+  let tint = vec3<f32>(params.tintR, params.tintG, params.tintB);
+
+  let outLinear = (energy * scanMod * vig + grain) * tint;
 
   // tonemap+gamma
   let mapped = tonemap_reinhard(max(outLinear, vec3<f32>(0.0)));
