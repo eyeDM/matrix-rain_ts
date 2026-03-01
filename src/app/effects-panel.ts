@@ -1,3 +1,5 @@
+type TintTuple = [number, number, number];
+
 export type ConfigParameters = {
     // SimulationParams
     flickerAmplitude: number;
@@ -10,15 +12,15 @@ export type ConfigParameters = {
     scanlineStrength: number;
     noiseAmplitude: number;
     curvature: number;
-    tint: [number, number, number];
+    tint: TintTuple;
     bloomIntensity: number;
 };
 
 type Specs = {
-    min: number;
-    max: number;
-    step: number;
-    label: string;
+    readonly min: number;
+    readonly max: number;
+    readonly step: number;
+    readonly label: string;
 };
 
 const ConfigParameterSpecs: {
@@ -35,15 +37,26 @@ const ConfigParameterSpecs: {
     bloomIntensity: { min: 0, max: 1, step: 0.01, label: 'Bloom' },
 };
 
+type TintPreset = {
+    readonly label: string;
+    readonly values: TintTuple;
+}
+
+const TINT_PRESETS = [
+    { label: 'Classic', values: [0.00, 1.00, 0.20] },
+    { label: 'Neon',    values: [0.05, 1.00, 0.45] },
+    { label: 'Zion',    values: [1.00, 0.55, 0.05] },
+    { label: 'Modern',  values: [0.10, 0.85, 0.90] },
+] as const satisfies readonly TintPreset[];
+
 function makeLabel(text: string): HTMLLabelElement {
     const l = document.createElement('label');
     l.style.display = 'flex';
     l.style.justifyContent = 'flex-end';
     l.style.columnGap = '8px';
     l.style.alignItems = 'center';
+    l.style.marginBottom = '4px';
     l.style.fontSize = '12px';
-    l.style.color = '#bfe3b4';
-    l.style.margin = '4px 0';
     l.textContent = text;
     return l;
 }
@@ -110,18 +123,19 @@ export function createEffectsPanel(
     container.style.position = 'fixed';
     container.style.right = '10px';
     container.style.top = '10px';
-    container.style.background = 'rgba(22, 22, 22, 0.66)';
-    container.style.border = '1px solid rgba(100, 200, 100, 0.2)';
-    container.style.padding = '10px';
-    container.style.borderRadius = '8px';
-    container.style.fontFamily = 'monospace';
     container.style.zIndex = '9999';
+    container.style.background = 'rgba(22, 22, 22, 0.66)';
+    container.style.color = '#c8f2c8';
+    container.style.fontFamily = 'monospace';
+    container.style.border = '1px solid rgba(100, 200, 100, 0.2)';
+    container.style.borderRadius = '8px';
+    container.style.padding = '8px';
 
     const title = document.createElement('div');
     title.textContent = 'Effects Panel';
     title.style.fontWeight = '600';
-    title.style.color = '#c8f2c8';
-    title.style.marginBottom = '6px';
+    title.style.marginBottom = '8px';
+    title.style.textAlign = 'center';
     container.appendChild(title);
 
     const sliderHandles: Partial<
@@ -142,39 +156,44 @@ export function createEffectsPanel(
         container.appendChild(element);
     });
 
-    /* --- Preset buttons --- */
+    /* --- Quick buttons --- */
 
-    const buttonsRow = document.createElement('div');
-    buttonsRow.style.display = 'flex';
-    buttonsRow.style.gap = '6px';
-    buttonsRow.style.marginTop = '8px';
-
-    const addButton = (
-        label: string,
-        onClick: () => void,
-    ) => {
-        const button = document.createElement('button');
-        button.textContent = label;
-        button.onclick = onClick;
-        buttonsRow.appendChild(button);
+    const createButtonsContainer = (): HTMLDivElement => {
+        const el = document.createElement('div');
+        el.style.display = 'flex';
+        el.style.gap = '4px';
+        el.style.marginTop = '8px';
+        return el;
     };
 
-    // Tint quick buttons
-    addButton(
-        'Green',
-        () => onParameterChange({ tint: [0.05, 1.5, 0.05] })
-    );
-    addButton(
-        'Orange',
-        () => onParameterChange({ tint: [1.5, 0.85, 0.05] })
-    );
-    addButton(
-        'White',
-        () => onParameterChange({ tint: [1.0, 1.0, 1.0] })
-    );
+    const addButton = (
+        container: HTMLDivElement,
+        label: string,
+        onClick: () => void,
+    ): void => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.onclick = onClick;
+        container.appendChild(button);
+    };
+
+    // Tint Presets
+    const tintPresetContainer = createButtonsContainer();
+
+    TINT_PRESETS.forEach(({ label, values }) => {
+        addButton(
+            tintPresetContainer,
+            label,
+            () => onParameterChange({ tint: values })
+        );
+    });
+
+    const setupContainer = createButtonsContainer();
 
     // Min values button
     addButton(
+        setupContainer,
         'Set Min',
         () => {
             const minValues: Partial<ConfigParameters> = {};
@@ -202,6 +221,7 @@ export function createEffectsPanel(
 
     // Reset button
     addButton(
+        setupContainer,
         'Reset',
         () => {
             onParameterChange(initialConfig);
@@ -214,7 +234,8 @@ export function createEffectsPanel(
         }
     );
 
-    container.appendChild(buttonsRow);
+    container.appendChild(tintPresetContainer);
+    container.appendChild(setupContainer);
 
     document.body.appendChild(container);
 

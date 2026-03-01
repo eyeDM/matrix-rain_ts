@@ -130,7 +130,7 @@ const cfg: ConfigParameters = {
     scanlineStrength: 0.6,
     noiseAmplitude: 0.01,
     curvature: 0.04,
-    tint: [0.05, 1.5, 0.05],
+    tint: [0.00, 1.00, 0.20],
     bloomIntensity: 0.4,
 };
 
