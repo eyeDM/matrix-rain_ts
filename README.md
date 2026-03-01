@@ -53,11 +53,11 @@ CPU (TypeScript)
  └─ Submits GPU passes in deterministic order
   ↓
 GPU (WebGPU, WGSL)
- ├─ Compute pass: simulation
- ├─ Render pass: offscreen draw
- ├─ Blur pass
- ├─ History pass: history accumulation
- └─ Present pass: fullscreen composite
+ ├─ SimulationComputePass: Updates ColumnState per column, renewal and rebirth of columns of symbols with "living" energy.
+ ├─ DrawPass: Renders all glyph instances into an offscreen color target; procedural render shader with glyph selection, position calculation, color ("bgra8unorm-srgb"), brightness ("rgba16float"), transparency.
+ ├─ BlurPass: Separable Gaussian blur pass for bloom. Large glyphs create a parallax effect. The input is `out.bright` from `draw.wgsl`. "rgba16float".
+ ├─ HistoryPass: Simple history accumulation with exponential decay. "rgba16float".
+ └─ PresentPass: Final-frame presentation with a stylized CRT aesthetic.
 ```
 
 ### Key principles
@@ -178,51 +178,6 @@ assets (WGSL)
     - Topological sorting per frame
     - Passes encode commands only; do not own resources
     - Ensures deterministic execution and separation between compute, draw, and present passes
-
-
----
-
-## Important notes
-
-- **No per-frame allocations**
-
-    All buffers, pipelines, bind groups, and textures are created upfront or on resize only.
-
-- **Safe resource destruction**
-
-    Old GPU resources are destroyed only after device.queue.onSubmittedWorkDone() to avoid validation errors.
-
-- **Strict layout contracts**
-
-    Any change in `src/backend/layouts.ts` must be mirrored in WGSL structs. This is intentional and enforced by design.
-
-- **Scalability**
-
-    Total instance count per frame is bounded by:
-    ```
-    instanceCount = columns × maxTrail
-                  ≈ (canvasWidth / cellWidth) × (canvasHeight / cellHeight)
-    ```
-
-    This bound is fixed per resize and fully GPU-driven.
-
-- **Extensibility**
-
-    The architecture supports:
-    * Post-processing passes
-    * Multi-layer rain
-    * Color variation per column
-    * Bloom / glow via additional render passes
-
-- If you see shader compilation errors in the browser, copy the full "WebGPU compilation info" message (it includes the WGSL line/column and message) and paste it into an issue — that info is necessary to pinpoint WGSL problems.
-
----
-
-## Troubleshooting WebGPU
-
-- Chrome/Edge: enable the `chrome://flags/#enable-unsafe-webgpu` or run a Canary/Dev version with WebGPU support if your browser doesn't expose WebGPU yet.
-
-- If WebGPU is not available, the app will throw at startup — check the console for the adapter/device request errors.
 
 ---
 
