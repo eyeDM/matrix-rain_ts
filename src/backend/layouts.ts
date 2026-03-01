@@ -17,22 +17,26 @@
 
 // Unified render params
 export const DrawParamsLayout = {
-    ALIGN: 16,
-    SIZE: 48,
+    ALIGN: 8,
+    SIZE: 64,
     offsets: {
-        canvasSize: 0,        // vec2<f32>
-        cellSize: 8,          // vec2<f32>
+        canvasSize: 0,        // vec2<f32>: pixels
+        cellSize: 8,          // vec2<f32>: pixels
+        atlasTexelSize: 16,   // vec2<f32>: in atlas UV space (1/width, 1/height)
 
-        cols: 16,             // u32
-        rows: 20,             // u32
-        maxTrail: 24,         // u32
-        glyphCount: 28,       // u32
+        cols: 24,             // u32
+        rows: 28,             // u32
+        maxTrail: 32,         // u32
+        glyphCount: 36,       // u32
 
-        flickerAmplitude: 32, // f32
-        flickerFrequency: 36, // f32
+        flickerAmplitude: 40, // f32
+        flickerFrequency: 44, // f32: Hz
 
-        dt: 40,               // f32
-        time: 44,             // f32
+        dt: 48,               // f32: seconds
+        time: 52,             // f32: seconds (wrapped to reasonable range)
+
+        _pad0: 56,            // f32
+        _pad1: 60,            // f32
     },
 } as const;
 
@@ -41,11 +45,11 @@ export const ColumnStateLayout = {
     ALIGN: 4,
     SIZE: 32,
     offsets: {
-        head: 0,    // f32
-        speed: 4,   // f32
-        energy: 8,  // f32
-        length: 12, // u32
-        seed: 16,   // u32
+        head: 0,    // f32: head position in row-space (y)
+        speed: 4,   // f32: cells per second
+        energy: 8,  // f32: determines brightness
+        length: 12, // u32: trail length in cells
+        seed: 16,   // u32: deterministic seed
         _pad0: 20,  // u32
         _pad1: 24,  // u32
         _pad2: 28,  // u32

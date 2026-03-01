@@ -6,8 +6,9 @@
 
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
-  canvasSize: vec2<f32>,   // pixels
-  cellSize: vec2<f32>,     // pixels
+  canvasSize: vec2<f32>,
+  cellSize: vec2<f32>,
+  atlasTexelSize: vec2<f32>,
 
   cols: u32,
   rows: u32,
@@ -15,19 +16,22 @@ struct DrawParams {
   glyphCount: u32,
 
   flickerAmplitude: f32,
-  flickerFrequency: f32,   // Hz
+  flickerFrequency: f32,
 
-  dt: f32,                 // seconds
-  time: f32,               // seconds (wrapped to reasonable range)
+  dt: f32,
+  time: f32,
+
+  pad0: f32,
+  pad1: f32,
 };
 
 /* {@see ColumnStateLayout@backend/layouts} */
 struct ColumnState {
-  head: f32,     // head position in row-space
-  speed: f32,    // unused here, but kept for alignment/future
-  energy: f32,   // current energy
-  length: u32,   // trail length in cells
-  seed: u32,     // deterministic seed
+  head: f32,
+  speed: f32,
+  energy: f32,
+  length: u32,
+  seed: u32,
   pad0: u32,
   pad1: u32,
   pad2: u32,
@@ -137,15 +141,17 @@ fn vs_main(
   let uv00 = uvRect.xy;
   let uv11 = uvRect.zw;
 
-  // Interpolate inside the glyph cell and clamp slightly inside the cell to avoid sampling neighbor pixels
-  // Use explicit linear interpolation to avoid relying on `mix` availability
-  let rawUV = uv00 + uv * (uv11 - uv00);
-  let eps = 1e-5;
+  // safe inset (sub-texel safe zone)
+  let inset = params.atlasTexelSize * 0.75;
 
+  // interpolate inside cell
+  let rawUV = uv00 + uv * (uv11 - uv00);
+
+  // clamp to avoid bleeding
   out.v_uv = clamp(
     rawUV,
-    uv00 + vec2<f32>(eps, eps),
-    uv11 - vec2<f32>(eps, eps)
+    uv00 + inset,
+    uv11 - inset
   );
 
   /* --- Brightness --- */

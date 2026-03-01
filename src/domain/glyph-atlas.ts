@@ -33,6 +33,8 @@ export type AtlasResult = {
     glyphUVsBuffer: GPUBuffer; // Storage buffer for compute shader lookups
     cellWidth: number; // Final calculated cell dimensions
     cellHeight: number;
+    atlasWidth: number;
+    atlasHeight: number;
 };
 
 /**
@@ -284,5 +286,7 @@ export async function createGlyphAtlas(
         glyphUVsBuffer,
         cellWidth,
         cellHeight,
+        atlasWidth,
+        atlasHeight,
     };
 }

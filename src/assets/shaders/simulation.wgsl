@@ -7,25 +7,32 @@
 
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
-  canvasSize: vec2<f32>,   // pixels
-  cellSize: vec2<f32>,     // pixels
+  canvasSize: vec2<f32>,
+  cellSize: vec2<f32>,
+  atlasTexelSize: vec2<f32>,
+
   cols: u32,
   rows: u32,
   maxTrail: u32,
   glyphCount: u32,
+
   flickerAmplitude: f32,
-  flickerFrequency: f32,   // Hz
-  dt: f32,                 // seconds
-  time: f32,               // seconds (wrapped to reasonable range)
+  flickerFrequency: f32,
+
+  dt: f32,
+  time: f32,
+
+  pad0: f32,
+  pad1: f32,
 };
 
 /* {@see ColumnStateLayout@backend/layouts} */
 struct ColumnState {
-  head: f32,   // current head position in cells (y)
-  speed: f32,  // cells per second
-  energy: f32, // remaining energy
-  length: u32, // trail length in cells
-  seed: u32,   // PRNG seed
+  head: f32,
+  speed: f32,
+  energy: f32,
+  length: u32,
+  seed: u32,
   pad0: u32,
   pad1: u32,
   pad2: u32,
@@ -34,8 +41,8 @@ struct ColumnState {
 /* --- RNG --- */
 
 struct RNG {
-    base: u32,
-    counter: u32,
+  base: u32,
+  counter: u32,
 };
 
 /* --- Constants --- */

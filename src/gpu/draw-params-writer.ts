@@ -8,6 +8,9 @@ export type DrawScreenParams = {
     cellWidth: number;
     cellHeight: number;
 
+    atlasWidth: number;
+    atlasHeight: number;
+
     gridCols: number;
     gridRows: number;
     maxTrail: number;
@@ -64,6 +67,11 @@ export class DrawParamsWriter {
             params.cellWidth;
         this.viewF32[DrawParamsLayout.offsets.cellSize / 4 + 1] =
             params.cellHeight;
+
+        this.viewF32[DrawParamsLayout.offsets.atlasTexelSize / 4] =
+            1.0 / params.atlasWidth;
+        this.viewF32[DrawParamsLayout.offsets.atlasTexelSize / 4 + 1] =
+            1.0 / params.atlasHeight;
 
         this.viewU32[DrawParamsLayout.offsets.cols / 4] =
             params.gridCols;
