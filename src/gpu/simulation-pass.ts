@@ -1,4 +1,8 @@
-import { DrawParamsLayout, ColumnStateLayout } from '@backend/layouts';
+import {
+    TimeParamsLayout,
+    DrawParamsLayout,
+    ColumnStateLayout
+} from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -21,7 +25,7 @@ export function createSimulationDeviceResources(
         device.createBindGroupLayout({
             label: 'SimulationComputePass BGL',
             entries: [
-                /* ---------- binding 0: ColumnState[] ---------- */
+                /* --- ColumnState[] storage --- */
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
@@ -31,9 +35,19 @@ export function createSimulationDeviceResources(
                     },
                 },
 
-                /* ---------- binding 1: DrawParams ---------- */
+                /* --- TimeParams uniform --- */
                 {
                     binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: TimeParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- DrawParams uniform --- */
+                {
+                    binding: 2,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
                         type: 'uniform',
@@ -77,11 +91,9 @@ export function createSimulationSurfaceResources(
     scope: GpuResourceScope,
     pipeline: GPUComputePipeline,
     resources: {
-        atlasSampler: GPUSampler,
-        atlasTextureView: GPUTextureView,
-        drawParamsBuffer: GPUBuffer,
         columnStateBuffer: GPUBuffer,
-        glyphUVsBuffer: GPUBuffer,
+        timeParamsBuffer: GPUBuffer,
+        drawParamsBuffer: GPUBuffer,
     },
 ): SimulationSurfaceResources {
     const bindGroup = scope.track(
@@ -98,6 +110,14 @@ export function createSimulationSurfaceResources(
                 },
                 {
                     binding: 1,
+                    resource: {
+                        buffer: resources.timeParamsBuffer,
+                        offset: 0,
+                        size: TimeParamsLayout.SIZE,
+                    },
+                },
+                {
+                    binding: 2,
                     resource: {
                         buffer: resources.drawParamsBuffer,
                         offset: 0,

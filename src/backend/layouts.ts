@@ -15,10 +15,22 @@
  * Size is in bytes.
  */
 
+// Per-frame writing
+export const TimeParamsLayout = {
+    ALIGN: 4,
+    SIZE: 16,
+    offsets: {
+        dt: 0,     // f32: delta; seconds
+        pt: 4,     // f32: periodic time wrapped to [0, 2π) - guarantees f32 precision; seconds
+        _pad0: 8,  // f32
+        _pad1: 12, // f32
+    },
+};
+
 // Unified render params
 export const DrawParamsLayout = {
     ALIGN: 8,
-    SIZE: 64,
+    SIZE: 48,
     offsets: {
         canvasSize: 0,        // vec2<f32>: pixels
         cellSize: 8,          // vec2<f32>: pixels
@@ -31,12 +43,6 @@ export const DrawParamsLayout = {
 
         flickerAmplitude: 40, // f32
         flickerFrequency: 44, // f32: Hz
-
-        dt: 48,               // f32: seconds
-        time: 52,             // f32: seconds (wrapped to reasonable range)
-
-        _pad0: 56,            // f32
-        _pad1: 60,            // f32
     },
 } as const;
 
@@ -85,17 +91,17 @@ export const PresentParamsLayout = {
     ALIGN: 4,
     SIZE: 48,
     offsets: {
-        time: 0,              // f32
-        vignetteStrength: 4,  // f32
-        scanlineFreq: 8,      // f32
-        scanlineStrength: 12, // f32
-        noiseAmplitude: 16,   // f32
-        curvature: 20,        // f32
-        tintR: 24,            // f32
-        tintG: 28,            // f32
-        tintB: 32,            // f32
-        bloomIntensity: 36,   // f32
-        _pad0: 40,            // f32
-        _pad1: 44,            // f32
+        vignetteStrength: 0, // f32
+        scanlineFreq: 4,     // f32
+        scanlineStrength: 8, // f32
+        noiseAmplitude: 12,  // f32
+        curvature: 16,       // f32
+        tintR: 20,           // f32
+        tintG: 24,           // f32
+        tintB: 28,           // f32
+        bloomIntensity: 32,  // f32
+        _pad0: 36,           // f32
+        _pad1: 40,           // f32
+        _pad2: 44,           // f32
     },
 } as const;

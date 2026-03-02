@@ -1,4 +1,8 @@
-import { DrawParamsLayout, ColumnStateLayout } from '@backend/layouts';
+import {
+    TimeParamsLayout,
+    DrawParamsLayout,
+    ColumnStateLayout
+} from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -88,13 +92,14 @@ export function createDrawDeviceResources(
                     },
                 },
 
-                /* --- RenderParams uniform --- */
+                /* --- Glyph UV rects --- */
                 {
                     binding: 2,
                     visibility: GPUShaderStage.VERTEX,
                     buffer: {
-                        type: 'uniform',
-                        minBindingSize: DrawParamsLayout.SIZE,
+                        type: 'read-only-storage',
+                        // minBindingSize intentionally omitted:
+                        // array length varies with glyph count
                     },
                 },
 
@@ -108,14 +113,23 @@ export function createDrawDeviceResources(
                     },
                 },
 
-                /* --- Glyph UV rects --- */
+                /* --- TimeParams uniform --- */
                 {
                     binding: 4,
                     visibility: GPUShaderStage.VERTEX,
                     buffer: {
-                        type: 'read-only-storage',
-                        // minBindingSize intentionally omitted:
-                        // array length varies with glyph count
+                        type: 'uniform',
+                        minBindingSize: TimeParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- DrawParams uniform --- */
+                {
+                    binding: 5,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: DrawParamsLayout.SIZE,
                     },
                 },
             ],
@@ -143,9 +157,10 @@ export function createDrawSurfaceResources(
     resources: {
         atlasSampler: GPUSampler,
         atlasTextureView: GPUTextureView,
-        drawParamsBuffer: GPUBuffer,
-        columnStateBuffer: GPUBuffer,
         glyphUVsBuffer: GPUBuffer,
+        columnStateBuffer: GPUBuffer,
+        timeParamsBuffer: GPUBuffer,
+        drawParamsBuffer: GPUBuffer,
     },
     viewportWidth: number,
     viewportHeight: number,
@@ -166,9 +181,9 @@ export function createDrawSurfaceResources(
                 {
                     binding: 2,
                     resource: {
-                        buffer: resources.drawParamsBuffer,
+                        buffer: resources.glyphUVsBuffer,
                         offset: 0,
-                        size: DrawParamsLayout.SIZE,
+                        // size omitted: array length varies
                     },
                 },
                 {
@@ -183,9 +198,17 @@ export function createDrawSurfaceResources(
                 {
                     binding: 4,
                     resource: {
-                        buffer: resources.glyphUVsBuffer,
+                        buffer: resources.timeParamsBuffer,
                         offset: 0,
-                        // size omitted: array length varies
+                        size: TimeParamsLayout.SIZE,
+                    },
+                },
+                {
+                    binding: 5,
+                    resource: {
+                        buffer: resources.drawParamsBuffer,
+                        offset: 0,
+                        size: DrawParamsLayout.SIZE,
                     },
                 },
             ],

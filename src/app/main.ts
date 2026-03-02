@@ -6,6 +6,7 @@ import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
 
 import { ColumnsState } from '@gpu/column-state';
+import { TimeParamsWriter } from '@gpu/time-params-writer';
 import { DrawParamsWriter } from '@gpu/draw-params-writer';
 import { HistoryParamsWriter } from '@gpu/history-params-writer';
 import { PresentParamsWriter } from '@gpu/present-params-writer';
@@ -214,35 +215,55 @@ export async function bootstrap(): Promise<void> {
 
     // * Device-Lifetime resources
 
+    const timeParamsWriter = new TimeParamsWriter(
+        gpu.device,
+        resources.deviceScope,
+    );
+
     const drawParamsWriter = new DrawParamsWriter(
         gpu.device,
         resources.deviceScope,
     );
-    drawParamsWriter.setScreenParams({
-        canvasWidth: layout.viewport.width,
-        canvasHeight: layout.viewport.height,
-        cellWidth: atlas.cellWidth,
-        cellHeight: atlas.cellHeight,
-        atlasWidth: atlas.atlasWidth,
-        atlasHeight: atlas.atlasHeight,
-        gridCols: layout.grid.cols,
-        gridRows: layout.grid.rows,
-        maxTrail: layout.instances.maxTrail,
-        glyphCount: atlas.glyphCount,
-        flickerAmplitude: cfg.flickerAmplitude,
-        flickerFrequency: cfg.flickerFrequency,
-    });
+    const updateDrawParams = (): void => {
+        drawParamsWriter.update({
+            canvasWidth: layout.viewport.width,
+            canvasHeight: layout.viewport.height,
+            cellWidth: atlas.cellWidth,
+            cellHeight: atlas.cellHeight,
+            atlasWidth: atlas.atlasWidth,
+            atlasHeight: atlas.atlasHeight,
+            gridCols: layout.grid.cols,
+            gridRows: layout.grid.rows,
+            maxTrail: layout.instances.maxTrail,
+            glyphCount: atlas.glyphCount,
+            flickerAmplitude: cfg.flickerAmplitude,
+            flickerFrequency: cfg.flickerFrequency,
+        });
+    };
 
     const historyParamsWriter = new HistoryParamsWriter(
         gpu.device,
         resources.deviceScope,
     );
-    historyParamsWriter.update({decay: cfg.decay});
+    const updateHistoryParams = (): void => {
+        historyParamsWriter.update({decay: cfg.decay});
+    };
 
     const presentParamsWriter = new PresentParamsWriter(
         gpu.device,
         resources.deviceScope,
     );
+    const updatePresentParams = (): void => {
+        presentParamsWriter.update({
+            vignetteStrength: cfg.vignetteStrength,
+            scanlineFreq: cfg.scanlineFreq,
+            scanlineStrength: cfg.scanlineStrength,
+            noiseAmplitude: cfg.noiseAmplitude,
+            curvature: cfg.curvature,
+            tint: cfg.tint,
+            bloomIntensity: cfg.bloomIntensity,
+        });
+    };
 
     const simDeviceResources: SimulationDeviceResources = createSimulationDeviceResources(
         gpu.device,
@@ -291,11 +312,9 @@ export async function bootstrap(): Promise<void> {
             resources.surfaceScope,
             simDeviceResources.pipeline,
             {
-                atlasSampler: atlas.sampler,
-                atlasTextureView: atlas.textureView,
-                drawParamsBuffer: drawParamsWriter.buffer,
                 columnStateBuffer: columnsState.buffer,
-                glyphUVsBuffer: atlas.glyphUVsBuffer,
+                timeParamsBuffer: timeParamsWriter.buffer,
+                drawParamsBuffer: drawParamsWriter.buffer,
             },
         );
 
@@ -307,9 +326,10 @@ export async function bootstrap(): Promise<void> {
             {
                 atlasSampler: atlas.sampler,
                 atlasTextureView: atlas.textureView,
-                drawParamsBuffer: drawParamsWriter.buffer,
-                columnStateBuffer: columnsState.buffer,
                 glyphUVsBuffer: atlas.glyphUVsBuffer,
+                columnStateBuffer: columnsState.buffer,
+                timeParamsBuffer: timeParamsWriter.buffer,
+                drawParamsBuffer: drawParamsWriter.buffer,
             },
             layout.viewport.width,
             layout.viewport.height,
@@ -378,6 +398,7 @@ export async function bootstrap(): Promise<void> {
             resources.frameScope,
             presentDeviceResources.pipeline,
             presentDeviceResources.sampler,
+            timeParamsWriter.buffer,
             presentParamsWriter.buffer,
             () => historyPass.getOutputView(),
             () => swapChain.getCurrentView(),
@@ -431,6 +452,9 @@ export async function bootstrap(): Promise<void> {
     }
 
     let surface = buildSurface(layout);
+    updateDrawParams();
+    updateHistoryParams();
+    updatePresentParams();
 
     // --- Render loop ---
 
@@ -438,27 +462,13 @@ export async function bootstrap(): Promise<void> {
     const timeManager = new TimeManager();
 
     function onEachFrame(ctx: RenderContext): void {
-        // Update time state (wraps to [0, 2π) to prevent f32 precision loss in shaders)
+        // Update time state
         timeManager.tick(ctx.dt);
         const periodicTime = timeManager.getPeriodic();
 
-        drawParamsWriter.setFrameParams({
+        timeParamsWriter.update({
             dt: ctx.dt,
-            time: periodicTime,
-        });
-        drawParamsWriter.flush();
-
-        // update present-time uniform
-        // TODO: update ONLY `time`
-        presentParamsWriter.update({
-            time: periodicTime,
-            vignetteStrength: cfg.vignetteStrength,
-            scanlineFreq: cfg.scanlineFreq,
-            scanlineStrength: cfg.scanlineStrength,
-            noiseAmplitude: cfg.noiseAmplitude,
-            curvature: cfg.curvature,
-            tint: cfg.tint,
-            bloomIntensity: cfg.bloomIntensity,
+            pt: periodicTime,
         });
 
         surface.renderGraph.execute(ctx);
@@ -488,20 +498,7 @@ export async function bootstrap(): Promise<void> {
         );
 
         // 1. Update SOME Device-Lifetime GPU resources
-        drawParamsWriter.setScreenParams({
-            canvasWidth: layout.viewport.width,
-            canvasHeight: layout.viewport.height,
-            cellWidth: atlas.cellWidth,
-            cellHeight: atlas.cellHeight,
-            atlasWidth: atlas.atlasWidth,
-            atlasHeight: atlas.atlasHeight,
-            gridCols: layout.grid.cols,
-            gridRows: layout.grid.rows,
-            maxTrail: layout.instances.maxTrail,
-            glyphCount: atlas.glyphCount,
-            flickerAmplitude: cfg.flickerAmplitude,
-            flickerFrequency: cfg.flickerFrequency,
-        });
+        updateDrawParams();
 
         // 2. Destroy ALL Surface-Lifetime GPU resources
         resources.surfaceScope.destroyAll();
@@ -518,8 +515,17 @@ export async function bootstrap(): Promise<void> {
             const oldCfg = { ...cfg };
             Object.assign(cfg, changedConfig);
 
+            updatePresentParams();
+
+            if (
+                cfg.flickerAmplitude !== oldCfg.flickerAmplitude
+                || cfg.flickerFrequency !== oldCfg.flickerFrequency
+            ) {
+                updateDrawParams();
+            }
+
             if (cfg.decay !== oldCfg.decay) {
-                historyParamsWriter.update({decay: cfg.decay});
+                updateHistoryParams();
             }
         },
     );

@@ -6,6 +6,7 @@
 struct BlurParams {
   dir: vec2<f32>,  // (1,0) for horizontal, (0,1) for vertical
   texelSize: f32,  // 1.0 / resolution along blur axis
+
   pad0: f32,
 };
 

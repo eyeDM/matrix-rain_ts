@@ -4,6 +4,15 @@
 
 /* --- Data layouts --- */
 
+/* {@see TimeParamsLayout@backend/layouts} */
+struct TimeParams {
+  dt: f32,
+  pt: f32,
+
+  pad0: f32,
+  pad1: f32,
+};
+
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
   canvasSize: vec2<f32>,
@@ -17,12 +26,6 @@ struct DrawParams {
 
   flickerAmplitude: f32,
   flickerFrequency: f32,
-
-  dt: f32,
-  time: f32,
-
-  pad0: f32,
-  pad1: f32,
 };
 
 /* {@see ColumnStateLayout@backend/layouts} */
@@ -32,6 +35,7 @@ struct ColumnState {
   energy: f32,
   length: u32,
   seed: u32,
+
   pad0: u32,
   pad1: u32,
   pad2: u32,
@@ -61,9 +65,10 @@ fn hash_u32(x: u32) -> u32 {
 
 @group(0) @binding(0) var atlasSampler: sampler;
 @group(0) @binding(1) var atlasTexture: texture_2d<f32>;
-@group(0) @binding(2) var<uniform> params: DrawParams;
+@group(0) @binding(2) var<storage, read> glyphUVs: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read> columns: array<ColumnState>;
-@group(0) @binding(4) var<storage, read> glyphUVs: array<vec4<f32>>;
+@group(0) @binding(4) var<uniform> time: TimeParams;
+@group(0) @binding(5) var<uniform> params: DrawParams;
 
 struct VSOut {
   @builtin(position) Position: vec4<f32>,
@@ -196,10 +201,10 @@ fn vs_main(
 
   // Deterministic per-column flicker: derive a stable phase from the column seed.
   // Use lower 16 bits of seed for a quick phase, map to [0, TWO_PI).
-  // NOTE: params.time is periodic [0, 2π), preventing precision loss in long sessions.
+  // NOTE: time.pt is periodic [0, 2π), preventing precision loss in long sessions.
   let seedLow = f32(column.seed & PHASE_MASK) * PHASE_SCALE;
   let phase = seedLow * TWO_PI;
-  let angular = params.time * params.flickerFrequency;
+  let angular = time.pt * params.flickerFrequency;
   let flick = sin(angular + phase) * params.flickerAmplitude;
 
   out.v_brightness_ldr = max(0.0, brightnessLDR * (1.0 + flick));

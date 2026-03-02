@@ -2,7 +2,6 @@ import { PresentParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 export type PresentParams = {
-    time: number;
     vignetteStrength: number;
     scanlineStrength: number;
     noiseAmplitude: number;
@@ -38,7 +37,6 @@ export class PresentParamsWriter {
     }
 
     set(params: PresentParams): void {
-        this.view.setFloat32(PresentParamsLayout.offsets.time, params.time, true);
         this.view.setFloat32(PresentParamsLayout.offsets.vignetteStrength, params.vignetteStrength, true);
         this.view.setFloat32(PresentParamsLayout.offsets.scanlineFreq, params.scanlineFreq, true);
         this.view.setFloat32(PresentParamsLayout.offsets.scanlineStrength, params.scanlineStrength, true);

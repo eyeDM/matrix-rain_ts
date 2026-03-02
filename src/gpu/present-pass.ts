@@ -24,6 +24,7 @@ export function createPresentDeviceResources(
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
                 { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
                 { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+                { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
             ],
         })
     );
@@ -72,6 +73,7 @@ export class PresentPass {
         private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPURenderPipeline,
         private readonly sampler: GPUSampler,
+        private readonly timeBuffer: GPUBuffer,
         private readonly paramsBuffer: GPUBuffer,
         /** A callback that returns the current texture view to sample for presentation */
         private readonly getTextureView: () => GPUTextureView,
@@ -92,7 +94,8 @@ export class PresentPass {
                     { binding: 0, resource: this.sampler },
                     { binding: 1, resource: this.getTextureView() },
                     { binding: 2, resource: this.bloomTexView },
-                    { binding: 3, resource: { buffer: this.paramsBuffer } },
+                    { binding: 3, resource: { buffer: this.timeBuffer } },
+                    { binding: 4, resource: { buffer: this.paramsBuffer } },
                 ],
             })
         );

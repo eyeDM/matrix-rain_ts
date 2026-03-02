@@ -63,9 +63,19 @@
 //
 // ============================================================================
 
+/* --- Data layouts --- */
+
+/* {@see TimeParamsLayout@backend/layouts} */
+struct TimeParams {
+  dt: f32,
+  pt: f32,
+
+  pad0: f32,
+  pad1: f32,
+};
+
 /* {@see PresentParamsLayout@backend/layouts} */
 struct PresentParams {
-  time: f32, // Periodic time wrapped to [0, 2π) - guarantees f32 precision
   vignetteStrength: f32,
   scanlineFreq: f32,
   scanlineStrength: f32,
@@ -75,7 +85,13 @@ struct PresentParams {
   tintG: f32,
   tintB: f32,
   bloomIntensity: f32,
+
+  pad0: f32,
+  pad1: f32,
+  pad2: f32,
 };
+
+/* --- Constants --- */
 
 const TWO_PI: f32 = 6.283185307179586;
 
@@ -124,9 +140,10 @@ fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 @group(0) @binding(0) var samp: sampler;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var bloomTex: texture_2d<f32>;
-@group(0) @binding(3) var<uniform> params: PresentParams;
+@group(0) @binding(3) var<uniform> time: TimeParams;
+@group(0) @binding(4) var<uniform> params: PresentParams;
 
-// NOTE: params.time is periodic [0, 2π) to maintain numerical stability.
+// NOTE: time.pt is periodic [0, 2π) to maintain numerical stability.
 // All time-based effects use periodic functions (sin, hash), so wrapping is semantically correct.
 
 @fragment
@@ -154,7 +171,7 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
 
   // Scanline modulation (sinusoidal across Y)
   let scan = SCAN_BIAS +
-    SCAN_AMPLITUDE * sin((uv.y * params.scanlineFreq) * TWO_PI + params.time * SCANLINE_TIME_SCALE);
+    SCAN_AMPLITUDE * sin((uv.y * params.scanlineFreq) * TWO_PI + time.pt * SCANLINE_TIME_SCALE);
 
   let scanMod = mix(1.0, scan, params.scanlineStrength);
 
@@ -163,7 +180,7 @@ fn fs_main(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
   let vig = 1.0 - params.vignetteStrength * smoothstep(0.0, VIGNETTE_EDGE, dist);
 
   // Film grain (hashed noise)
-  let seed = uv.x * GRAIN_SEED_X + uv.y * GRAIN_SEED_Y + params.time * GRAIN_TIME_SCALE;
+  let seed = uv.x * GRAIN_SEED_X + uv.y * GRAIN_SEED_Y + time.pt * GRAIN_TIME_SCALE;
   let n = fract(sin(seed) * GRAIN_HASH_SCALE);
   let grain = (n - HALF) * params.noiseAmplitude;
 

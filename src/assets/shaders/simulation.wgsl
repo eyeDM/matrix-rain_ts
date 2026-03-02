@@ -5,6 +5,15 @@
 
 /* --- Data layouts --- */
 
+/* {@see TimeParamsLayout@backend/layouts} */
+struct TimeParams {
+  dt: f32,
+  pt: f32,
+
+  pad0: f32,
+  pad1: f32,
+};
+
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
   canvasSize: vec2<f32>,
@@ -18,12 +27,6 @@ struct DrawParams {
 
   flickerAmplitude: f32,
   flickerFrequency: f32,
-
-  dt: f32,
-  time: f32,
-
-  pad0: f32,
-  pad1: f32,
 };
 
 /* {@see ColumnStateLayout@backend/layouts} */
@@ -33,6 +36,7 @@ struct ColumnState {
   energy: f32,
   length: u32,
   seed: u32,
+
   pad0: u32,
   pad1: u32,
   pad2: u32,
@@ -102,7 +106,7 @@ fn change_energy(state: ptr<function, ColumnState>) {
   );
 
   let lambda: f32 = LN2 / halfLife;
-  let energyNew: f32 = (*state).energy * exp(-lambda * params.dt);
+  let energyNew: f32 = (*state).energy * exp(-lambda * time.dt);
 
   let energyMax: f32 = CELL_ENERGY_MIN * f32((*state).length) * CELL_ENERGY_VARIANCE;
   (*state).energy = clamp(energyNew, 0.0, energyMax);
@@ -130,8 +134,9 @@ fn respawn_column(
   (*state).seed = rng_next(rng);
 }
 
-@group(0) @binding(0) var<storage, read_write> columnsState : array<ColumnState>;
-@group(0) @binding(1) var<uniform> params : DrawParams;
+@group(0) @binding(0) var<storage, read_write> columns: array<ColumnState>;
+@group(0) @binding(1) var<uniform> time: TimeParams;
+@group(0) @binding(2) var<uniform> params: DrawParams;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -140,12 +145,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     return;
   }
 
-  var state = columnsState[colIdx];
+  var state = columns[colIdx];
 
-  var rng = rng_init(state.seed, colIdx, params.time);
+  var rng = rng_init(state.seed, colIdx, time.pt);
 
   // advance head with small jitter to avoid banding
-  state.head += state.speed * params.dt + (rng_next_f32(&rng) - 0.5) * 0.1;
+  state.head += state.speed * time.dt + (rng_next_f32(&rng) - 0.5) * 0.1;
 
   // respawn condition
   let tail: f32 = state.head - f32(state.length);
@@ -158,5 +163,5 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     change_energy(&state);
   }
 
-  columnsState[colIdx] = state;
+  columns[colIdx] = state;
 }

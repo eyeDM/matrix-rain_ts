@@ -1,7 +1,7 @@
 import { DrawParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
-export type DrawScreenParams = {
+export type DrawParams = {
     canvasWidth: number;
     canvasHeight: number;
 
@@ -18,11 +18,6 @@ export type DrawScreenParams = {
 
     flickerAmplitude: number;
     flickerFrequency: number;
-}
-
-export type DrawFrameParams = {
-    dt: number;
-    time: number;
 }
 
 /**
@@ -57,7 +52,7 @@ export class DrawParamsWriter {
      * Set all Surface-Lifetime parameters.
      * Intended for init-time or resize-time updates.
      */
-    setScreenParams(params: DrawScreenParams): void {
+    set(params: DrawParams): void {
         this.viewF32[DrawParamsLayout.offsets.canvasSize / 4] =
             params.canvasWidth;
         this.viewF32[DrawParamsLayout.offsets.canvasSize / 4 + 1] =
@@ -89,20 +84,15 @@ export class DrawParamsWriter {
     }
 
     /**
-     * Set per-frame parameters.
-     */
-    setFrameParams(params: DrawFrameParams): void {
-        this.viewF32[DrawParamsLayout.offsets.dt / 4] =
-            params.dt;
-        this.viewF32[DrawParamsLayout.offsets.time / 4] =
-            params.time;
-    }
-
-    /**
      * Upload current staging contents to GPU.
      * Caller controls when GPU queue write is issued.
      */
     flush(): void {
         this.device.queue.writeBuffer(this.buffer, 0, this.staging);
+    }
+
+    update(params: DrawParams): void {
+        this.set(params);
+        this.flush();
     }
 }
