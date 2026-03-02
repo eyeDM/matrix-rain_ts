@@ -189,11 +189,16 @@ export async function bootstrap(): Promise<void> {
         ),
     ]);
 
+    // --- Resources management ---
+
+    const resources = new GpuResources();
+
     // --- Glyph atlas (long-lived) ---
 
     const glyphs = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*+/?;'.split('');
     const atlas: AtlasResult = await createGlyphAtlas(
         gpu.device,
+        resources.deviceScope,
         glyphs,
         { font: '32px monospace', padding: 8 },
     );
@@ -208,10 +213,6 @@ export async function bootstrap(): Promise<void> {
         atlas.cellHeight,
         gpu.device.limits,
     );
-
-    // --- Resources management ---
-
-    const resources = new GpuResources();
 
     // * Device-Lifetime resources
 
@@ -452,6 +453,9 @@ export async function bootstrap(): Promise<void> {
     }
 
     let surface = buildSurface(layout);
+
+    // --- Initial data ---
+
     updateDrawParams();
     updateHistoryParams();
     updatePresentParams();
