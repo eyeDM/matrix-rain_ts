@@ -15,13 +15,14 @@ struct TimeParams {
 
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
-  canvasSize: vec2<f32>,
   cellSize: vec2<f32>,
   atlasTexelSize: vec2<f32>,
 
+  canvasSize: vec2<f32>,
   cols: u32,
   rows: u32,
   maxTrail: u32,
+
   glyphCount: u32,
 
   flickerAmplitude: f32,
@@ -39,6 +40,12 @@ struct ColumnState {
   pad0: u32,
   pad1: u32,
   pad2: u32,
+};
+
+/* {@see GLYPH_UV_FLOAT_COUNT@domain/glyph-atlas} */
+struct GlyphUV {
+  uv0: vec2<f32>,
+  uv1: vec2<f32>,
 };
 
 /* --- Constants (must match simulation) --- */
@@ -65,7 +72,7 @@ fn hash_u32(x: u32) -> u32 {
 
 @group(0) @binding(0) var atlasSampler: sampler;
 @group(0) @binding(1) var atlasTexture: texture_2d<f32>;
-@group(0) @binding(2) var<storage, read> glyphUVs: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read> glyphUVs: array<GlyphUV>;
 @group(0) @binding(3) var<storage, read> columns: array<ColumnState>;
 @group(0) @binding(4) var<uniform> time: TimeParams;
 @group(0) @binding(5) var<uniform> params: DrawParams;
@@ -140,23 +147,19 @@ fn vs_main(
 
   let gh = hash_u32(column.seed ^ (cellIdx + 1u));
   let glyphIdx = gh % params.glyphCount;
-  let uvRect = glyphUVs[glyphIdx];
-
-  // Compute atlas UV by interpolating between uvRect corners
-  let uv00 = uvRect.xy;
-  let uv11 = uvRect.zw;
+  let glyphUV = glyphUVs[glyphIdx];
 
   // safe inset (sub-texel safe zone)
   let inset = params.atlasTexelSize * 0.75;
 
   // interpolate inside cell
-  let rawUV = uv00 + uv * (uv11 - uv00);
+  let rawUV = glyphUV.uv0 + uv * (glyphUV.uv1 - glyphUV.uv0);
 
   // clamp to avoid bleeding
   out.v_uv = clamp(
     rawUV,
-    uv00 + inset,
-    uv11 - inset
+    glyphUV.uv0 + inset,
+    glyphUV.uv1 - inset
   );
 
   /* --- Brightness --- */

@@ -10,36 +10,6 @@ import { GpuResourceScope } from '@backend/resource-tracker';
  */
 
 /**
- * UVRect: Normalized UV coordinates and pixel dimensions of a single glyph cell.
- */
-export type UVRect = {
-    // UV coordinates in normalized [0,1] texture space
-    u0: number;
-    v0: number;
-    u1: number;
-    v1: number;
-    // pixel size of the glyph cell inside the atlas
-    width: number;
-    height: number;
-};
-
-/**
- * All resources needed by the renderer from the atlas generation process.
- */
-export type AtlasResult = {
-    texture: GPUTexture;
-    textureView: GPUTextureView;
-    sampler: GPUSampler;
-    glyphMap: Map<string, UVRect>;
-    glyphCount: number;
-    glyphUVsBuffer: GPUBuffer; // Storage buffer for compute shader lookups
-    cellWidth: number; // Final calculated cell dimensions
-    cellHeight: number;
-    atlasWidth: number;
-    atlasHeight: number;
-};
-
-/**
  * AtlasOptions: Configuration for the glyph atlas rendering.
  */
 export type AtlasOptions = {
@@ -51,51 +21,53 @@ export type AtlasOptions = {
     fillStyle?: string; // glyph color when drawing onto the atlas
 };
 
+export type AtlasGPUResources = {
+    readonly texture: GPUTexture;
+    readonly textureView: GPUTextureView;
+    readonly sampler: GPUSampler;
+    readonly uvBuffer: GPUBuffer; // Storage buffer for compute shader lookups
+}
+
+/**
+ * All resources needed by the renderer from the atlas generation process.
+ */
+export interface AtlasResult {
+    readonly resources: AtlasGPUResources;
+    readonly glyphs: {
+        readonly index: Map<string, number>;
+        readonly count: number;
+        readonly minBindingSize: number;
+    };
+    readonly layout: {
+        readonly atlasWidth: number;
+        readonly atlasHeight: number;
+        // Final calculated cell dimensions
+        readonly cellWidth: number;
+        readonly cellHeight: number;
+    },
+}
+
 // --- CONSTANTS ---
 
-const DEFAULT_ATLAS_CAP = 8192; // Max size for texture atlas
+const DEFAULT_FONT_SIZE = 32;
+const DEFAULT_PADDING = 8;
 const MIN_PADDING = 2;
-const GLYPH_UV_RECT_SIZE = 4; // vec4<f32> for u0, v0, u1, v1
+const DEFAULT_ATLAS_CAP = 8192; // Max size for texture atlas
+
+//export const GLYPH_UV_RECT_SIZE = 4; // vec4<f32> for u0, v0, u1, v1 (components)
 
 /**
- * Compute a safe maximum atlas size based on device limits.
+ * WGSL-compatible struct:
+ *
+ * struct GlyphUV {
+ *   uv0: vec2<f32>,
+ *   uv1: vec2<f32>
+ * }
+ *
+ * => 4 floats
  */
-function computeMaxAtlasSize(device: GPUDevice): number {
-    return Math.min(device.limits.maxTextureDimension2D, DEFAULT_ATLAS_CAP);
-}
-
-/**
- * Compute adaptive padding to ensure sufficient column count.
- */
-function computeAdaptivePadding(
-    basePadding: number,
-    glyphCount: number,
-    cellContentWidth: number,
-    cellContentHeight: number,
-    maxAtlasSize: number,
-): number {
-    let padding = basePadding;
-
-    // Decrease padding until both width and height constraints are satisfied.
-    while (padding >= MIN_PADDING) {
-        const cellWidth = Math.ceil(cellContentWidth) + padding * 2;
-        const cellHeight = Math.ceil(cellContentHeight) + padding * 2;
-
-        const cols = Math.max(1, Math.floor(maxAtlasSize / cellWidth));
-        const rows = Math.ceil(glyphCount / cols);
-
-        const fitsWidth = cols * cellWidth <= maxAtlasSize;
-        const fitsHeight = rows * cellHeight <= maxAtlasSize;
-
-        if (fitsWidth && fitsHeight) {
-            break;
-        }
-
-        padding--;
-    }
-
-    return Math.max(padding, MIN_PADDING);
-}
+const GLYPH_UV_FLOAT_COUNT = 4;
+const FLOAT_SIZE_BYTES = 4;
 
 /**
  * Creates an OffscreenCanvas (or regular canvas fallback) and renders all glyphs
@@ -112,176 +84,375 @@ function computeAdaptivePadding(
  * @param {number} [options.padding=8]
  * @param {string} [options.bgFillStyle='transparent']
  * @param {string} [options.fillStyle='white']
- * @returns All necessary GPU and metadata resources.
+ * @returns
  */
 export async function createGlyphAtlas(
     device: GPUDevice,
     scope: GpuResourceScope,
-    glyphs: string[],
+    glyphs: readonly string[],
     options: AtlasOptions = {},
 ): Promise<AtlasResult> {
     if (glyphs.length === 0) {
         throw new Error('Glyph atlas requires at least one glyph');
     }
 
-    // --- 1. Canvas Setup and Measurement ---
+    const {
+        fontSize,
+        font,
+        padding,
+        bgFillStyle,
+        fillStyle,
+        cols: glyphsPerRow,
+    } = normalizeOptions(options, glyphs.length);
 
-    const FONT_SIZE = options.fontSize ?? 32;
-    const FONT = options.font ?? `${FONT_SIZE}px monospace`;
-    const BASE_PADDING = options.padding ?? 8;
+    const maxAtlasSize = computeMaxAtlasSize(device);
 
-    const ATLAS_MAX_SIZE = computeMaxAtlasSize(device);
+    const cellSize = measureGlyphs(
+        glyphs,
+        font,
+        padding,
+    );
 
-    const canUseOffscreen = typeof OffscreenCanvas !== 'undefined';
+    const grid = computeAtlasLayout({
+        glyphCount: glyphs.length,
+        cellWidth: cellSize.width,
+        cellHeight: cellSize.height,
+        maxAtlasSize,
+        glyphsPerRow,
+    });
 
-    const tempCanvas = canUseOffscreen
-        ? new OffscreenCanvas(1, 1)
-        : document.createElement('canvas');
+    const canvasResult = renderAtlasToCanvas({
+        glyphs,
+        grid,
+        fontSize,
+        font,
+        bgFillStyle,
+        fillStyle,
+    });
 
-    const ctx = tempCanvas.getContext('2d', { alpha: true }) as
+    const gpuResources = await createGpuResources(
+        device,
+        scope,
+        canvasResult.canvas,
+        canvasResult.uvRects,
+        grid.width,
+        grid.height,
+    );
+
+    const glyphIndex = new Map<string, number>();
+
+    for (const [i, glyph] of glyphs.entries()) {
+        glyphIndex.set(glyph, i);
+    }
+
+    return {
+        resources: gpuResources,
+        glyphs: {
+            index: glyphIndex,
+            count: glyphs.length,
+            minBindingSize: glyphs.length * GLYPH_UV_FLOAT_COUNT * FLOAT_SIZE_BYTES,
+        },
+        layout: {
+            atlasWidth: grid.width,
+            atlasHeight: grid.height,
+            cellWidth: cellSize.width,
+            cellHeight: cellSize.height,
+        },
+    }
+}
+
+// --- OPTIONS HELPERS ---
+
+function normalizeOptions(options: AtlasOptions, glyphCount: number) {
+    const fontSize = options.fontSize ?? DEFAULT_FONT_SIZE;
+
+    const font = options.font ?? `${fontSize}px monospace`;
+
+    const padding = Math.max(
+        options.padding ?? DEFAULT_PADDING,
+        MIN_PADDING,
+    );
+
+    const glyphsPerRow = options.cols && options.cols > 0
+        ? options.cols
+        : Math.floor(Math.sqrt(glyphCount)); // Near-square packing for minimal area
+
+    return {
+        fontSize,
+        font,
+        padding,
+        bgFillStyle: options.bgFillStyle ?? 'transparent',
+        fillStyle: options.fillStyle ?? 'white',
+        cols: glyphsPerRow,
+    };
+}
+
+// --- LAYOUT ---
+
+type CellSize = {
+    readonly width: number;
+    readonly height: number;
+}
+
+function measureGlyphs(
+    glyphs: readonly string[],
+    font: string,
+    padding: number,
+): CellSize {
+    const canvas = createCanvas(1, 1);
+    const ctx = get2DContext(canvas);
+
+    ctx.font = font;
+
+    let maxWidth = 0;
+
+    for (const glyph of glyphs) {
+        const width = ctx.measureText(glyph).width; // physical px
+        if (width > maxWidth) {
+            maxWidth = width;
+        }
+    }
+
+    // Measure a representative glyph to determine vertical metrics
+    const metrics = ctx.measureText('M');
+    const glyphHeight =
+        metrics.actualBoundingBoxAscent +
+        metrics.actualBoundingBoxDescent;
+
+    const width = Math.ceil(maxWidth) + padding * 2;
+    const height = Math.ceil(glyphHeight) + padding * 2;
+
+    return { width, height };
+}
+
+type AtlasLayout = {
+    readonly cols: number;
+    readonly rows: number;
+    readonly width: number;
+    readonly height: number;
+}
+
+/**
+ * Compute a safe maximum atlas size based on device limits.
+ */
+function computeMaxAtlasSize(device: GPUDevice): number {
+    return Math.min(device.limits.maxTextureDimension2D, DEFAULT_ATLAS_CAP);
+}
+
+function computeAtlasLayout(params: {
+    glyphCount: number;
+    cellWidth: number;
+    cellHeight: number;
+    maxAtlasSize: number;
+    glyphsPerRow: number;
+}): AtlasLayout {
+    const {
+        glyphCount,
+        cellWidth,
+        cellHeight,
+        maxAtlasSize,
+        glyphsPerRow,
+    } = params;
+
+    const maxCols = Math.floor(maxAtlasSize / cellWidth);
+
+    if (maxCols <= 0) {
+        throw new Error(
+            'Cell width exceeds maximum texture dimension.',
+        );
+    }
+
+    const cols = glyphsPerRow
+        ? Math.min(glyphsPerRow, maxCols)
+        : Math.min(maxCols, glyphCount);
+
+    const rows = Math.ceil(glyphCount / cols);
+
+    const width = cols * cellWidth;
+    const height = rows * cellHeight;
+
+    if (height > maxAtlasSize) {
+        throw new Error(
+            'Atlas height exceeds maximum texture dimension.',
+        );
+    }
+
+    return { cols, rows, width, height };
+}
+
+// --- CANVAS HELPERS ---
+
+function createCanvas(
+    width: number,
+    height: number,
+): OffscreenCanvas | HTMLCanvasElement {
+    if (typeof OffscreenCanvas !== 'undefined') {
+        return new OffscreenCanvas(width, height);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+}
+
+function get2DContext(
+    canvas: OffscreenCanvas | HTMLCanvasElement,
+): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D {
+    const ctx = canvas.getContext(
+        '2d',
+        { alpha: true }
+    ) as
         | CanvasRenderingContext2D
         | OffscreenCanvasRenderingContext2D
         | null;
 
     if (!ctx) {
-        throw new Error('Failed to get 2D canvas context for atlas generation.');
-    }
-
-    ctx.font = FONT;
-
-    // --- Measure glyphs ---
-
-    let maxGlyphWidth = 0;
-
-    for (const ch of glyphs) {
-        const w = ctx.measureText(ch).width; // physical px
-        if (w > maxGlyphWidth) maxGlyphWidth = w;
-    }
-
-    // Measure a representative glyph to determine vertical metrics
-    const metrics = ctx.measureText('M');
-    const glyphHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
-
-    // Adaptive padding calculation (now validates both width and height constraints)
-    const PADDING = computeAdaptivePadding(
-        BASE_PADDING,
-        glyphs.length,
-        maxGlyphWidth,
-        glyphHeight,
-        ATLAS_MAX_SIZE,
-    );
-
-    // Calculate cell dimensions
-    const cellWidth = Math.ceil(maxGlyphWidth) + PADDING * 2;
-    const cellHeight = Math.ceil(glyphHeight) + PADDING * 2;
-
-    // --- 2. Minimal Atlas Layout Calculation ---
-
-    const glyphsPerRow = options.cols && options.cols > 0
-        ? options.cols
-        : Math.floor(Math.sqrt(glyphs.length)); // Near-square packing for minimal area
-
-    const totalRows = Math.ceil(glyphs.length / glyphsPerRow);
-
-    const atlasWidth = glyphsPerRow * cellWidth;
-    const atlasHeight = totalRows * cellHeight;
-
-    if (atlasWidth > ATLAS_MAX_SIZE || atlasHeight > ATLAS_MAX_SIZE) {
         throw new Error(
-            `Atlas size ${atlasWidth}x${atlasHeight} exceeds device limit ${ATLAS_MAX_SIZE}`,
+            'Failed to obtain 2D context.',
         );
     }
 
-    // Final canvas sizing
-    tempCanvas.width = atlasWidth;
-    tempCanvas.height = atlasHeight;
+    return ctx;
+}
 
-    // --- 3. Glyph Drawing and UV Mapping ---
+/**
+ * Convert canvas to ImageBitmap - normalize to an ImageBitmap instance.
+ */
+async function createImageBitmapSafe(
+    canvas: OffscreenCanvas | HTMLCanvasElement,
+): Promise<ImageBitmap> {
+    if (
+        'transferToImageBitmap' in canvas
+    ) {
+        return (
+            canvas as OffscreenCanvas
+        ).transferToImageBitmap();
+    }
 
-    const glyphMap = new Map<string, UVRect>();
-    const uvRects = new Float32Array(glyphs.length * GLYPH_UV_RECT_SIZE); // u0, v0, u1, v1
+    return createImageBitmap(
+        canvas as HTMLCanvasElement,
+    );
+}
 
-    // Clear canvas
-    ctx.fillStyle = options.bgFillStyle ?? 'transparent';
-    ctx.fillRect(0, 0, atlasWidth, atlasHeight);
+type CanvasResult = {
+    canvas: OffscreenCanvas | HTMLCanvasElement;
+    uvRects: Float32Array;
+}
 
-    // Set drawing styles
-    ctx.fillStyle = options.fillStyle ?? 'white'; // Draw white, the shader applies green
+function renderAtlasToCanvas(params: {
+    glyphs: readonly string[];
+    grid: AtlasLayout;
+    fontSize: number;
+    font: string;
+    bgFillStyle: string;
+    fillStyle: string;
+}): CanvasResult {
+    const {
+        glyphs,
+        font,
+        grid,
+        bgFillStyle,
+        fillStyle,
+    } = params;
+
+    const canvas = createCanvas(
+        grid.width,
+        grid.height,
+    );
+
+    const ctx = get2DContext(canvas);
+
+    ctx.fillStyle = bgFillStyle;
+    ctx.fillRect(
+        0,
+        0,
+        grid.width,
+        grid.height,
+    );
+
+    ctx.font = font;
+    ctx.fillStyle = fillStyle;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = FONT;
 
-    // Draw all glyphs
+    const uvRects = new Float32Array(
+        glyphs.length *
+        GLYPH_UV_FLOAT_COUNT,
+    );
+
+    const cellWidth = grid.width / grid.cols;
+    const cellHeight = grid.height / grid.rows;
+
     for (const [i, glyph] of glyphs.entries()) {
-        const col = i % glyphsPerRow;
-        const row = Math.floor(i / glyphsPerRow);
+        const col = i % grid.cols;
+        const row = Math.floor(i / grid.cols);
 
         const x = col * cellWidth;
         const y = row * cellHeight;
 
-        // Draw glyph centered in the cell
-        const drawX = x + cellWidth / 2;
-        const drawY = y + cellHeight / 2;
-        ctx.fillText(glyph, drawX, drawY);
+        ctx.fillText(
+            glyph,
+            x + cellWidth / 2,
+            y + cellHeight / 2,
+        );
 
-        // Calculate normalized UV rects
-        const u0 = x / atlasWidth;
-        const v0 = y / atlasHeight;
-        const u1 = (x + cellWidth) / atlasWidth;
-        const v1 = (y + cellHeight) / atlasHeight;
+        const u0 = x / grid.width;
+        const v0 = y / grid.height;
+        const u1 = (x + cellWidth) / grid.width;
+        const v1 = (y + cellHeight) / grid.height;
 
-        glyphMap.set(glyph, {
-            u0,
-            v0,
-            u1,
-            v1,
-            width: cellWidth,
-            height: cellHeight,
-        });
+        const offset = i * GLYPH_UV_FLOAT_COUNT;
 
-        const bufferOffset = i * GLYPH_UV_RECT_SIZE;
-        uvRects[bufferOffset] = u0;
-        uvRects[bufferOffset + 1] = v0;
-        uvRects[bufferOffset + 2] = u1;
-        uvRects[bufferOffset + 3] = v1;
+        uvRects[offset] = u0;
+        uvRects[offset + 1] = v0;
+        uvRects[offset + 2] = u1;
+        uvRects[offset + 3] = v1;
     }
 
-    // --- 4. GPU Texture Creation and Copy ---
+    return { canvas, uvRects };
+}
+
+// --- GPU RESOURCES HELPERS ---
+
+async function createGpuResources(
+    device: GPUDevice,
+    scope: GpuResourceScope,
+    canvas: OffscreenCanvas | HTMLCanvasElement,
+    uvRects: Float32Array,
+    width: number,
+    height: number,
+): Promise<AtlasGPUResources> {
+    // --- Texture Creation and Copy ---
 
     const texture = scope.trackDestroyable(
         device.createTexture({
             label: 'Glyph Atlas Texture',
-            size: { width: atlasWidth, height: atlasHeight, depthOrArrayLayers: 1 },
+            size: { width, height, depthOrArrayLayers: 1 },
             format: 'rgba8unorm',
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
         })
     );
 
-    // Convert canvas to ImageBitmap - normalize to an ImageBitmap instance
-    let bitmap: ImageBitmap;
-    if (canUseOffscreen && 'transferToImageBitmap' in (tempCanvas as OffscreenCanvas)) {
-        bitmap = (tempCanvas as OffscreenCanvas).transferToImageBitmap();
-    } else {
-        bitmap = await createImageBitmap(tempCanvas as HTMLCanvasElement);
-    }
+    const bitmap = await createImageBitmapSafe(canvas);
 
-    // Copy external image to the texture
     try {
+        // Copy external image to the texture
         device.queue.copyExternalImageToTexture(
             { source: bitmap },
             { texture },
-            [atlasWidth, atlasHeight],
+            [width, height],
         );
     } finally {
         // Release browser resources
-        try { bitmap.close(); } catch (e) { /* ignore */ }
+        bitmap.close();
     }
 
     const textureView = texture.createView();
     // Track the view for bookkeeping (not destroyable)
     scope.track(textureView);
 
-    // --- 5. Sampler Creation ---
+    // --- Sampler Creation ---
 
     const sampler = scope.track(
         device.createSampler({
@@ -290,12 +461,12 @@ export async function createGlyphAtlas(
             minFilter: 'linear',
             addressModeU: 'clamp-to-edge',
             addressModeV: 'clamp-to-edge',
-        }))
-    ;
+        })
+    );
 
-    // --- 6. Glyph UV Buffer Creation ---
+    // --- Glyph UV Buffer Creation ---
 
-    const glyphUVsBuffer = scope.trackDestroyable(
+    const uvBuffer = scope.trackDestroyable(
         device.createBuffer({
             label: 'Glyph UV Storage Buffer',
             size: uvRects.byteLength,
@@ -304,21 +475,16 @@ export async function createGlyphAtlas(
         }))
     ;
 
-    new Float32Array(glyphUVsBuffer.getMappedRange()).set(uvRects);
-    glyphUVsBuffer.unmap();
+    new Float32Array(
+        uvBuffer.getMappedRange()
+    ).set(uvRects);
 
-    // --- 7. Return Result ---
+    uvBuffer.unmap();
 
     return {
         texture,
         textureView,
         sampler,
-        glyphMap,
-        glyphCount: glyphs.length,
-        glyphUVsBuffer,
-        cellWidth,
-        cellHeight,
-        atlasWidth,
-        atlasHeight,
+        uvBuffer,
     };
 }

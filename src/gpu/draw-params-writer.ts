@@ -2,19 +2,17 @@ import { DrawParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 export type DrawParams = {
-    canvasWidth: number;
-    canvasHeight: number;
-
     cellWidth: number;
     cellHeight: number;
-
     atlasWidth: number;
     atlasHeight: number;
+    glyphCount: number;
 
+    canvasWidth: number;
+    canvasHeight: number;
     gridCols: number;
     gridRows: number;
     maxTrail: number;
-    glyphCount: number;
 
     flickerAmplitude: number;
     flickerFrequency: number;
@@ -53,11 +51,6 @@ export class DrawParamsWriter {
      * Intended for init-time or resize-time updates.
      */
     set(params: DrawParams): void {
-        this.viewF32[DrawParamsLayout.offsets.canvasSize / 4] =
-            params.canvasWidth;
-        this.viewF32[DrawParamsLayout.offsets.canvasSize / 4 + 1] =
-            params.canvasHeight;
-
         this.viewF32[DrawParamsLayout.offsets.cellSize / 4] =
             params.cellWidth;
         this.viewF32[DrawParamsLayout.offsets.cellSize / 4 + 1] =
@@ -68,14 +61,21 @@ export class DrawParamsWriter {
         this.viewF32[DrawParamsLayout.offsets.atlasTexelSize / 4 + 1] =
             1.0 / params.atlasHeight;
 
+        this.viewU32[DrawParamsLayout.offsets.glyphCount / 4] =
+            params.glyphCount;
+
+        this.viewF32[DrawParamsLayout.offsets.canvasSize / 4] =
+            params.canvasWidth;
+        this.viewF32[DrawParamsLayout.offsets.canvasSize / 4 + 1] =
+            params.canvasHeight;
+
         this.viewU32[DrawParamsLayout.offsets.cols / 4] =
             params.gridCols;
         this.viewU32[DrawParamsLayout.offsets.rows / 4] =
             params.gridRows;
+
         this.viewU32[DrawParamsLayout.offsets.maxTrail / 4] =
             params.maxTrail;
-        this.viewU32[DrawParamsLayout.offsets.glyphCount / 4] =
-            params.glyphCount;
 
         this.viewF32[DrawParamsLayout.offsets.flickerAmplitude / 4] =
             params.flickerAmplitude;

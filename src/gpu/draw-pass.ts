@@ -42,17 +42,18 @@ export type DrawDeviceResources = {
 export function createDrawDeviceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
+    glyphUVsMinBindingSize: number,
 ): DrawDeviceResources {
     // --- Static quad geometry (cell-local space) ---
 
     const vertexData = new Float32Array([
         // posX, posY, uvU, uvV
         -0.5, -0.5, 0.0, 0.0,
-        0.5, -0.5, 1.0, 0.0,
+         0.5, -0.5, 1.0, 0.0,
         -0.5,  0.5, 0.0, 1.0,
 
-        0.5, -0.5, 1.0, 0.0,
-        0.5,  0.5, 1.0, 1.0,
+         0.5, -0.5, 1.0, 0.0,
+         0.5,  0.5, 1.0, 1.0,
         -0.5,  0.5, 0.0, 1.0,
     ]);
 
@@ -98,8 +99,7 @@ export function createDrawDeviceResources(
                     visibility: GPUShaderStage.VERTEX,
                     buffer: {
                         type: 'read-only-storage',
-                        // minBindingSize intentionally omitted:
-                        // array length varies with glyph count
+                        minBindingSize: glyphUVsMinBindingSize,
                     },
                 },
 
@@ -162,6 +162,7 @@ export function createDrawSurfaceResources(
         timeParamsBuffer: GPUBuffer,
         drawParamsBuffer: GPUBuffer,
     },
+    glyphUVsMinBindingSize: number,
     viewportWidth: number,
     viewportHeight: number,
 ): DrawSurfaceResources {
@@ -183,7 +184,7 @@ export function createDrawSurfaceResources(
                     resource: {
                         buffer: resources.glyphUVsBuffer,
                         offset: 0,
-                        // size omitted: array length varies
+                        size: glyphUVsMinBindingSize,
                     },
                 },
                 {

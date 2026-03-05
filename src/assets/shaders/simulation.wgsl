@@ -16,13 +16,14 @@ struct TimeParams {
 
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
-  canvasSize: vec2<f32>,
   cellSize: vec2<f32>,
   atlasTexelSize: vec2<f32>,
 
+  canvasSize: vec2<f32>,
   cols: u32,
   rows: u32,
   maxTrail: u32,
+
   glyphCount: u32,
 
   flickerAmplitude: f32,

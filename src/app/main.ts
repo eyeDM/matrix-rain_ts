@@ -209,8 +209,8 @@ export async function bootstrap(): Promise<void> {
 
     let layout: ScreenLayout = computeScreenLayout(
         size,
-        atlas.cellWidth,
-        atlas.cellHeight,
+        atlas.layout.cellWidth,
+        atlas.layout.cellHeight,
         gpu.device.limits,
     );
 
@@ -227,16 +227,18 @@ export async function bootstrap(): Promise<void> {
     );
     const updateDrawParams = (): void => {
         drawParamsWriter.update({
+            cellWidth: atlas.layout.cellWidth,
+            cellHeight: atlas.layout.cellHeight,
+            atlasWidth: atlas.layout.atlasWidth,
+            atlasHeight: atlas.layout.atlasHeight,
+            glyphCount: atlas.glyphs.count,
+
             canvasWidth: layout.viewport.width,
             canvasHeight: layout.viewport.height,
-            cellWidth: atlas.cellWidth,
-            cellHeight: atlas.cellHeight,
-            atlasWidth: atlas.atlasWidth,
-            atlasHeight: atlas.atlasHeight,
             gridCols: layout.grid.cols,
             gridRows: layout.grid.rows,
             maxTrail: layout.instances.maxTrail,
-            glyphCount: atlas.glyphCount,
+
             flickerAmplitude: cfg.flickerAmplitude,
             flickerFrequency: cfg.flickerFrequency,
         });
@@ -275,6 +277,7 @@ export async function bootstrap(): Promise<void> {
     const drawDeviceResources: DrawDeviceResources = createDrawDeviceResources(
         gpu.device,
         resources.deviceScope,
+        atlas.glyphs.minBindingSize,
     );
 
     const historyDeviceResources: HistoryDeviceResources = createHistoryDeviceResources(
@@ -325,13 +328,14 @@ export async function bootstrap(): Promise<void> {
             shaderLoader.get('matrix-draw'),
             drawDeviceResources.bindGroupLayout,
             {
-                atlasSampler: atlas.sampler,
-                atlasTextureView: atlas.textureView,
-                glyphUVsBuffer: atlas.glyphUVsBuffer,
+                atlasSampler: atlas.resources.sampler,
+                atlasTextureView: atlas.resources.textureView,
+                glyphUVsBuffer: atlas.resources.uvBuffer,
                 columnStateBuffer: columnsState.buffer,
                 timeParamsBuffer: timeParamsWriter.buffer,
                 drawParamsBuffer: drawParamsWriter.buffer,
             },
+            atlas.glyphs.minBindingSize,
             layout.viewport.width,
             layout.viewport.height,
         );
@@ -496,8 +500,8 @@ export async function bootstrap(): Promise<void> {
 
         layout = computeScreenLayout(
             newSize,
-            atlas.cellWidth,
-            atlas.cellHeight,
+            atlas.layout.cellWidth,
+            atlas.layout.cellHeight,
             gpu.device.limits,
         );
 

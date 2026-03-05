@@ -32,13 +32,14 @@ export const DrawParamsLayout = {
     ALIGN: 8,
     SIZE: 48,
     offsets: {
-        canvasSize: 0,        // vec2<f32>: pixels
-        cellSize: 8,          // vec2<f32>: pixels
-        atlasTexelSize: 16,   // vec2<f32>: in atlas UV space (1/width, 1/height)
+        cellSize: 0,          // vec2<f32>: pixels
+        atlasTexelSize: 8,    // vec2<f32>: in atlas UV space (1/width, 1/height)
 
+        canvasSize: 16,       // vec2<f32>: pixels
         cols: 24,             // u32
         rows: 28,             // u32
         maxTrail: 32,         // u32
+
         glyphCount: 36,       // u32
 
         flickerAmplitude: 40, // f32
