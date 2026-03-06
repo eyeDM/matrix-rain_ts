@@ -1,16 +1,31 @@
 import { GpuResourceScope } from '@backend/resource-tracker';
 
-/** FIXME
- * Resources: Symbol texture atlas
+/*
+ * Glyph Atlas module
  *
- * Responsibilities:
- * - Render a set of glyphs into an offscreen canvas atlas (offscreen when available)
- * - Upload the atlas to a GPU texture (no per-frame allocations)
- * - Return a sampler and a UV lookup map for each glyph
+ * Responsibility:
+ * - Produce a packed texture atlas containing rasterized glyphs and a GPU-side
+ *   storage buffer with per-glyph UV rectangles suitable for sampling inside
+ *   WGSL/compute shaders.
+ * - Keep all GPU resources stable (no per-frame texture or buffer allocations)
+ *   by creating resources once and returning them for long-lived use.
+ * - Use an offscreen canvas (when available) to rasterize glyphs with correct
+ *   font metrics, then upload the image to a GPU texture with a one-time copy.
+ *
+ * Design notes:
+ * - The UV buffer layout matches the WGSL struct `GlyphUV { vec2 uv0; vec2 uv1; }`
+ *   (4 floats per glyph). Consumers expecting different layouts must adapt.
+ * - This module intentionally measures glyph metrics on the CPU using the
+ *   Canvas 2D API to preserve visual fidelity; the runtime lookup and sampling
+ *   are performed on the GPU for performance.
  */
 
 /**
- * AtlasOptions: Configuration for the glyph atlas rendering.
+ * Options that control atlas rasterization and layout.
+ *
+ * `font` should be a valid CSS font string. `cols` can force the atlas to a
+ * fixed number of columns; otherwise the module chooses a near-square packing
+ * to minimize wasted area.
  */
 export type AtlasOptions = {
     font?: string; // CSS font string, e.g. '24px monospace'
@@ -29,7 +44,12 @@ export type AtlasGPUResources = {
 }
 
 /**
- * All resources needed by the renderer from the atlas generation process.
+ * Result of atlas creation consumed by render and compute passes.
+ *
+ * - `resources` contains the GPU handles for sampling the glyph atlas and the
+ *   storage buffer containing UV rectangles.
+ * - `glyphs.index` maps the original glyph string to its index in the UV
+ *   buffer and is stable for the lifetime of these GPU resources.
  */
 export interface AtlasResult {
     readonly resources: AtlasGPUResources;
@@ -54,14 +74,12 @@ const DEFAULT_PADDING = 8;
 const MIN_PADDING = 2;
 const DEFAULT_ATLAS_CAP = 8192; // Max size for texture atlas
 
-//export const GLYPH_UV_RECT_SIZE = 4; // vec4<f32> for u0, v0, u1, v1 (components)
-
 /**
  * WGSL-compatible struct:
  *
  * struct GlyphUV {
  *   uv0: vec2<f32>,
- *   uv1: vec2<f32>
+ *   uv1: vec2<f32>,
  * }
  *
  * => 4 floats
@@ -70,21 +88,25 @@ const GLYPH_UV_FLOAT_COUNT = 4;
 const FLOAT_SIZE_BYTES = 4;
 
 /**
- * Creates an OffscreenCanvas (or regular canvas fallback) and renders all glyphs
- * into an image atlas, then uploads it to the GPU as a GPUTexture.
- * It also generates the UV coordinates buffer required by the compute shader.
+ * Create a glyph atlas and associated GPU resources.
+ *
+ * Workflow summary:
+ * 1. Measure glyph metrics via Canvas2D to compute a fixed cell size.
+ * 2. Lay out glyphs into a compact grid constrained by device limits.
+ * 3. Rasterize glyphs into an offscreen canvas and compute normalized UV
+ *    rectangles for each glyph.
+ * 4. Create a GPU texture and copy the rasterized image once,
+ *    then create a GPU storage buffer populated with UV rectangles for
+ *    shader-side lookup.
+ *
+ * Important: callers are responsible for tracking and destroying the returned
+ * GPU resources via the provided `scope` if they want deterministic cleanup.
  *
  * @param device - The WebGPU device.
- * @param scope - GPU Resource manager.
- * @param glyphs - Array of strings (single characters) to include in the atlas.
- * @param {Object} options - Configuration options for the atlas.
- * @param {number} [options.cols]
- * @param {number} [options.fontSize=32]
- * @param {string} [options.font='32px monospace']
- * @param {number} [options.padding=8]
- * @param {string} [options.bgFillStyle='transparent']
- * @param {string} [options.fillStyle='white']
- * @returns
+ * @param scope - GPU resource tracker used to register created resources.
+ * @param glyphs - Ordered array of glyph strings; the returned UV buffer index
+ *                 corresponds to the index in this array.
+ * @param options - Atlas rendering and layout options.
  */
 export async function createGlyphAtlas(
     device: GPUDevice,
@@ -107,6 +129,8 @@ export async function createGlyphAtlas(
 
     const maxAtlasSize = computeMaxAtlasSize(device);
 
+    // Determine a fixed cell size (width/height) large enough for any glyph in
+    // the set. This simplifies layout and simplifies UV computation on the GPU.
     const cellSize = measureGlyphs(
         glyphs,
         font,
@@ -173,9 +197,11 @@ function normalizeOptions(options: AtlasOptions, glyphCount: number) {
         MIN_PADDING,
     );
 
+    // If the caller does not force `cols`, choose a near-square packing to
+    // minimize total atlas area while keeping cells roughly square.
     const glyphsPerRow = options.cols && options.cols > 0
         ? options.cols
-        : Math.floor(Math.sqrt(glyphCount)); // Near-square packing for minimal area
+        : Math.floor(Math.sqrt(glyphCount));
 
     return {
         fontSize,
@@ -213,7 +239,9 @@ function measureGlyphs(
         }
     }
 
-    // Measure a representative glyph to determine vertical metrics
+    // Use a representative glyph ('M') which reliably captures ascent and
+    // descent for monospace-ish fonts; this provides a conservative height
+    // suitable for vertically centering most glyphs.
     const metrics = ctx.measureText('M');
     const glyphHeight =
         metrics.actualBoundingBoxAscent +
@@ -254,6 +282,9 @@ function computeAtlasLayout(params: {
         glyphsPerRow,
     } = params;
 
+    // Compute how many columns fit under the device's max texture dimension
+    // for the chosen cell width. Guard against pathological parameters where
+    // a single cell would exceed device limits.
     const maxCols = Math.floor(maxAtlasSize / cellWidth);
 
     if (maxCols <= 0) {
@@ -271,6 +302,9 @@ function computeAtlasLayout(params: {
     const width = cols * cellWidth;
     const height = rows * cellHeight;
 
+    // The atlas must also fit vertically within the device limits. If it does
+    // not, fail early so the caller can choose different options (smaller font
+    // or higher `cols`).
     if (height > maxAtlasSize) {
         throw new Error(
             'Atlas height exceeds maximum texture dimension.',
@@ -397,6 +431,9 @@ function renderAtlasToCanvas(params: {
             y + cellHeight / 2,
         );
 
+        // Normalized UVs in [0,1] for the glyph cell. These are stored in the
+        // `uvRects` buffer in the order [u0, v0, u1, v1] per glyph which maps
+        // directly to a WGSL `GlyphUV` struct on the GPU.
         const u0 = x / grid.width;
         const v0 = y / grid.height;
         const u1 = (x + cellWidth) / grid.width;
