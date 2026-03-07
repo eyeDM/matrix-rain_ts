@@ -17,97 +17,48 @@ It is designed as a reference-quality example of modern WebGPU architecture for 
 ## Quick start
 
 Install dependencies:
-```bash
+```shell
 npm install
 ```
 Run dev server:
-```bash
+```shell
 npm run dev
 ```
 Open `http://localhost:5173` (or the URL printed by Vite).
 
 Type-check only:
-```bash
+```shell
 npx tsc --noEmit
 ```
 
 Build for production:
-```bash
+```shell
 npm run build
 ```
 
 ---
 
-## Project Architecture
+## Architecture Overview
 
 ### High-level overview
 
-The project is organized around a **GPU-centric frame pipeline**:
+The project is organized around a GPU-centric frame pipeline where the CPU orchestrates resources and the GPU performs all simulation and rendering work:
+
 ```
 CPU (TypeScript)
- ├─ Initializes WebGPUand swapchain
- ├─ Creates device-lifetime resources (pipelines, shaders, layouts)
- ├─ Builds surface-lifetime resources and render graph (init / resize)
- ├─ Updates uniforms (dt, screen size)
+ ├─ Initializes WebGPU and swapchain
+ ├─ Creates device-lifetime resources (pipelines, shader modules, layouts)
+ ├─ Builds surface-lifetime resources and the render graph (init / resize)
+ ├─ Updates per-frame uniforms (dt, time, screen size)
  ├─ Creates a command encoder per frame
  └─ Submits GPU passes in deterministic order
-  ↓
+ ↓
 GPU (WebGPU, WGSL)
- ├─ SimulationComputePass: Updates ColumnState per column, renewal and rebirth of columns of symbols with "living" energy.
- ├─ DrawPass: Renders all glyph instances into an offscreen color target; procedural render shader with glyph selection, position calculation, color ("bgra8unorm-srgb"), brightness ("rgba16float"), transparency.
- ├─ BlurPass: Separable Gaussian blur pass for bloom. Large glyphs create a parallax effect. The input is `out.bright` from `draw.wgsl`. "rgba16float".
- ├─ HistoryPass: Simple history accumulation with exponential decay. "rgba16float".
- └─ PresentPass: Final-frame presentation with a stylized CRT aesthetic.
-```
-
-### Key principles
-
-- **GPU-first simulation**
-
-    No per-frame CPU-side simulation. Column logic, randomness, trail generation, and brightness falloff are handled entirely in a compute shader.
-
-- **Deterministic & column-local**
-
-    Each column has its own PRNG seed and state, ensuring stable behavior and zero inter-column synchronization.
-
-- **Fixed-capacity buffers**
-
-    Each column reserves a fixed-capacity trail segment (`maxTrail`), computed once from the visible row count and treated as immutable for the lifetime of the scene. No compaction, no prefix sums, no readbacks.
-
-- **Explicit memory layouts**
-
-    All CPU ↔ GPU layouts are defined once in `src/backend/layouts.ts` and mirrored exactly in WGSL.
-
-- **Explicit lifetimes**
-
-    Resources are scoped to device, surface, or frame.
-
-- **Resilient render loop**
-
-    Errors in passes or swap-chain acquisition do not kill the animation loop.
-
----
-
-## Project Structure
-```
-matrix-rain_ts/
-├─ public/
-│  └─ favicon.svg
-│
-├─ src/
-│  ├─ app/              # Application bootstrap
-│  │  └─ index.html
-│  ├─ runtime/          # App-level orchestration
-│  ├─ gpu/              # WebGPU execution layer
-│  ├─ backend/          # WebGPU platform abstractions
-│  ├─ domain/
-│  └─ assets/           # Static GPU assets
-│     └─ shaders/
-│
-├─ README.md
-├─ package.json
-├─ tsconfig.json
-└─ vite.config.ts
+ ├─ SimulationComputePass: GPU-only update of per-column state (head, speed, trail, PRNG seed); writes instance data used by the draw pass.
+ ├─ DrawPass: Instanced rendering of glyph quads into an offscreen color target and a separate "bright" target; uses formats such as `bgra8unorm-srgb` (color) and `rgba16float` (brightness/high-dynamic targets).
+ ├─ BlurPass: Separable Gaussian blur on the bright target to produce bloom; implemented as two passes (horizontal, vertical) to keep workgroup sizing reasonable.
+ ├─ HistoryPass: Accumulates a decaying history buffer (exponential decay) to create persistence/trail effects; uses `rgba16float` for intermediate precision.
+ └─ PresentPass: Composite and tone-map the offscreen targets to the swapchain with optional CRT-like stylization and final color transforms.
 ```
 
 ### Dependency flow
@@ -132,52 +83,72 @@ assets (WGSL)
 
 ### Core subsystems
 
-1. **Backend (WebGPU)**
+- **Backend (WebGPU):** Adapter/device initialization, shader loading, typed CPU↔GPU memory layouts and scoped resource management (device / surface / frame). See `src/backend`.
 
-    - Adapter and device initialization
-    - Shader module compilation and management
-    - Resource scopes: device-, surface-, frame-lifetime
-    - Safe reconfiguration of swapchain and canvas on resize
+- **Glyph atlas (domain):** CPU rasterization into an offscreen canvas, one-time upload to a GPU texture and a storage buffer of per-glyph UV rects used by shaders. See `src/domain/glyph-atlas.ts`.
 
-2. **Glyph atlas (domain layer)**
+- **Simulation (compute):** GPU-only per-column update of `ColumnState` (head, speed, energy, length, PRNG seed); compute pipeline dispatches columns with a workgroup strategy (workgroup size tuned in code). See `src/gpu/simulation-pass.ts` and `src/assets/shaders/simulation.wgsl`.
 
-    - Glyphs rendered once into an offscreen canvas
-    - Uploaded as a GPU texture with sampler
-    - UV coordinates stored in a GPU buffer for simulation and rendering
-    - Pure domain logic, independent of GPU execution
+- **Rendering (draw):** Instanced quad rendering of glyphs into offscreen color and bright targets (LDR color + HDR bright) with vertex/fragment pipelines and atlas sampling. See `src/gpu/draw-pass.ts` and `src/assets/shaders/draw.wgsl`.
 
-3. **Simulation (compute pass, GPU layer)**
+- **Post-processing:** Separable blur (horizontal/vertical) and a history accumulation pass that ping-pongs HDR history textures to produce trails and bloom inputs. See `src/gpu/blur-pass.ts` and `src/gpu/history-pass.ts`.
 
-    - One workgroup per column (`@workgroup_size(64)`)
-    - Updates entirely on GPU:
-        * Head positions
-        * Speeds
-        * Trail lengths
-        * Glyph selection
-        * Brightness gradient
-    - Writes directly into the instance buffer for rendering
-    - Surface-lifetime resources updated on resize
+- **Present:** Final composite and tone-map pass that samples history + bloom and writes to the swapchain. See `src/gpu/present-pass.ts` and `src/assets/shaders/present.wgsl`.
 
-4. **Rendering (draw pass, GPU layer)**
+- **Render graph & loop:** A small render-graph arranges pass dependencies (reads/writes) and executes passes deterministically each frame. See `src/gpu/render-graph.ts` and `src/app/main.ts`.
 
-    - Single quad vertex buffer
-    - Fully instanced draw (`draw(6, instanceCount)`)
-    - Alpha blending for smooth trails
-    - Screen-space positioning via uniforms
-    - Surface-lifetime resources recreated on resize
+### File Structure
 
-5. **Present pass (GPU layer)**
+```
+matrix-rain_ts/
+├─ public/
+│  └─ favicon.svg
+│
+├─ src/
+│  ├─ app/              # Application bootstrap
+│  │  └─ index.html
+│  ├─ runtime/          # App-level orchestration
+│  ├─ gpu/              # WebGPU execution layer
+│  ├─ backend/          # WebGPU platform abstractions
+│  ├─ domain/
+│  └─ assets/           # Static GPU assets
+│     └─ shaders/
+│
+├─ README.md
+├─ package.json
+├─ tsconfig.json
+└─ vite.config.ts
+```
 
-    - Composites offscreen render target to swapchain
-    - Fullscreen triangle, clear and store ops
-    - Receives frame-lifetime `GPUTextureView` from swapchain
+---
 
-6. **RenderGraph**
+## Technical Overview
 
-    - Declarative pass dependencies (`reads` / `writes`)
-    - Topological sorting per frame
-    - Passes encode commands only; do not own resources
-    - Ensures deterministic execution and separation between compute, draw, and present passes
+### Strengths
+
+- GPU-first simulation: All per-frame simulation runs in compute shaders, keeping CPU overhead minimal.
+- Deterministic, column-local logic: Each column owns its PRNG and state, avoiding inter-column synchronization.
+- Explicit memory layouts: CPU↔GPU layouts are defined centrally (see `src/backend/layouts.ts`) and mirrored in WGSL for correctness.
+- Fixed-capacity buffers: Simpler lifetime and memory management on the GPU (no compaction or readback), which keeps shaders and resource lifetimes straightforward.
+- Modular pipeline design: Passes (simulation, draw, blur, history, present) are separated by responsibility and encoded in a render graph for deterministic ordering.
+
+### Known limitations & trade-offs
+
+- Portability: The project relies on WebGPU features and specific texture formats (`rgba16float`, `bgra8unorm-srgb`); not all browsers/devices expose the same capabilities—feature checks and graceful fallbacks are limited.
+- Memory efficiency: Fixed-capacity per-column trails simplify the GPU code but can waste GPU memory on very large canvases or high row counts.
+- No CPU-side fallback: There is no fallback rendering path for environments without WebGPU; the app expects a capable device.
+- Resize and resource churn: Surface-lifetime resource re-creation on resize is explicit but can be expensive on some drivers; pay attention to the frequency of expensive device/swapchain operations.
+- Color management: SRGB vs linear handling is simplified; subtle color/tone mapping differences may appear across GPUs.
+- Glyph fidelity: The glyph atlas uses an offscreen canvas rasterization; this is practical but differs from system font rendering and may need adjustments for different font sizes or DPI.
+
+### Implementation notes & attention points for contributors
+
+- Shaders: All WGSL shader sources live under `src/assets/shaders/` (e.g. `simulation.wgsl`, `draw.wgsl`, `blur.wgsl`, `history.wgsl`, `present.wgsl`). Keep shader memory layout comments in sync with `src/backend/layouts.ts`.
+- Compute/workgroup sizing: The simulation uses a workgroup strategy tuned for columns (see `src/gpu/simulation-pass.ts`). Avoid changing `@workgroup_size` without validating dispatch calculations.
+- Instance buffer updates: The compute shader writes instance data directly for the draw pass; the instance buffer layout must match the vertex/fragment expectations exactly.
+- Formats and precision: Use `rgba16float` for intermediate high-dynamic targets (bright/history) to reduce banding; ensure the device supports the required texture formats and usages.
+- Strict TypeScript: The project uses strict TypeScript settings (`tsconfig.json`); maintain explicit typings and avoid `any` to keep interfaces robust.
+- No magic numbers: Maintain named constants for sizes (rows, columns, maxTrail) and document assumptions in `src/gpu/` modules.
 
 ---
 
