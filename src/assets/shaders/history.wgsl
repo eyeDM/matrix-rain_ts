@@ -33,11 +33,10 @@ struct HistoryParams {
   pad2: f32,
 };
 
-@group(0) @binding(0) var samp: sampler;
-@group(0) @binding(1) var sceneTex: texture_2d<f32>;
-@group(0) @binding(2) var prevTex: texture_2d<f32>;
-@group(0) @binding(3) var dstTex: texture_storage_2d<rgba16float, write>;
-@group(0) @binding(4) var<uniform> params: HistoryParams;
+@group(0) @binding(0) var sceneTex: texture_2d<f32>;
+@group(0) @binding(1) var prevTex: texture_2d<f32>;
+@group(0) @binding(2) var dstTex: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(3) var<uniform> params: HistoryParams;
 
 @compute @workgroup_size(8,8)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {

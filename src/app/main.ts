@@ -377,7 +377,6 @@ export async function bootstrap(): Promise<void> {
         const historyPass = new HistoryComputePass(
             resources.frameScope,
             historyDeviceResources.pipeline,
-            historyDeviceResources.sampler,
             drawSurfaceResources.colorTex,
             historySurfaceResources.historyTexA,
             historySurfaceResources.historyTexB,

@@ -9,7 +9,6 @@ const COLOR_FORMAT_HDR: GPUTextureFormat = 'rgba16float';
  */
 export type HistoryDeviceResources = {
     readonly pipeline: GPUComputePipeline;
-    readonly sampler: GPUSampler;
 };
 
 export function createHistoryDeviceResources(
@@ -21,11 +20,33 @@ export function createHistoryDeviceResources(
         device.createBindGroupLayout({
             label: 'History Compute BGL',
             entries: [
-                { binding: 0, visibility: GPUShaderStage.COMPUTE, sampler: { type: 'filtering' } }, // sampler
-                { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } }, // scene
-                { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'float' } }, // prev history
-                { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: 'write-only', format: COLOR_FORMAT_HDR } }, // dst history
-                { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }, // params
+                /* --- Scene texture --- */
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: 'unfilterable-float' },
+                },
+
+                /* --- prev texture --- */
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.COMPUTE,
+                    texture: { sampleType: 'float' },
+                },
+
+                /* --- dst texture storage --- */
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.COMPUTE,
+                    storageTexture: { access: 'write-only', format: COLOR_FORMAT_HDR },
+                },
+
+                /* --- HistoryParams uniform --- */
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: { type: 'uniform' },
+                },
             ],
         })
     );
@@ -44,11 +65,7 @@ export function createHistoryDeviceResources(
         })
     );
 
-    const sampler = scope.track(
-        device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
-    );
-
-    return { pipeline, sampler };
+    return { pipeline };
 }
 
 /**
@@ -94,7 +111,6 @@ export class HistoryComputePass {
     constructor(
         private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPUComputePipeline,
-        private readonly sampler: GPUSampler,
         // scene texture produced by DrawPass
         sceneTex: GPUTexture,
         // history textures: allocate two textures and ping-pong between them
@@ -126,11 +142,10 @@ export class HistoryComputePass {
                 label: 'History Compute BG (frame)',
                 layout: this.pipeline.getBindGroupLayout(0),
                 entries: [
-                    { binding: 0, resource: this.sampler },
-                    { binding: 1, resource: this.sceneView },
-                    { binding: 2, resource: this.getPrevView() },
-                    { binding: 3, resource: this.getOutputView() },
-                    { binding: 4, resource: { buffer: this.paramsBuffer } },
+                    { binding: 0, resource: this.sceneView },
+                    { binding: 1, resource: this.getPrevView() },
+                    { binding: 2, resource: this.getOutputView() },
+                    { binding: 3, resource: { buffer: this.paramsBuffer } },
                 ],
             })
         );

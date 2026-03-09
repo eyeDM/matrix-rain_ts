@@ -56,8 +56,8 @@ CPU (TypeScript)
 GPU (WebGPU, WGSL)
  ├─ SimulationComputePass: GPU-only update of per-column state (head, speed, trail, PRNG seed); writes instance data used by the draw pass.
  ├─ DrawPass: Instanced rendering of glyph quads into an offscreen color target and a separate "bright" target; uses formats such as `bgra8unorm-srgb` (color) and `rgba16float` (brightness/high-dynamic targets).
- ├─ BlurPass: Separable Gaussian blur on the bright target to produce bloom; implemented as two passes (horizontal, vertical) to keep workgroup sizing reasonable.
  ├─ HistoryPass: Accumulates a decaying history buffer (exponential decay) to create persistence/trail effects; uses `rgba16float` for intermediate precision.
+ ├─ BlurPass: Separable Gaussian blur on the bright target to produce bloom; implemented as two passes (horizontal, vertical) to keep workgroup sizing reasonable.
  └─ PresentPass: Composite and tone-map the offscreen targets to the swapchain with optional CRT-like stylization and final color transforms.
 ```
 
