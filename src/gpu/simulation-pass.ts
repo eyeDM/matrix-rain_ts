@@ -1,5 +1,5 @@
 import {
-    TimeParamsLayout,
+    FrameParamsLayout,
     DrawParamsLayout,
     ColumnStateLayout
 } from '@backend/layouts';
@@ -41,7 +41,7 @@ export function createSimulationDeviceResources(
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
                         type: 'uniform',
-                        minBindingSize: TimeParamsLayout.SIZE,
+                        minBindingSize: FrameParamsLayout.SIZE,
                     },
                 },
 
@@ -92,7 +92,7 @@ export function createSimulationSurfaceResources(
     pipeline: GPUComputePipeline,
     resources: {
         columnStateBuffer: GPUBuffer,
-        timeParamsBuffer: GPUBuffer,
+        frameParamsBuffer: GPUBuffer,
         drawParamsBuffer: GPUBuffer,
     },
 ): SimulationSurfaceResources {
@@ -111,9 +111,9 @@ export function createSimulationSurfaceResources(
                 {
                     binding: 1,
                     resource: {
-                        buffer: resources.timeParamsBuffer,
+                        buffer: resources.frameParamsBuffer,
                         offset: 0,
-                        size: TimeParamsLayout.SIZE,
+                        size: FrameParamsLayout.SIZE,
                     },
                 },
                 {

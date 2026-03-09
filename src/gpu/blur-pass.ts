@@ -115,12 +115,12 @@ export function createBlurSurfaceResources(
         texelSize: number,
         buffer: GPUBuffer,
     ): void => {
-        const st = new ArrayBuffer(BlurParamsLayout.SIZE);
-        const dv = new DataView(st);
-        dv.setFloat32(BlurParamsLayout.offsets.dirX, dirX, true);
-        dv.setFloat32(BlurParamsLayout.offsets.dirY, dirY, true);
-        dv.setFloat32(BlurParamsLayout.offsets.texelSize, texelSize, true);
-        device.queue.writeBuffer(buffer, 0, st);
+        const staging = new ArrayBuffer(BlurParamsLayout.SIZE);
+        const view = new DataView(staging);
+        view.setFloat32(BlurParamsLayout.offsets.dirX, dirX, true);
+        view.setFloat32(BlurParamsLayout.offsets.dirY, dirY, true);
+        view.setFloat32(BlurParamsLayout.offsets.texelSize, texelSize, true);
+        device.queue.writeBuffer(buffer, 0, staging);
     };
 
     // render blur at lower resolution to save bandwidth (half-res)

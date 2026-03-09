@@ -1,12 +1,12 @@
-import { TimeParamsLayout } from '@backend/layouts';
+import { ViewportParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
-export type TimeParams = {
-    dt: number;
-    pt: number;
+export type ViewportParams = {
+    width: number;
+    height: number;
 }
 
-export class TimeParamsWriter {
+export class ViewportParamsWriter {
     readonly buffer: GPUBuffer;
 
     private readonly staging: ArrayBuffer;
@@ -18,19 +18,19 @@ export class TimeParamsWriter {
     ) {
         this.buffer = scope.trackDestroyable(
             this.device.createBuffer({
-                label: 'Time Params',
-                size: TimeParamsLayout.SIZE,
+                label: 'Viewport Params',
+                size: ViewportParamsLayout.SIZE,
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             })
         );
 
-        this.staging = new ArrayBuffer(TimeParamsLayout.SIZE);
+        this.staging = new ArrayBuffer(ViewportParamsLayout.SIZE);
         this.view = new DataView(this.staging);
     }
 
-    set(params: TimeParams): void {
-        this.view.setFloat32(TimeParamsLayout.offsets.dt, params.dt, true);
-        this.view.setFloat32(TimeParamsLayout.offsets.pt, params.pt, true);
+    set(params: ViewportParams): void {
+        this.view.setUint32(ViewportParamsLayout.offsets.width, params.width, true);
+        this.view.setUint32(ViewportParamsLayout.offsets.height, params.height, true);
     }
 
     flush(): void {
@@ -38,9 +38,9 @@ export class TimeParamsWriter {
     }
 
     /**
-     * Called every frame.
+     * Called on screen resize.
      */
-    update(params: TimeParams): void {
+    update(params: ViewportParams): void {
         this.set(params);
         this.flush();
     }

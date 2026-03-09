@@ -15,13 +15,25 @@
  * Size is in bytes.
  */
 
+// On screen resize writing
+export const ViewportParamsLayout = {
+    ALIGN: 4,
+    SIZE: 16,
+    offsets: {
+        width: 0,   // u32
+        height: 4,  // u32
+        _pad0: 8,   // u32
+        _pad1: 12,  // u32
+    },
+};
+
 // Per-frame writing
-export const TimeParamsLayout = {
+export const FrameParamsLayout = {
     ALIGN: 4,
     SIZE: 16,
     offsets: {
         dt: 0,     // f32: delta; seconds
-        pt: 4,     // f32: periodic time wrapped to [0, 2π) - guarantees f32 precision; seconds
+        time: 4,   // f32: periodic time wrapped to [0, 2π) - guarantees f32 precision; seconds
         _pad0: 8,  // f32
         _pad1: 12, // f32
     },
@@ -35,15 +47,17 @@ export const DrawParamsLayout = {
         cellSize: 0,          // vec2<f32>: pixels
         atlasTexelSize: 8,    // vec2<f32>: in atlas UV space (1/width, 1/height)
 
-        canvasSize: 16,       // vec2<f32>: pixels
-        cols: 24,             // u32
-        rows: 28,             // u32
-        maxTrail: 32,         // u32
+        cols: 16,             // u32
+        rows: 20,             // u32
+        maxTrail: 24,         // u32
 
-        glyphCount: 36,       // u32
+        glyphCount: 28,       // u32
 
-        flickerAmplitude: 40, // f32
-        flickerFrequency: 44, // f32: Hz
+        flickerAmplitude: 32, // f32
+        flickerFrequency: 36, // f32: Hz
+
+        _pad0: 40,  // f32
+        _pad1: 44, // f32
     },
 } as const;
 

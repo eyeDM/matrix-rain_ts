@@ -1,5 +1,6 @@
 import {
-    TimeParamsLayout,
+    ViewportParamsLayout,
+    FrameParamsLayout,
     DrawParamsLayout,
     ColumnStateLayout
 } from '@backend/layouts';
@@ -113,19 +114,29 @@ export function createDrawDeviceResources(
                     },
                 },
 
-                /* --- TimeParams uniform --- */
+                /* --- ViewportParams uniform --- */
                 {
                     binding: 4,
                     visibility: GPUShaderStage.VERTEX,
                     buffer: {
                         type: 'uniform',
-                        minBindingSize: TimeParamsLayout.SIZE,
+                        minBindingSize: ViewportParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- FrameParams uniform --- */
+                {
+                    binding: 5,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: FrameParamsLayout.SIZE,
                     },
                 },
 
                 /* --- DrawParams uniform --- */
                 {
-                    binding: 5,
+                    binding: 6,
                     visibility: GPUShaderStage.VERTEX,
                     buffer: {
                         type: 'uniform',
@@ -159,7 +170,8 @@ export function createDrawSurfaceResources(
         atlasTextureView: GPUTextureView,
         glyphUVsBuffer: GPUBuffer,
         columnStateBuffer: GPUBuffer,
-        timeParamsBuffer: GPUBuffer,
+        viewportParamsBuffer: GPUBuffer,
+        frameParamsBuffer: GPUBuffer,
         drawParamsBuffer: GPUBuffer,
     },
     glyphUVsMinBindingSize: number,
@@ -199,13 +211,21 @@ export function createDrawSurfaceResources(
                 {
                     binding: 4,
                     resource: {
-                        buffer: resources.timeParamsBuffer,
+                        buffer: resources.viewportParamsBuffer,
                         offset: 0,
-                        size: TimeParamsLayout.SIZE,
+                        size: ViewportParamsLayout.SIZE,
                     },
                 },
                 {
                     binding: 5,
+                    resource: {
+                        buffer: resources.frameParamsBuffer,
+                        offset: 0,
+                        size: FrameParamsLayout.SIZE,
+                    },
+                },
+                {
+                    binding: 6,
                     resource: {
                         buffer: resources.drawParamsBuffer,
                         offset: 0,
@@ -277,12 +297,6 @@ export function createDrawSurfaceResources(
                 cullMode: 'none',
                 frontFace: 'ccw',
             },
-            /* ---------- Depth ---------- */
-            // Depth intentionally disabled:
-            // - symbols are alpha-blended
-            // - ordering is irrelevant
-            // - saves bandwidth and memory
-            //depthStencil: undefined,
             multisample: {
                 count: 1,
             },

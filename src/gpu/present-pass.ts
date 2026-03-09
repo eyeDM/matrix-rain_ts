@@ -73,7 +73,7 @@ export class PresentPass {
         private readonly frameScope: GpuResourceScope,
         private readonly pipeline: GPURenderPipeline,
         private readonly sampler: GPUSampler,
-        private readonly timeBuffer: GPUBuffer,
+        private readonly frameParamsBuffer: GPUBuffer,
         private readonly paramsBuffer: GPUBuffer,
         /** A callback that returns the current texture view to sample for presentation */
         private readonly getTextureView: () => GPUTextureView,
@@ -94,7 +94,7 @@ export class PresentPass {
                     { binding: 0, resource: this.sampler },
                     { binding: 1, resource: this.getTextureView() },
                     { binding: 2, resource: this.bloomTexView },
-                    { binding: 3, resource: { buffer: this.timeBuffer } },
+                    { binding: 3, resource: { buffer: this.frameParamsBuffer } },
                     { binding: 4, resource: { buffer: this.paramsBuffer } },
                 ],
             })

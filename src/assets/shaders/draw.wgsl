@@ -4,31 +4,6 @@
 
 /* --- Data layouts --- */
 
-/* {@see TimeParamsLayout@backend/layouts} */
-struct TimeParams {
-  dt: f32,
-  pt: f32,
-
-  pad0: f32,
-  pad1: f32,
-};
-
-/* {@see DrawParamsLayout@backend/layouts} */
-struct DrawParams {
-  cellSize: vec2<f32>,
-  atlasTexelSize: vec2<f32>,
-
-  canvasSize: vec2<f32>,
-  cols: u32,
-  rows: u32,
-  maxTrail: u32,
-
-  glyphCount: u32,
-
-  flickerAmplitude: f32,
-  flickerFrequency: f32,
-};
-
 /* {@see ColumnStateLayout@backend/layouts} */
 struct ColumnState {
   head: f32,
@@ -40,6 +15,39 @@ struct ColumnState {
   pad0: u32,
   pad1: u32,
   pad2: u32,
+};
+
+/* {@see ViewportParamsLayout@backend/layouts} */
+struct ViewportParams {
+  width: u32,
+  height: u32,
+
+  pad0: u32,
+  pad1: u32,
+};
+
+/* {@see FrameParamsLayout@backend/layouts} */
+struct FrameParams {
+  dt: f32,
+  time: f32,
+
+  pad0: f32,
+  pad1: f32,
+};
+
+/* {@see DrawParamsLayout@backend/layouts} */
+struct DrawParams {
+  cellSize: vec2<f32>,
+  atlasTexelSize: vec2<f32>,
+
+  cols: u32,
+  rows: u32,
+  maxTrail: u32,
+
+  glyphCount: u32,
+
+  flickerAmplitude: f32,
+  flickerFrequency: f32,
 };
 
 /* {@see GLYPH_UV_FLOAT_COUNT@domain/glyph-atlas} */
@@ -74,8 +82,9 @@ fn hash_u32(x: u32) -> u32 {
 @group(0) @binding(1) var atlasTexture: texture_2d<f32>;
 @group(0) @binding(2) var<storage, read> glyphUVs: array<GlyphUV>;
 @group(0) @binding(3) var<storage, read> columns: array<ColumnState>;
-@group(0) @binding(4) var<uniform> time: TimeParams;
-@group(0) @binding(5) var<uniform> params: DrawParams;
+@group(0) @binding(4) var<uniform> viewport: ViewportParams;
+@group(0) @binding(5) var<uniform> frame: FrameParams;
+@group(0) @binding(6) var<uniform> params: DrawParams;
 
 struct VSOut {
   @builtin(position) Position: vec4<f32>,
@@ -137,9 +146,9 @@ fn vs_main(
   /* --- Pixel → NDC --- */
 
   // Convert pixel space to NDC
-  let ndcX = (pixelPos.x / params.canvasSize.x) * 2.0 - 1.0;
+  let ndcX = (pixelPos.x / f32(viewport.width)) * 2.0 - 1.0;
   // flip Y because texture/canvas origin is top-left
-  let ndcY = 1.0 - (pixelPos.y / params.canvasSize.y) * 2.0;
+  let ndcY = 1.0 - (pixelPos.y / f32(viewport.height)) * 2.0;
 
   out.Position = vec4<f32>(ndcX, ndcY, 0.0, 1.0);
 
@@ -204,10 +213,10 @@ fn vs_main(
 
   // Deterministic per-column flicker: derive a stable phase from the column seed.
   // Use lower 16 bits of seed for a quick phase, map to [0, TWO_PI).
-  // NOTE: time.pt is periodic [0, 2π), preventing precision loss in long sessions.
+  // NOTE: `frame.time` is periodic [0, 2π), preventing precision loss in long sessions.
   let seedLow = f32(column.seed & PHASE_MASK) * PHASE_SCALE;
   let phase = seedLow * TWO_PI;
-  let angular = time.pt * params.flickerFrequency;
+  let angular = frame.time * params.flickerFrequency;
   let flick = sin(angular + phase) * params.flickerAmplitude;
 
   out.v_brightness_ldr = max(0.0, brightnessLDR * (1.0 + flick));

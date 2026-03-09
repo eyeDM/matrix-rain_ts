@@ -24,6 +24,15 @@
 //
 // ============================================================================
 
+/* {@see ViewportParamsLayout@backend/layouts} */
+struct ViewportParams {
+  width: u32,
+  height: u32,
+
+  pad0: u32,
+  pad1: u32,
+};
+
 /* {@see HistoryParamsLayout@backend/layouts} */
 struct HistoryParams {
   decay: f32,
@@ -36,12 +45,14 @@ struct HistoryParams {
 @group(0) @binding(0) var sceneTex: texture_2d<f32>;
 @group(0) @binding(1) var prevTex: texture_2d<f32>;
 @group(0) @binding(2) var dstTex: texture_storage_2d<rgba16float, write>;
-@group(0) @binding(3) var<uniform> params: HistoryParams;
+@group(0) @binding(3) var<uniform> viewport: ViewportParams;
+@group(0) @binding(4) var<uniform> params: HistoryParams;
 
 @compute @workgroup_size(8, 8)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let dims = textureDimensions(sceneTex);
-  if (gid.x >= dims.x || gid.y >= dims.y) { return; }
+  if (gid.x >= viewport.width || gid.y >= viewport.height) {
+    return;
+  }
 
   let coords = vec2<i32>(i32(gid.x), i32(gid.y));
 

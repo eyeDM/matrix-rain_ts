@@ -6,7 +6,8 @@ import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
 
 import { ColumnsState } from '@gpu/column-state';
-import { TimeParamsWriter } from '@gpu/time-params-writer';
+import { ViewportParamsWriter } from '@gpu/viewport-params-writer';
+import { FrameParamsWriter } from '@gpu/frame-params-writer';
 import { DrawParamsWriter } from '@gpu/draw-params-writer';
 import { HistoryParamsWriter } from '@gpu/history-params-writer';
 import { PresentParamsWriter } from '@gpu/present-params-writer';
@@ -216,7 +217,18 @@ export async function bootstrap(): Promise<void> {
 
     // * Device-Lifetime resources
 
-    const timeParamsWriter = new TimeParamsWriter(
+    const viewportParamsWriter = new ViewportParamsWriter(
+        gpu.device,
+        resources.deviceScope,
+    );
+    const updateViewportParams = (): void => {
+        viewportParamsWriter.update({
+            width: layout.viewport.width,
+            height: layout.viewport.height,
+        });
+    };
+
+    const frameParamsWriter = new FrameParamsWriter(
         gpu.device,
         resources.deviceScope,
     );
@@ -233,8 +245,6 @@ export async function bootstrap(): Promise<void> {
             atlasHeight: atlas.layout.atlasHeight,
             glyphCount: atlas.glyphs.count,
 
-            canvasWidth: layout.viewport.width,
-            canvasHeight: layout.viewport.height,
             gridCols: layout.grid.cols,
             gridRows: layout.grid.rows,
             maxTrail: layout.instances.maxTrail,
@@ -317,7 +327,7 @@ export async function bootstrap(): Promise<void> {
             simDeviceResources.pipeline,
             {
                 columnStateBuffer: columnsState.buffer,
-                timeParamsBuffer: timeParamsWriter.buffer,
+                frameParamsBuffer: frameParamsWriter.buffer,
                 drawParamsBuffer: drawParamsWriter.buffer,
             },
         );
@@ -332,7 +342,8 @@ export async function bootstrap(): Promise<void> {
                 atlasTextureView: atlas.resources.textureView,
                 glyphUVsBuffer: atlas.resources.uvBuffer,
                 columnStateBuffer: columnsState.buffer,
-                timeParamsBuffer: timeParamsWriter.buffer,
+                viewportParamsBuffer: viewportParamsWriter.buffer,
+                frameParamsBuffer: frameParamsWriter.buffer,
                 drawParamsBuffer: drawParamsWriter.buffer,
             },
             atlas.glyphs.minBindingSize,
@@ -381,6 +392,7 @@ export async function bootstrap(): Promise<void> {
             drawSurfaceResources.colorTex,
             historySurfaceResources.historyTexA,
             historySurfaceResources.historyTexB,
+            viewportParamsWriter.buffer,
             historyParamsWriter.buffer,
             layout.viewport.width,
             layout.viewport.height,
@@ -403,7 +415,7 @@ export async function bootstrap(): Promise<void> {
             resources.frameScope,
             presentDeviceResources.pipeline,
             presentDeviceResources.sampler,
-            timeParamsWriter.buffer,
+            frameParamsWriter.buffer,
             presentParamsWriter.buffer,
             () => historyPass.getOutputView(),
             () => swapChain.getCurrentView(),
@@ -414,34 +426,37 @@ export async function bootstrap(): Promise<void> {
 
         const graphBuilder = new RenderGraphBuilder();
 
-        graphBuilder
-            .addPass(simPass)
+        graphBuilder.addPass(simPass)
             .writes(columnsState.buffer);
 
-        graphBuilder
-            .addPass(drawPass)
+        graphBuilder.addPass(drawPass)
             .reads(columnsState.buffer)
-            .writes(drawSurfaceResources.colorTex, drawSurfaceResources.brightTex);
+            .writes(
+                drawSurfaceResources.colorTex,
+                drawSurfaceResources.brightTex,
+            );
 
-        graphBuilder
-            .addPass(historyPass)
+        graphBuilder.addPass(historyPass)
             .reads(drawSurfaceResources.colorTex)
-            .writes(historySurfaceResources.historyTexA, historySurfaceResources.historyTexB);
+            .writes(
+                historySurfaceResources.historyTexA,
+                historySurfaceResources.historyTexB,
+            );
 
-        graphBuilder
-            .addPass(blurPassH)
+        graphBuilder.addPass(blurPassH)
             .reads(drawSurfaceResources.brightTex)
             .writes(blurSurfaceResources.texTemp);
 
-        graphBuilder
-            .addPass(blurPassV)
+        graphBuilder.addPass(blurPassV)
             .reads(blurSurfaceResources.texTemp)
             .writes(blurSurfaceResources.texResult);
 
-        graphBuilder
-            .addPass(presentPass)
-            .reads(historySurfaceResources.historyTexA, historySurfaceResources.historyTexB)
-            .reads(blurSurfaceResources.texResult);
+        graphBuilder.addPass(presentPass)
+            .reads(
+                historySurfaceResources.historyTexA,
+                historySurfaceResources.historyTexB,
+                blurSurfaceResources.texResult,
+            );
 
         const renderGraph: RenderGraph = graphBuilder.build();
 
@@ -460,6 +475,7 @@ export async function bootstrap(): Promise<void> {
 
     // --- Initial data ---
 
+    updateViewportParams();
     updateDrawParams();
     updateHistoryParams();
     updatePresentParams();
@@ -474,9 +490,9 @@ export async function bootstrap(): Promise<void> {
         timeManager.tick(ctx.dt);
         const periodicTime = timeManager.getPeriodic();
 
-        timeParamsWriter.update({
+        frameParamsWriter.update({
             dt: ctx.dt,
-            pt: periodicTime,
+            time: periodicTime,
         });
 
         surface.renderGraph.execute(ctx);
@@ -506,6 +522,7 @@ export async function bootstrap(): Promise<void> {
         );
 
         // 1. Update ScreenLayout-dependent pass parameters
+        updateViewportParams();
         updateDrawParams();
 
         // 2. Destroy ALL Surface-Lifetime GPU resources

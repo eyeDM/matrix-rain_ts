@@ -1,3 +1,4 @@
+import { ViewportParamsLayout, HistoryParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -71,11 +72,24 @@ export function createHistoryDeviceResources(
                     storageTexture: { access: 'write-only', format: COLOR_FORMAT_HDR },
                 },
 
-                /* --- HistoryParams uniform --- */
+                /* --- ViewportParams uniform --- */
                 {
                     binding: 3,
                     visibility: GPUShaderStage.COMPUTE,
-                    buffer: { type: 'uniform' },
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: ViewportParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- HistoryParams uniform --- */
+                {
+                    binding: 4,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: HistoryParamsLayout.SIZE,
+                    },
                 },
             ],
         })
@@ -150,6 +164,7 @@ export class HistoryComputePass {
         // history textures: allocate two textures and ping-pong between them
         historyTexA: GPUTexture,
         historyTexB: GPUTexture,
+        private readonly viewportParamsBuffer: GPUBuffer,
         private readonly paramsBuffer: GPUBuffer,
         private readonly viewportWidth: number,
         private readonly viewportHeight: number,
@@ -171,7 +186,20 @@ export class HistoryComputePass {
                     { binding: 0, resource: this.sceneView },
                     { binding: 1, resource: this.historyViewB },
                     { binding: 2, resource: this.historyViewA },
-                    { binding: 3, resource: { buffer: this.paramsBuffer } },
+                    {
+                        binding: 3,
+                        resource: {
+                            buffer: this.viewportParamsBuffer,
+                            size: ViewportParamsLayout.SIZE,
+                        }
+                    },
+                    {
+                        binding: 4,
+                        resource: {
+                            buffer: this.paramsBuffer,
+                            size: HistoryParamsLayout.SIZE,
+                        },
+                    },
                 ],
             })
         );
@@ -185,9 +213,22 @@ export class HistoryComputePass {
                 layout,
                 entries: [
                     { binding: 0, resource: this.sceneView },
-                    { binding: 1, resource: this.historyViewA },
-                    { binding: 2, resource: this.historyViewB },
-                    { binding: 3, resource: { buffer: this.paramsBuffer } },
+                    { binding: 1, resource: this.historyViewB },
+                    { binding: 2, resource: this.historyViewA },
+                    {
+                        binding: 3,
+                        resource: {
+                            buffer: this.viewportParamsBuffer,
+                            size: ViewportParamsLayout.SIZE,
+                        }
+                    },
+                    {
+                        binding: 4,
+                        resource: {
+                            buffer: this.paramsBuffer,
+                            size: HistoryParamsLayout.SIZE,
+                        },
+                    },
                 ],
             })
         );

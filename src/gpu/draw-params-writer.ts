@@ -8,8 +8,6 @@ export type DrawParams = {
     atlasHeight: number;
     glyphCount: number;
 
-    canvasWidth: number;
-    canvasHeight: number;
     gridCols: number;
     gridRows: number;
     maxTrail: number;
@@ -63,11 +61,6 @@ export class DrawParamsWriter {
 
         this.viewU32[DrawParamsLayout.offsets.glyphCount / 4] =
             params.glyphCount;
-
-        this.viewF32[DrawParamsLayout.offsets.canvasSize / 4] =
-            params.canvasWidth;
-        this.viewF32[DrawParamsLayout.offsets.canvasSize / 4 + 1] =
-            params.canvasHeight;
 
         this.viewU32[DrawParamsLayout.offsets.cols / 4] =
             params.gridCols;

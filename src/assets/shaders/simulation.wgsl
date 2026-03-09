@@ -5,31 +5,6 @@
 
 /* --- Data layouts --- */
 
-/* {@see TimeParamsLayout@backend/layouts} */
-struct TimeParams {
-  dt: f32,
-  pt: f32,
-
-  pad0: f32,
-  pad1: f32,
-};
-
-/* {@see DrawParamsLayout@backend/layouts} */
-struct DrawParams {
-  cellSize: vec2<f32>,
-  atlasTexelSize: vec2<f32>,
-
-  canvasSize: vec2<f32>,
-  cols: u32,
-  rows: u32,
-  maxTrail: u32,
-
-  glyphCount: u32,
-
-  flickerAmplitude: f32,
-  flickerFrequency: f32,
-};
-
 /* {@see ColumnStateLayout@backend/layouts} */
 struct ColumnState {
   head: f32,
@@ -41,6 +16,30 @@ struct ColumnState {
   pad0: u32,
   pad1: u32,
   pad2: u32,
+};
+
+/* {@see FrameParamsLayout@backend/layouts} */
+struct FrameParams {
+  dt: f32,
+  time: f32,
+
+  pad0: f32,
+  pad1: f32,
+};
+
+/* {@see DrawParamsLayout@backend/layouts} */
+struct DrawParams {
+  cellSize: vec2<f32>,
+  atlasTexelSize: vec2<f32>,
+
+  cols: u32,
+  rows: u32,
+  maxTrail: u32,
+
+  glyphCount: u32,
+
+  flickerAmplitude: f32,
+  flickerFrequency: f32,
 };
 
 /* --- RNG --- */
@@ -107,7 +106,7 @@ fn change_energy(state: ptr<function, ColumnState>) {
   );
 
   let lambda: f32 = LN2 / halfLife;
-  let energyNew: f32 = (*state).energy * exp(-lambda * time.dt);
+  let energyNew: f32 = (*state).energy * exp(-lambda * frame.dt);
 
   let energyMax: f32 = CELL_ENERGY_MIN * f32((*state).length) * CELL_ENERGY_VARIANCE;
   (*state).energy = clamp(energyNew, 0.0, energyMax);
@@ -136,7 +135,7 @@ fn respawn_column(
 }
 
 @group(0) @binding(0) var<storage, read_write> columns: array<ColumnState>;
-@group(0) @binding(1) var<uniform> time: TimeParams;
+@group(0) @binding(1) var<uniform> frame: FrameParams;
 @group(0) @binding(2) var<uniform> params: DrawParams;
 
 @compute @workgroup_size(64)
@@ -148,10 +147,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
   var state = columns[colIdx];
 
-  var rng = rng_init(state.seed, colIdx, time.pt);
+  var rng = rng_init(state.seed, colIdx, frame.time);
 
   // advance head with small jitter to avoid banding
-  state.head += state.speed * time.dt + (rng_next_f32(&rng) - 0.5) * 0.1;
+  state.head += state.speed * frame.dt + (rng_next_f32(&rng) - 0.5) * 0.1;
 
   // respawn condition
   let tail: f32 = state.head - f32(state.length);
