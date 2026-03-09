@@ -195,6 +195,7 @@ export class BlurPass {
 
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, this.bindGroup);
+
         pass.draw(3);
         pass.end();
     }

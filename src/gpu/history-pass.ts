@@ -5,6 +5,36 @@ import { RenderContext } from '@gpu/render-graph';
 const COLOR_FORMAT_HDR: GPUTextureFormat = 'rgba16float';
 
 /**
+ * Usage flags for temporal history buffers.
+ *
+ * Required capabilities:
+ *
+ * STORAGE_BINDING
+ *   HistoryComputePass writes accumulated result.
+ *
+ * TEXTURE_BINDING
+ *   HistoryComputePass reads previous frame.
+ *   PresentPass samples history during final composition.
+ *
+ * Note:
+ * COPY_SRC / COPY_DST intentionally omitted to prevent accidental
+ * readbacks or staging copies that would stall the GPU pipeline.
+ */
+export const HISTORY_TEXTURE_USAGE =
+    GPUTextureUsage.STORAGE_BINDING |
+    GPUTextureUsage.TEXTURE_BINDING;
+
+/**
+ * These values MUST stay synchronized with the WGSL declaration:
+ *
+ *     @compute @workgroup_size(HISTORY_WORKGROUP_SIZE.x, HISTORY_WORKGROUP_SIZE.y)
+ */
+const HISTORY_WORKGROUP_SIZE = {
+    x: 8,
+    y: 8,
+};
+
+/**
  * Device-lifetime resources for the history accumulation compute pass.
  */
 export type HistoryDeviceResources = {
@@ -88,7 +118,7 @@ export function createHistorySurfaceResources(
                 label: label,
                 size: [viewportWidth, viewportHeight],
                 format: COLOR_FORMAT_HDR,
-                usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+                usage: HISTORY_TEXTURE_USAGE,
             })
         );
     };
@@ -102,14 +132,18 @@ export function createHistorySurfaceResources(
 export class HistoryComputePass {
     // cache views to avoid creating it every frame
     private readonly sceneView: GPUTextureView;
-
     private readonly historyViewA: GPUTextureView;
     private readonly historyViewB: GPUTextureView;
+
+    // cached bind groups (ping / pong)
+    private readonly bindGroupPing: GPUBindGroup;
+    private readonly bindGroupPong: GPUBindGroup;
 
     private ping = 0;
 
     constructor(
-        private readonly frameScope: GpuResourceScope,
+        device: GPUDevice,
+        frameScope: GpuResourceScope,
         private readonly pipeline: GPUComputePipeline,
         // scene texture produced by DrawPass
         sceneTex: GPUTexture,
@@ -121,9 +155,42 @@ export class HistoryComputePass {
         private readonly viewportHeight: number,
     ) {
         this.sceneView = sceneTex.createView();
-
         this.historyViewA = historyTexA.createView();
         this.historyViewB = historyTexB.createView();
+
+        const layout = this.pipeline.getBindGroupLayout(0);
+
+        // ping = 0
+        // prev = B
+        // dst  = A
+        this.bindGroupPing = frameScope.track(
+            device.createBindGroup({
+                label: 'History Compute BG (ping)',
+                layout,
+                entries: [
+                    { binding: 0, resource: this.sceneView },
+                    { binding: 1, resource: this.historyViewB },
+                    { binding: 2, resource: this.historyViewA },
+                    { binding: 3, resource: { buffer: this.paramsBuffer } },
+                ],
+            })
+        );
+
+        // ping = 1
+        // prev = A
+        // dst  = B
+        this.bindGroupPong = frameScope.track(
+            device.createBindGroup({
+                label: 'History Compute BG (pong)',
+                layout,
+                entries: [
+                    { binding: 0, resource: this.sceneView },
+                    { binding: 1, resource: this.historyViewA },
+                    { binding: 2, resource: this.historyViewB },
+                    { binding: 3, resource: { buffer: this.paramsBuffer } },
+                ],
+            })
+        );
     }
 
     getPrevView(): GPUTextureView {
@@ -137,26 +204,19 @@ export class HistoryComputePass {
     execute(ctx: RenderContext): void {
         const encoder = ctx.encoder;
 
-        const bindGroup = this.frameScope.track(
-            ctx.device.createBindGroup({
-                label: 'History Compute BG (frame)',
-                layout: this.pipeline.getBindGroupLayout(0),
-                entries: [
-                    { binding: 0, resource: this.sceneView },
-                    { binding: 1, resource: this.getPrevView() },
-                    { binding: 2, resource: this.getOutputView() },
-                    { binding: 3, resource: { buffer: this.paramsBuffer } },
-                ],
-            })
-        );
+        const bindGroup =
+            this.ping === 0
+                ? this.bindGroupPing
+                : this.bindGroupPong;
 
         const pass = encoder.beginComputePass();
+
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, bindGroup);
 
         // dispatch size: use 8x8 workgroups based on viewport size passed from the host
-        const workX = Math.ceil(this.viewportWidth / 8);
-        const workY = Math.ceil(this.viewportHeight / 8);
+        const workX = Math.ceil(this.viewportWidth / HISTORY_WORKGROUP_SIZE.x);
+        const workY = Math.ceil(this.viewportHeight / HISTORY_WORKGROUP_SIZE.y);
 
         pass.dispatchWorkgroups(workX, workY);
         pass.end();

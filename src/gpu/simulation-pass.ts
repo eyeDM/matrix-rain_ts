@@ -143,9 +143,10 @@ export class SimulationComputePass {
 
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, this.bindGroup);
-        const groups = Math.ceil(this.cols / WORKGROUP_SIZE_X);
-        pass.dispatchWorkgroups(groups);
 
+        const groups = Math.ceil(this.cols / WORKGROUP_SIZE_X);
+
+        pass.dispatchWorkgroups(groups);
         pass.end();
     }
 }

@@ -357,10 +357,10 @@ export class DrawPass {
         pass.setPipeline(this.pipeline);
         pass.setVertexBuffer(0, this.vertexBuffer);
         pass.setBindGroup(0, this.bindGroup);
+
         // 6 vertices = 2 triangles forming a quad;
         // instanced `instanceCount` times (one instance per glyph)
         pass.draw(6, this.instanceCount);
-
         pass.end();
     }
 }

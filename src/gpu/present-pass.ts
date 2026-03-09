@@ -111,6 +111,7 @@ export class PresentPass {
 
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, bindGroup);
+
         pass.draw(3); // fullscreen triangle
         pass.end();
     }

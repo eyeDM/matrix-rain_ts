@@ -38,7 +38,7 @@ struct HistoryParams {
 @group(0) @binding(2) var dstTex: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var<uniform> params: HistoryParams;
 
-@compute @workgroup_size(8,8)
+@compute @workgroup_size(8, 8)
 fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let dims = textureDimensions(sceneTex);
   if (gid.x >= dims.x || gid.y >= dims.y) { return; }

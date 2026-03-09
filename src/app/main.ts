@@ -375,6 +375,7 @@ export async function bootstrap(): Promise<void> {
         );
 
         const historyPass = new HistoryComputePass(
+            gpu.device,
             resources.frameScope,
             historyDeviceResources.pipeline,
             drawSurfaceResources.colorTex,
@@ -504,7 +505,7 @@ export async function bootstrap(): Promise<void> {
             gpu.device.limits,
         );
 
-        // 1. Update SOME Device-Lifetime GPU resources
+        // 1. Update ScreenLayout-dependent pass parameters
         updateDrawParams();
 
         // 2. Destroy ALL Surface-Lifetime GPU resources
