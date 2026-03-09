@@ -48,8 +48,8 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let scene = textureLoad(sceneTex, coords, 0);
   let prev = textureLoad(prevTex, coords, 0);
 
-  // simple exponential decay blend: out = prev * decay + scene
-  let outColor = prev * params.decay + scene;
+  // exponential moving average (EMA)
+  let outColor = scene * (1.0 - params.decay) + prev * params.decay;
 
   textureStore(dstTex, coords, outColor);
 }
