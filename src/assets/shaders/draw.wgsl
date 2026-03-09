@@ -196,11 +196,11 @@ fn vs_main(
   );
 
   // 3. energy per cell
-  let Ecell = column.energy * w / norm;
+  let cellEnergy = column.energy * w / norm;
 
   // 4. map energy -> brightness (soft saturation)
   let k = 1.6;
-  var brightnessLDR = 1.0 - exp(-k * Ecell);
+  var brightnessLDR = 1.0 - exp(-k * cellEnergy);
 
   // 5. ensure head dominance
   let headClamp = 0.18;
@@ -216,11 +216,12 @@ fn vs_main(
   // NOTE: `frame.time` is periodic [0, 2π), preventing precision loss in long sessions.
   let seedLow = f32(column.seed & PHASE_MASK) * PHASE_SCALE;
   let phase = seedLow * TWO_PI;
-  let angular = frame.time * params.flickerFrequency;
+  let angular = frame.time * TWO_PI * params.flickerFrequency;
   let flick = sin(angular + phase) * params.flickerAmplitude;
+  let flickExp = exp(flick);
 
-  out.v_brightness_ldr = max(0.0, brightnessLDR * (1.0 + flick));
-  out.v_brightness_hdr = max(0.0, Ecell * (1.0 + flick));
+  out.v_brightness_ldr = brightnessLDR * flickExp;
+  out.v_brightness_hdr = cellEnergy * flickExp;
   out.v_brightness_alpha = brightnessLDR;
   return out;
 }

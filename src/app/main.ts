@@ -122,8 +122,8 @@ function computeScreenLayout(
 
 const cfg: ConfigParameters = {
     // DrawParams
-    flickerAmplitude: 0.06,
-    flickerFrequency: 0.6,
+    flickerAmplitude: 0.08,
+    flickerFrequency: 1.6,
     // HistoryParams
     decay: 0.2,
     // PresentParams
