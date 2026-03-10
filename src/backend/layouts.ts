@@ -27,6 +27,24 @@ export const ViewportParamsLayout = {
     },
 } as const;
 
+// Glyph grid
+export const GlyphGridParamsLayout = {
+    ALIGN: 8,
+    SIZE: 48,
+    offsets: {
+        cellSize: 0,       // vec2<f32>: pixels
+        atlasTexelSize: 8, // vec2<f32>: in atlas UV space (1/width, 1/height)
+        glyphCount: 16,    // u32
+
+        cols: 20,          // u32
+        rows: 24,          // u32
+        maxTrail: 28,      // u32
+
+        _pad0: 40, // u32
+        _pad1: 44, // u32
+    },
+} as const;
+
 // Per-frame writing
 export const FrameParamsLayout = {
     ALIGN: 4,
@@ -48,37 +66,19 @@ export const SimulationParamsLayout = {
     },
 } as const;
 
-// Unified render params // glyph grid
-export const DrawParamsLayout = {
-    ALIGN: 8,
-    SIZE: 48,
-    offsets: {
-        cellSize: 0,          // vec2<f32>: pixels
-        atlasTexelSize: 8,    // vec2<f32>: in atlas UV space (1/width, 1/height)
-        glyphCount: 16,       // u32
-
-        cols: 20,             // u32
-        rows: 24,             // u32
-        maxTrail: 28,         // u32
-
-        _pad0: 40,  // f32
-        _pad1: 44, // f32
-    },
-} as const;
-
 // One instance per column
 export const ColumnStateLayout = {
     ALIGN: 4,
     SIZE: 32,
     offsets: {
-        seed: 0,    // u32: deterministic seed
-        head: 4,    // f32: head position in row-space (y)
-        length: 8,  // u32: trail length in cells
-        speed: 12,  // f32: cells per second
-        energy: 16, // f32: determines brightness
-        flicker: 20,// f32: brightness multiplier
-        _pad0: 24,  // u32
-        _pad1: 28,  // u32
+        seed: 0,     // u32: deterministic seed
+        head: 4,     // f32: head position in row-space (y)
+        length: 8,   // u32: trail length in cells
+        speed: 12,   // f32: cells per second
+        energy: 16,  // f32: determines brightness
+        flicker: 20, // f32: brightness multiplier
+        _pad0: 24,   // u32
+        _pad1: 28,   // u32
     },
 } as const;
 

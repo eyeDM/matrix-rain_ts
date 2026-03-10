@@ -9,7 +9,7 @@ import { ColumnsState } from '@gpu/column-state';
 import { ViewportParamsWriter } from '@gpu/viewport-params-writer';
 import { FrameParamsWriter } from '@gpu/frame-params-writer';
 import { SimulationParamsWriter } from '@gpu/simulation-params-writer';
-import { DrawParamsWriter } from '@gpu/draw-params-writer';
+import { GlyphGridParamsWriter } from '@gpu/glyph-grid-params-writer';
 import { HistoryParamsWriter } from '@gpu/history-params-writer';
 import { PresentParamsWriter } from '@gpu/present-params-writer';
 
@@ -245,20 +245,20 @@ export async function bootstrap(): Promise<void> {
         });
     };
 
-    const drawParamsWriter = new DrawParamsWriter(
+    const glyphGridParamsWriter = new GlyphGridParamsWriter(
         gpu.device,
         resources.deviceScope,
     );
-    const updateDrawParams = (): void => {
-        drawParamsWriter.update({
+    const updateGlyphGridParams = (): void => {
+        glyphGridParamsWriter.update({
             cellWidth: atlas.layout.cellWidth,
             cellHeight: atlas.layout.cellHeight,
             atlasWidth: atlas.layout.atlasWidth,
             atlasHeight: atlas.layout.atlasHeight,
             glyphCount: atlas.glyphs.count,
 
-            gridCols: layout.grid.cols,
-            gridRows: layout.grid.rows,
+            cols: layout.grid.cols,
+            rows: layout.grid.rows,
             maxTrail: layout.instances.maxTrail,
         });
     };
@@ -335,10 +335,10 @@ export async function bootstrap(): Promise<void> {
             resources.surfaceScope,
             simDeviceResources.pipeline,
             {
-                columnStateBuffer: columnsState.buffer,
+                glyphGridParamsBuffer: glyphGridParamsWriter.buffer,
                 frameParamsBuffer: frameParamsWriter.buffer,
                 simulationParamsBuffer: simulationParamsWriter.buffer,
-                drawParamsBuffer: drawParamsWriter.buffer,
+                columnStateBuffer: columnsState.buffer,
             },
         );
 
@@ -348,12 +348,12 @@ export async function bootstrap(): Promise<void> {
             shaderLoader.get('matrix-draw'),
             drawDeviceResources.bindGroupLayout,
             {
-                atlasSampler: atlas.resources.sampler,
                 atlasTextureView: atlas.resources.textureView,
+                atlasSampler: atlas.resources.sampler,
                 glyphUVsBuffer: atlas.resources.uvBuffer,
                 columnStateBuffer: columnsState.buffer,
                 viewportParamsBuffer: viewportParamsWriter.buffer,
-                drawParamsBuffer: drawParamsWriter.buffer,
+                glyphGridParamsBuffer: glyphGridParamsWriter.buffer,
             },
             atlas.glyphs.minBindingSize,
             layout.viewport.width,
@@ -486,7 +486,7 @@ export async function bootstrap(): Promise<void> {
 
     updateViewportParams();
     updateSimulationParams();
-    updateDrawParams();
+    updateGlyphGridParams();
     updateHistoryParams();
     updatePresentParams();
 
@@ -533,7 +533,7 @@ export async function bootstrap(): Promise<void> {
 
         // 1. Update ScreenLayout-dependent pass parameters
         updateViewportParams();
-        updateDrawParams();
+        updateGlyphGridParams();
 
         // 2. Destroy ALL Surface-Lifetime GPU resources
         resources.surfaceScope.destroyAll();

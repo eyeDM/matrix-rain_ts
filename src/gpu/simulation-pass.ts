@@ -1,7 +1,7 @@
 import {
     FrameParamsLayout,
-    DrawParamsLayout,
-    ColumnStateLayout
+    SimulationParamsLayout,
+    GlyphGridParamsLayout,
 } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
@@ -25,17 +25,17 @@ export function createSimulationDeviceResources(
         device.createBindGroupLayout({
             label: 'SimulationComputePass BGL',
             entries: [
-                /* --- ColumnState[] storage --- */
+                /* --- GlyphGridParams uniform --- */
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
-                        type: 'storage', // read_write
-                        minBindingSize: ColumnStateLayout.SIZE,
+                        type: 'uniform',
+                        minBindingSize: GlyphGridParamsLayout.SIZE,
                     },
                 },
 
-                /* --- TimeParams uniform --- */
+                /* --- FrameParams uniform --- */
                 {
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
@@ -45,13 +45,23 @@ export function createSimulationDeviceResources(
                     },
                 },
 
-                /* --- DrawParams uniform --- */
+                /* --- SimulationParams uniform --- */
                 {
                     binding: 2,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
                         type: 'uniform',
-                        minBindingSize: DrawParamsLayout.SIZE,
+                        minBindingSize: SimulationParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- ColumnState[] storage --- */
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: 'storage', // read_write
+                        //minBindingSize: ColumnStateLayout.SIZE,
                     },
                 },
             ],
@@ -91,9 +101,10 @@ export function createSimulationSurfaceResources(
     scope: GpuResourceScope,
     pipeline: GPUComputePipeline,
     resources: {
-        columnStateBuffer: GPUBuffer,
+        glyphGridParamsBuffer: GPUBuffer,
         frameParamsBuffer: GPUBuffer,
-        drawParamsBuffer: GPUBuffer,
+        simulationParamsBuffer: GPUBuffer,
+        columnStateBuffer: GPUBuffer,
     },
 ): SimulationSurfaceResources {
     const bindGroup = scope.track(
@@ -104,8 +115,9 @@ export function createSimulationSurfaceResources(
                 {
                     binding: 0,
                     resource: {
-                        buffer: resources.columnStateBuffer,
+                        buffer: resources.glyphGridParamsBuffer,
                         offset: 0,
+                        size: GlyphGridParamsLayout.SIZE,
                     },
                 },
                 {
@@ -119,9 +131,16 @@ export function createSimulationSurfaceResources(
                 {
                     binding: 2,
                     resource: {
-                        buffer: resources.drawParamsBuffer,
+                        buffer: resources.simulationParamsBuffer,
                         offset: 0,
-                        size: DrawParamsLayout.SIZE,
+                        size: SimulationParamsLayout.SIZE,
+                    },
+                },
+                {
+                    binding: 3,
+                    resource: {
+                        buffer: resources.columnStateBuffer,
+                        offset: 0,
                     },
                 },
             ],

@@ -5,14 +5,15 @@
 
 /* --- Data layouts --- */
 
-/* {@see ColumnStateLayout@backend/layouts} */
-struct ColumnState {
-  seed: u32,
-  head: f32,
-  length: u32,
-  speed: f32,
-  energy: f32,
-  flicker: f32,
+/* {@see GlyphGridParamsLayout@backend/layouts} */
+struct GlyphGridParams {
+  cellSize: vec2<f32>,
+  atlasTexelSize: vec2<f32>,
+  glyphCount: u32,
+
+  cols: u32,
+  rows: u32,
+  maxTrail: u32,
 
   pad0: u32,
   pad1: u32,
@@ -33,15 +34,17 @@ struct SimulationParams {
   flickerFrequency: f32,
 };
 
-/* {@see DrawParamsLayout@backend/layouts} */
-struct DrawParams {
-  cellSize: vec2<f32>,
-  atlasTexelSize: vec2<f32>,
-  glyphCount: u32,
+/* {@see ColumnStateLayout@backend/layouts} */
+struct ColumnState {
+  seed: u32,
+  head: f32,
+  length: u32,
+  speed: f32,
+  energy: f32,
+  flicker: f32,
 
-  cols: u32,
-  rows: u32,
-  maxTrail: u32,
+  pad0: u32,
+  pad1: u32,
 };
 
 /* --- RNG --- */
@@ -141,10 +144,10 @@ fn respawn_column(
   (*state).seed = rng_next(rng);
 }
 
-@group(0) @binding(0) var<storage, read_write> columns: array<ColumnState>;
+@group(0) @binding(0) var<uniform> grid: GlyphGridParams;
 @group(0) @binding(1) var<uniform> frame: FrameParams;
 @group(0) @binding(2) var<uniform> params: SimulationParams;
-@group(0) @binding(3) var<uniform> grid: DrawParams;
+@group(0) @binding(3) var<storage, read_write> columns: array<ColumnState>;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {

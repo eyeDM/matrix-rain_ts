@@ -1,19 +1,19 @@
-import { DrawParamsLayout } from '@backend/layouts';
+import { GlyphGridParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
-export type DrawParams = {
+export type GlyphGridParams = {
     cellWidth: number;
     cellHeight: number;
     atlasWidth: number;
     atlasHeight: number;
     glyphCount: number;
 
-    gridCols: number;
-    gridRows: number;
+    cols: number;
+    rows: number;
     maxTrail: number;
 }
 
-export class DrawParamsWriter {
+export class GlyphGridParamsWriter {
     readonly buffer: GPUBuffer;
 
     private readonly staging: ArrayBuffer;
@@ -27,12 +27,12 @@ export class DrawParamsWriter {
         this.buffer = scope.trackDestroyable(
             device.createBuffer({
                 label: 'DrawParams Uniform Buffer',
-                size: DrawParamsLayout.SIZE,
+                size: GlyphGridParamsLayout.SIZE,
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             })
         );
 
-        this.staging = new ArrayBuffer(DrawParamsLayout.SIZE);
+        this.staging = new ArrayBuffer(GlyphGridParamsLayout.SIZE);
         this.viewF32 = new Float32Array(this.staging);
         this.viewU32 = new Uint32Array(this.staging);
     }
@@ -41,26 +41,26 @@ export class DrawParamsWriter {
      * Set all Surface-Lifetime parameters.
      * Intended for init-time or resize-time updates.
      */
-    set(params: DrawParams): void {
-        this.viewF32[DrawParamsLayout.offsets.cellSize / 4] =
+    set(params: GlyphGridParams): void {
+        this.viewF32[GlyphGridParamsLayout.offsets.cellSize / 4] =
             params.cellWidth;
-        this.viewF32[DrawParamsLayout.offsets.cellSize / 4 + 1] =
+        this.viewF32[GlyphGridParamsLayout.offsets.cellSize / 4 + 1] =
             params.cellHeight;
 
-        this.viewF32[DrawParamsLayout.offsets.atlasTexelSize / 4] =
+        this.viewF32[GlyphGridParamsLayout.offsets.atlasTexelSize / 4] =
             1.0 / params.atlasWidth;
-        this.viewF32[DrawParamsLayout.offsets.atlasTexelSize / 4 + 1] =
+        this.viewF32[GlyphGridParamsLayout.offsets.atlasTexelSize / 4 + 1] =
             1.0 / params.atlasHeight;
 
-        this.viewU32[DrawParamsLayout.offsets.glyphCount / 4] =
+        this.viewU32[GlyphGridParamsLayout.offsets.glyphCount / 4] =
             params.glyphCount;
 
-        this.viewU32[DrawParamsLayout.offsets.cols / 4] =
-            params.gridCols;
-        this.viewU32[DrawParamsLayout.offsets.rows / 4] =
-            params.gridRows;
+        this.viewU32[GlyphGridParamsLayout.offsets.cols / 4] =
+            params.cols;
+        this.viewU32[GlyphGridParamsLayout.offsets.rows / 4] =
+            params.rows;
 
-        this.viewU32[DrawParamsLayout.offsets.maxTrail / 4] =
+        this.viewU32[GlyphGridParamsLayout.offsets.maxTrail / 4] =
             params.maxTrail;
     }
 
@@ -72,7 +72,7 @@ export class DrawParamsWriter {
         this.device.queue.writeBuffer(this.buffer, 0, this.staging);
     }
 
-    update(params: DrawParams): void {
+    update(params: GlyphGridParams): void {
         this.set(params);
         this.flush();
     }

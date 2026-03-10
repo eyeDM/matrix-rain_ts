@@ -4,6 +4,29 @@
 
 /* --- Data layouts --- */
 
+/* {@see ViewportParamsLayout@backend/layouts} */
+struct ViewportParams {
+  width: u32,
+  height: u32,
+
+  pad0: u32,
+  pad1: u32,
+};
+
+/* {@see GlyphGridParamsLayout@backend/layouts} */
+struct GlyphGridParams {
+  cellSize: vec2<f32>,
+  atlasTexelSize: vec2<f32>,
+  glyphCount: u32,
+
+  cols: u32,
+  rows: u32,
+  maxTrail: u32,
+
+  pad0: u32,
+  pad1: u32,
+};
+
 /* {@see ColumnStateLayout@backend/layouts} */
 struct ColumnState {
   seed: u32,
@@ -15,26 +38,6 @@ struct ColumnState {
 
   pad0: u32,
   pad1: u32,
-};
-
-/* {@see ViewportParamsLayout@backend/layouts} */
-struct ViewportParams {
-  width: u32,
-  height: u32,
-
-  pad0: u32,
-  pad1: u32,
-};
-
-/* {@see DrawParamsLayout@backend/layouts} */
-struct DrawParams {
-  cellSize: vec2<f32>,
-  atlasTexelSize: vec2<f32>,
-  glyphCount: u32,
-
-  cols: u32,
-  rows: u32,
-  maxTrail: u32,
 };
 
 /* {@see GLYPH_UV_FLOAT_COUNT@domain/glyph-atlas} */
@@ -60,12 +63,12 @@ fn hash_u32(x: u32) -> u32 {
   return v;
 }
 
-@group(0) @binding(0) var atlasSampler: sampler;
-@group(0) @binding(1) var atlasTexture: texture_2d<f32>;
-@group(0) @binding(2) var<storage, read> glyphUVs: array<GlyphUV>;
-@group(0) @binding(3) var<storage, read> columns: array<ColumnState>;
-@group(0) @binding(4) var<uniform> viewport: ViewportParams;
-@group(0) @binding(5) var<uniform> params: DrawParams;
+@group(0) @binding(0) var<uniform> viewport: ViewportParams;
+@group(0) @binding(1) var<uniform> grid: GlyphGridParams;
+@group(0) @binding(2) var<storage, read> columns: array<ColumnState>;
+@group(0) @binding(3) var<storage, read> glyphUVs: array<GlyphUV>;
+@group(0) @binding(4) var atlasTexture: texture_2d<f32>;
+@group(0) @binding(5) var atlasSampler: sampler;
 
 struct VSOut {
   @builtin(position) Position: vec4<f32>,
@@ -86,8 +89,8 @@ fn vs_main(
 
   /* --- Instance → (colIdx, cellIdx) --- */
 
-  let colIdx: u32 = instanceIdx % params.cols;
-  let cellIdx: u32 = instanceIdx / params.cols;
+  let colIdx: u32 = instanceIdx % grid.cols;
+  let cellIdx: u32 = instanceIdx / grid.cols;
 
   let column = columns[colIdx];
 
@@ -112,17 +115,17 @@ fn vs_main(
   var row = headRow - i32(cellIdx);
 
   if (row < 0) {
-    row += i32(params.rows);
+    row += i32(grid.rows);
   }
 
   /* --- Pixel-space position --- */
 
   let pixelOffset = vec2<f32>(
-    f32(colIdx) * params.cellSize.x,
-    f32(row)    * params.cellSize.y
+    f32(colIdx) * grid.cellSize.x,
+    f32(row)    * grid.cellSize.y
   );
 
-  let pixelPos = pixelOffset + (pos + vec2<f32>(0.5, 0.5)) * params.cellSize;
+  let pixelPos = pixelOffset + (pos + vec2<f32>(0.5, 0.5)) * grid.cellSize;
 
   /* --- Pixel → NDC --- */
 
@@ -136,11 +139,11 @@ fn vs_main(
   /* --- Glyph selection --- */
 
   let gh = hash_u32(column.seed ^ (cellIdx + 1u));
-  let glyphIdx = gh % params.glyphCount;
+  let glyphIdx = gh % grid.glyphCount;
   let glyphUV = glyphUVs[glyphIdx];
 
   // safe inset (sub-texel safe zone)
-  let inset = params.atlasTexelSize * 0.75;
+  let inset = grid.atlasTexelSize * 0.75;
 
   // interpolate inside cell
   let rawUV = glyphUV.uv0 + uv * (glyphUV.uv1 - glyphUV.uv0);

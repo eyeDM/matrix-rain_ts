@@ -1,4 +1,4 @@
-import { ViewportParamsLayout, DrawParamsLayout } from '@backend/layouts';
+import { ViewportParamsLayout, GlyphGridParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -69,18 +69,49 @@ export function createDrawDeviceResources(
         device.createBindGroupLayout({
             label: 'DrawPass BGL',
             entries: [
-                /* --- Atlas sampler --- */
+                /* --- ViewportParams uniform --- */
                 {
                     binding: 0,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    sampler: {
-                        type: 'filtering',
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: ViewportParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- GlyphGridParams uniform --- */
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: GlyphGridParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- ColumnState[] storage --- */
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'read-only-storage',
+                        //minBindingSize: ColumnStateLayout.SIZE,
+                    },
+                },
+
+                /* --- Glyph UV rects --- */
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.VERTEX,
+                    buffer: {
+                        type: 'read-only-storage',
+                        minBindingSize: glyphUVsMinBindingSize,
                     },
                 },
 
                 /* --- Atlas texture --- */
                 {
-                    binding: 1,
+                    binding: 4,
                     visibility: GPUShaderStage.FRAGMENT,
                     texture: {
                         sampleType: 'float',
@@ -89,43 +120,12 @@ export function createDrawDeviceResources(
                     },
                 },
 
-                /* --- Glyph UV rects --- */
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: 'read-only-storage',
-                        minBindingSize: glyphUVsMinBindingSize,
-                    },
-                },
-
-                /* --- ColumnState[] storage --- */
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: 'read-only-storage',
-                        //minBindingSize: ColumnStateLayout.SIZE,
-                    },
-                },
-
-                /* --- ViewportParams uniform --- */
-                {
-                    binding: 4,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: 'uniform',
-                        minBindingSize: ViewportParamsLayout.SIZE,
-                    },
-                },
-
-                /* --- DrawParams uniform --- */
+                /* --- Atlas sampler --- */
                 {
                     binding: 5,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: 'uniform',
-                        minBindingSize: DrawParamsLayout.SIZE,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    sampler: {
+                        type: 'filtering',
                     },
                 },
             ],
@@ -151,12 +151,12 @@ export function createDrawSurfaceResources(
     shader: GPUShaderModule,
     bindGroupLayout: GPUBindGroupLayout,
     resources: {
-        atlasSampler: GPUSampler,
         atlasTextureView: GPUTextureView,
+        atlasSampler: GPUSampler,
         glyphUVsBuffer: GPUBuffer,
         columnStateBuffer: GPUBuffer,
         viewportParamsBuffer: GPUBuffer,
-        drawParamsBuffer: GPUBuffer,
+        glyphGridParamsBuffer: GPUBuffer,
     },
     glyphUVsMinBindingSize: number,
     viewportWidth: number,
@@ -169,22 +169,22 @@ export function createDrawSurfaceResources(
             entries: [
                 {
                     binding: 0,
-                    resource: resources.atlasSampler,
-                },
-                {
-                    binding: 1,
-                    resource: resources.atlasTextureView,
-                },
-                {
-                    binding: 2,
                     resource: {
-                        buffer: resources.glyphUVsBuffer,
+                        buffer: resources.viewportParamsBuffer,
                         offset: 0,
-                        size: glyphUVsMinBindingSize,
+                        size: ViewportParamsLayout.SIZE,
                     },
                 },
                 {
-                    binding: 3,
+                    binding: 1,
+                    resource: {
+                        buffer: resources.glyphGridParamsBuffer,
+                        offset: 0,
+                        size: GlyphGridParamsLayout.SIZE,
+                    },
+                },
+                {
+                    binding: 2,
                     resource: {
                         buffer: resources.columnStateBuffer,
                         offset: 0,
@@ -193,20 +193,20 @@ export function createDrawSurfaceResources(
                     },
                 },
                 {
-                    binding: 4,
+                    binding: 3,
                     resource: {
-                        buffer: resources.viewportParamsBuffer,
+                        buffer: resources.glyphUVsBuffer,
                         offset: 0,
-                        size: ViewportParamsLayout.SIZE,
+                        size: glyphUVsMinBindingSize,
                     },
                 },
                 {
+                    binding: 4,
+                    resource: resources.atlasTextureView,
+                },
+                {
                     binding: 5,
-                    resource: {
-                        buffer: resources.drawParamsBuffer,
-                        offset: 0,
-                        size: DrawParamsLayout.SIZE,
-                    },
+                    resource: resources.atlasSampler,
                 },
             ],
         })
