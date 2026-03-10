@@ -20,7 +20,7 @@ export class HistoryParamsWriter {
     ) {
         this.buffer = scope.trackDestroyable(
             this.device.createBuffer({
-                label: 'History Params',
+                label: 'HistoryParams Uniform Buffer',
                 size: HistoryParamsLayout.SIZE,
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             })

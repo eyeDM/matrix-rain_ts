@@ -18,7 +18,7 @@ export class FrameParamsWriter {
     ) {
         this.buffer = scope.trackDestroyable(
             this.device.createBuffer({
-                label: 'Frame Params',
+                label: 'FrameParams Uniform Buffer',
                 size: FrameParamsLayout.SIZE,
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             })

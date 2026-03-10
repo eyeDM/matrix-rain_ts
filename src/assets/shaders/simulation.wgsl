@@ -7,15 +7,15 @@
 
 /* {@see ColumnStateLayout@backend/layouts} */
 struct ColumnState {
+  seed: u32,
   head: f32,
+  length: u32,
   speed: f32,
   energy: f32,
-  length: u32,
-  seed: u32,
+  flicker: f32,
 
   pad0: u32,
   pad1: u32,
-  pad2: u32,
 };
 
 /* {@see FrameParamsLayout@backend/layouts} */
@@ -27,19 +27,21 @@ struct FrameParams {
   pad1: f32,
 };
 
+/* {@see SimulationParamsLayout@backend/layouts} */
+struct SimulationParams {
+  flickerAmplitude: f32,
+  flickerFrequency: f32,
+};
+
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
   cellSize: vec2<f32>,
   atlasTexelSize: vec2<f32>,
+  glyphCount: u32,
 
   cols: u32,
   rows: u32,
   maxTrail: u32,
-
-  glyphCount: u32,
-
-  flickerAmplitude: f32,
-  flickerFrequency: f32,
 };
 
 /* --- RNG --- */
@@ -66,6 +68,11 @@ const ENERGY_SPEED_FACTOR: f32 = 0.25;
 const ENERGY_LENGTH_FACTOR: f32 = 0.05;
 
 const LN2: f32 = 0.69314718056;
+
+// Constants for deterministic per-column flicker
+const PHASE_MASK: u32 = 0xffffu; // use lower 16 bits of seed
+const PHASE_SCALE: f32 = 1.0 / 65536.0; // reciprocal of (PHASE_MASK + 1)
+const TWO_PI: f32 = 6.283185307179586;
 
 // PCG hash / Murmur-style mix (stateless, deterministic)
 fn hash_u32(x: u32) -> u32 {
@@ -126,7 +133,7 @@ fn respawn_column(
   (*state).speed = SPEED_MIN + SPEED_VARIANCE * r0;
   (*state).length = min(
     TRAIL_LENGTH_MIN + u32(TRAIL_LENGTH_VARIANCE * r1),
-    params.maxTrail
+    grid.maxTrail
   );
 
   (*state).energy = (CELL_ENERGY_MIN + CELL_ENERGY_VARIANCE * r2) * f32((*state).length);
@@ -136,12 +143,13 @@ fn respawn_column(
 
 @group(0) @binding(0) var<storage, read_write> columns: array<ColumnState>;
 @group(0) @binding(1) var<uniform> frame: FrameParams;
-@group(0) @binding(2) var<uniform> params: DrawParams;
+@group(0) @binding(2) var<uniform> params: SimulationParams;
+@group(0) @binding(3) var<uniform> grid: DrawParams;
 
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let colIdx: u32 = gid.x;
-  if (colIdx >= params.cols) {
+  if (colIdx >= grid.cols) {
     return;
   }
 
@@ -155,13 +163,23 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // respawn condition
   let tail: f32 = state.head - f32(state.length);
 
-  let is_respawn: bool = tail > f32(params.rows) || state.energy <= 0.0;
+  let is_respawn: bool = tail > f32(grid.rows) || state.energy <= 0.0;
 
   if (is_respawn) {
     respawn_column(&state, &rng);
   } else {
     change_energy(&state);
   }
+
+  // Deterministic per-column flicker: derive a stable phase from the column seed.
+  // Use lower 16 bits of seed for a quick phase, map to [0, TWO_PI).
+  // NOTE: `frame.time` is periodic [0, 2π), preventing precision loss in long sessions.
+  let seedLow = f32(state.seed & PHASE_MASK) * PHASE_SCALE;
+  let phase = seedLow * TWO_PI;
+  let angular = frame.time * TWO_PI * params.flickerFrequency;
+  let flick = sin(angular + phase) * params.flickerAmplitude;
+
+  state.flicker = exp(flick);
 
   columns[colIdx] = state;
 }

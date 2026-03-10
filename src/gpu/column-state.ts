@@ -12,11 +12,12 @@ const TRAIL_LENGTH_MIN = 4;
 const TRAIL_LENGTH_VARIANCE = 20;
 
 /*type ColumnState = {
+    seed: number;
     head: number;
+    length: number;
     speed: number;
     energy: number;
-    length: number;
-    seed: number;
+    flicker: number;
 }*/
 
 export class ColumnsState {
@@ -67,12 +68,15 @@ export class ColumnsState {
             const energy
                 = (CELL_ENERGY_MIN + CELL_ENERGY_VARIANCE * rng()) * length;
 
+            const flicker = 1;
+
             const base = (i * ColumnStateLayout.SIZE) / 4;
+            this.viewU32[base + ColumnStateLayout.offsets.seed / 4] = seed;
             this.viewF32[base + ColumnStateLayout.offsets.head / 4] = head;
+            this.viewU32[base + ColumnStateLayout.offsets.length / 4] = length;
             this.viewF32[base + ColumnStateLayout.offsets.speed / 4] = speed;
             this.viewF32[base + ColumnStateLayout.offsets.energy / 4] = energy;
-            this.viewU32[base + ColumnStateLayout.offsets.length / 4] = length;
-            this.viewU32[base + ColumnStateLayout.offsets.seed / 4] = seed;
+            this.viewF32[base + ColumnStateLayout.offsets.flicker / 4] = flicker;
         }
 
         device.queue.writeBuffer(this.buffer, 0, this.staging);

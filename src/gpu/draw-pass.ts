@@ -1,9 +1,4 @@
-import {
-    ViewportParamsLayout,
-    FrameParamsLayout,
-    DrawParamsLayout,
-    ColumnStateLayout
-} from '@backend/layouts';
+import { ViewportParamsLayout, DrawParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -110,7 +105,7 @@ export function createDrawDeviceResources(
                     visibility: GPUShaderStage.VERTEX,
                     buffer: {
                         type: 'read-only-storage',
-                        minBindingSize: ColumnStateLayout.SIZE,
+                        //minBindingSize: ColumnStateLayout.SIZE,
                     },
                 },
 
@@ -124,19 +119,9 @@ export function createDrawDeviceResources(
                     },
                 },
 
-                /* --- FrameParams uniform --- */
-                {
-                    binding: 5,
-                    visibility: GPUShaderStage.VERTEX,
-                    buffer: {
-                        type: 'uniform',
-                        minBindingSize: FrameParamsLayout.SIZE,
-                    },
-                },
-
                 /* --- DrawParams uniform --- */
                 {
-                    binding: 6,
+                    binding: 5,
                     visibility: GPUShaderStage.VERTEX,
                     buffer: {
                         type: 'uniform',
@@ -171,7 +156,6 @@ export function createDrawSurfaceResources(
         glyphUVsBuffer: GPUBuffer,
         columnStateBuffer: GPUBuffer,
         viewportParamsBuffer: GPUBuffer,
-        frameParamsBuffer: GPUBuffer,
         drawParamsBuffer: GPUBuffer,
     },
     glyphUVsMinBindingSize: number,
@@ -218,14 +202,6 @@ export function createDrawSurfaceResources(
                 },
                 {
                     binding: 5,
-                    resource: {
-                        buffer: resources.frameParamsBuffer,
-                        offset: 0,
-                        size: FrameParamsLayout.SIZE,
-                    },
-                },
-                {
-                    binding: 6,
                     resource: {
                         buffer: resources.drawParamsBuffer,
                         offset: 0,

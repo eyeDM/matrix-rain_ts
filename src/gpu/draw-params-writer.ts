@@ -11,15 +11,8 @@ export type DrawParams = {
     gridCols: number;
     gridRows: number;
     maxTrail: number;
-
-    flickerAmplitude: number;
-    flickerFrequency: number;
 }
 
-/**
- * CPU-side writer for `DrawParams`.
- * Owns the full layout and guarantees a single upload per frame.
- */
 export class DrawParamsWriter {
     readonly buffer: GPUBuffer;
 
@@ -69,11 +62,6 @@ export class DrawParamsWriter {
 
         this.viewU32[DrawParamsLayout.offsets.maxTrail / 4] =
             params.maxTrail;
-
-        this.viewF32[DrawParamsLayout.offsets.flickerAmplitude / 4] =
-            params.flickerAmplitude;
-        this.viewF32[DrawParamsLayout.offsets.flickerFrequency / 4] =
-            params.flickerFrequency;
     }
 
     /**

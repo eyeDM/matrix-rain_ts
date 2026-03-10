@@ -6,15 +6,15 @@
 
 /* {@see ColumnStateLayout@backend/layouts} */
 struct ColumnState {
+  seed: u32,
   head: f32,
+  length: u32,
   speed: f32,
   energy: f32,
-  length: u32,
-  seed: u32,
+  flicker: f32,
 
   pad0: u32,
   pad1: u32,
-  pad2: u32,
 };
 
 /* {@see ViewportParamsLayout@backend/layouts} */
@@ -26,28 +26,15 @@ struct ViewportParams {
   pad1: u32,
 };
 
-/* {@see FrameParamsLayout@backend/layouts} */
-struct FrameParams {
-  dt: f32,
-  time: f32,
-
-  pad0: f32,
-  pad1: f32,
-};
-
 /* {@see DrawParamsLayout@backend/layouts} */
 struct DrawParams {
   cellSize: vec2<f32>,
   atlasTexelSize: vec2<f32>,
+  glyphCount: u32,
 
   cols: u32,
   rows: u32,
   maxTrail: u32,
-
-  glyphCount: u32,
-
-  flickerAmplitude: f32,
-  flickerFrequency: f32,
 };
 
 /* {@see GLYPH_UV_FLOAT_COUNT@domain/glyph-atlas} */
@@ -59,11 +46,6 @@ struct GlyphUV {
 /* --- Constants (must match simulation) --- */
 
 const HEAD_BRIGHTNESS_BOOST: f32 = 1.15;
-
-// Constants for deterministic per-column flicker
-const PHASE_MASK: u32 = 0xffffu; // use lower 16 bits of seed
-const PHASE_SCALE: f32 = 1.0 / 65536.0; // reciprocal of (PHASE_MASK + 1)
-const TWO_PI: f32 = 6.283185307179586;
 
 const BLOOM_THRESHOLD: f32 = 1.2;
 
@@ -83,8 +65,7 @@ fn hash_u32(x: u32) -> u32 {
 @group(0) @binding(2) var<storage, read> glyphUVs: array<GlyphUV>;
 @group(0) @binding(3) var<storage, read> columns: array<ColumnState>;
 @group(0) @binding(4) var<uniform> viewport: ViewportParams;
-@group(0) @binding(5) var<uniform> frame: FrameParams;
-@group(0) @binding(6) var<uniform> params: DrawParams;
+@group(0) @binding(5) var<uniform> params: DrawParams;
 
 struct VSOut {
   @builtin(position) Position: vec4<f32>,
@@ -211,17 +192,8 @@ fn vs_main(
     brightnessLDR *= HEAD_BRIGHTNESS_BOOST;
   }
 
-  // Deterministic per-column flicker: derive a stable phase from the column seed.
-  // Use lower 16 bits of seed for a quick phase, map to [0, TWO_PI).
-  // NOTE: `frame.time` is periodic [0, 2π), preventing precision loss in long sessions.
-  let seedLow = f32(column.seed & PHASE_MASK) * PHASE_SCALE;
-  let phase = seedLow * TWO_PI;
-  let angular = frame.time * TWO_PI * params.flickerFrequency;
-  let flick = sin(angular + phase) * params.flickerAmplitude;
-  let flickExp = exp(flick);
-
-  out.v_brightness_ldr = brightnessLDR * flickExp;
-  out.v_brightness_hdr = cellEnergy * flickExp;
+  out.v_brightness_ldr = brightnessLDR * column.flicker;
+  out.v_brightness_hdr = cellEnergy * column.flicker;
   out.v_brightness_alpha = brightnessLDR;
   return out;
 }

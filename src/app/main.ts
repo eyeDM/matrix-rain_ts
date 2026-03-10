@@ -8,6 +8,7 @@ import { GpuResources } from '@backend/resource-tracker';
 import { ColumnsState } from '@gpu/column-state';
 import { ViewportParamsWriter } from '@gpu/viewport-params-writer';
 import { FrameParamsWriter } from '@gpu/frame-params-writer';
+import { SimulationParamsWriter } from '@gpu/simulation-params-writer';
 import { DrawParamsWriter } from '@gpu/draw-params-writer';
 import { HistoryParamsWriter } from '@gpu/history-params-writer';
 import { PresentParamsWriter } from '@gpu/present-params-writer';
@@ -233,6 +234,17 @@ export async function bootstrap(): Promise<void> {
         resources.deviceScope,
     );
 
+    const simulationParamsWriter = new SimulationParamsWriter(
+        gpu.device,
+        resources.deviceScope,
+    );
+    const updateSimulationParams = (): void => {
+        simulationParamsWriter.update({
+            flickerAmplitude: cfg.flickerAmplitude,
+            flickerFrequency: cfg.flickerFrequency,
+        });
+    };
+
     const drawParamsWriter = new DrawParamsWriter(
         gpu.device,
         resources.deviceScope,
@@ -248,9 +260,6 @@ export async function bootstrap(): Promise<void> {
             gridCols: layout.grid.cols,
             gridRows: layout.grid.rows,
             maxTrail: layout.instances.maxTrail,
-
-            flickerAmplitude: cfg.flickerAmplitude,
-            flickerFrequency: cfg.flickerFrequency,
         });
     };
 
@@ -328,6 +337,7 @@ export async function bootstrap(): Promise<void> {
             {
                 columnStateBuffer: columnsState.buffer,
                 frameParamsBuffer: frameParamsWriter.buffer,
+                simulationParamsBuffer: simulationParamsWriter.buffer,
                 drawParamsBuffer: drawParamsWriter.buffer,
             },
         );
@@ -343,7 +353,6 @@ export async function bootstrap(): Promise<void> {
                 glyphUVsBuffer: atlas.resources.uvBuffer,
                 columnStateBuffer: columnsState.buffer,
                 viewportParamsBuffer: viewportParamsWriter.buffer,
-                frameParamsBuffer: frameParamsWriter.buffer,
                 drawParamsBuffer: drawParamsWriter.buffer,
             },
             atlas.glyphs.minBindingSize,
@@ -476,6 +485,7 @@ export async function bootstrap(): Promise<void> {
     // --- Initial data ---
 
     updateViewportParams();
+    updateSimulationParams();
     updateDrawParams();
     updateHistoryParams();
     updatePresentParams();
@@ -546,7 +556,7 @@ export async function bootstrap(): Promise<void> {
                 cfg.flickerAmplitude !== oldCfg.flickerAmplitude
                 || cfg.flickerFrequency !== oldCfg.flickerFrequency
             ) {
-                updateDrawParams();
+                updateSimulationParams();
             }
 
             if (cfg.decay !== oldCfg.decay) {

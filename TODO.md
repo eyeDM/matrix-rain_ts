@@ -1,5 +1,10 @@
 # TODO
 
+## SimulationParams
+
+Вынести константы, определяющие ColumnState, в uniform buffer.
+Сделать их изменяемыми через UI.
+
 ## Продвинутый Blur
 
 ### Downsample → Blur → Upsample

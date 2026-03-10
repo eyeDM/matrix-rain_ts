@@ -18,7 +18,7 @@ export class ViewportParamsWriter {
     ) {
         this.buffer = scope.trackDestroyable(
             this.device.createBuffer({
-                label: 'Viewport Params',
+                label: 'ViewportParams Uniform Buffer',
                 size: ViewportParamsLayout.SIZE,
                 usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             })
