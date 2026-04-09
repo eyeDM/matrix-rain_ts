@@ -27,14 +27,13 @@
     "resolveJsonModule": true,
 
     /* Path aliases */
-    "baseUrl": ".",
     "paths": {
-      "@app/*": ["src/app/*"],
-      "@assets/*": ["src/assets/*"],
-      "@backend/*": ["src/backend/*"],
-      "@domain/*": ["src/domain/*"],
-      "@gpu/*": ["src/gpu/*"],
-      "@runtime/*": ["src/runtime/*"]
+      "@app/*": ["./src/app/*"],
+      "@assets/*": ["./src/assets/*"],
+      "@backend/*": ["./src/backend/*"],
+      "@domain/*": ["./src/domain/*"],
+      "@gpu/*": ["./src/gpu/*"],
+      "@runtime/*": ["./src/runtime/*"]
     }
   },
   "include": ["src"]
