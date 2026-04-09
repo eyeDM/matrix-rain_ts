@@ -467,7 +467,9 @@ async function createGpuResources(
             label: 'Glyph Atlas Texture',
             size: { width, height, depthOrArrayLayers: 1 },
             format: 'rgba8unorm',
-            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT |
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST,
         })
     );
 
