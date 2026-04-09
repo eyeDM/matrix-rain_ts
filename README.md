@@ -14,6 +14,10 @@ It is designed as a reference-quality example of modern WebGPU architecture for 
 - Node.js 18+
 - Browser with WebGPU support (Chrome/Edge Canary or recent stable with flag). See "Troubleshooting" below.
 
+## WebGPU Implementation Status
+
+For detailed information about WebGPU browser support and feature implementation status across platforms, please refer to the [WebGPU Implementation Status](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status) page on the official WebGPU GitHub wiki. This resource tracks which browsers and driver versions support WebGPU and provides estimates for when implementations are expected.
+
 ## Quick start
 
 Install dependencies:
