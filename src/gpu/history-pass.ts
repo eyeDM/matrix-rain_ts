@@ -213,8 +213,8 @@ export class HistoryComputePass {
                 layout,
                 entries: [
                     { binding: 0, resource: this.sceneView },
-                    { binding: 1, resource: this.historyViewB },
-                    { binding: 2, resource: this.historyViewA },
+                    { binding: 1, resource: this.historyViewA },
+                    { binding: 2, resource: this.historyViewB },
                     {
                         binding: 3,
                         resource: {
