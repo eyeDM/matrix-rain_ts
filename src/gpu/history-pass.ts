@@ -6,26 +6,6 @@ import { RenderContext } from '@gpu/render-graph';
 const COLOR_FORMAT_HDR: GPUTextureFormat = 'rgba16float';
 
 /**
- * Usage flags for temporal history buffers.
- *
- * Required capabilities:
- *
- * STORAGE_BINDING
- *   HistoryComputePass writes accumulated result.
- *
- * TEXTURE_BINDING
- *   HistoryComputePass reads previous frame.
- *   PresentPass samples history during final composition.
- *
- * Note:
- * COPY_SRC / COPY_DST intentionally omitted to prevent accidental
- * readbacks or staging copies that would stall the GPU pipeline.
- */
-export const HISTORY_TEXTURE_USAGE =
-    GPUTextureUsage.STORAGE_BINDING |
-    GPUTextureUsage.TEXTURE_BINDING;
-
-/**
  * These values MUST stay synchronized with the WGSL declaration:
  *
  *     @compute @workgroup_size(HISTORY_WORKGROUP_SIZE.x, HISTORY_WORKGROUP_SIZE.y)
@@ -120,6 +100,23 @@ export type HistorySurfaceResources = {
     readonly historyTexB: GPUTexture;
 };
 
+
+/**
+ * Usage flags for temporal history buffers.
+ *
+ * Required capabilities:
+ *
+ * STORAGE_BINDING
+ *   HistoryComputePass writes accumulated result.
+ *
+ * TEXTURE_BINDING
+ *   HistoryComputePass reads previous frame.
+ *   PresentPass samples history during final composition.
+ *
+ * Note:
+ * COPY_SRC / COPY_DST intentionally omitted to prevent accidental
+ * readbacks or staging copies that would stall the GPU pipeline.
+ */
 export function createHistorySurfaceResources(
     device: GPUDevice,
     scope: GpuResourceScope,
@@ -132,7 +129,7 @@ export function createHistorySurfaceResources(
                 label: label,
                 size: [viewportWidth, viewportHeight],
                 format: COLOR_FORMAT_HDR,
-                usage: HISTORY_TEXTURE_USAGE,
+                usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
             })
         );
     };
