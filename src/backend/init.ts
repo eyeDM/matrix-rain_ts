@@ -151,13 +151,8 @@ export function showWebGPUNotSupported(): void {
             This visualization requires WebGPU, which is not available in your current browser.
         </p>
         <p style="max-width: 480px; line-height: 1.4;">
-            Recommended browsers:
+            For detailed information about WebGPU browser support and feature implementation status across platforms, please refer to the <a href="https://github.com/gpuweb/gpuweb/wiki/Implementation-Status" target="_blank" style="color: #fff">WebGPU Implementation Status</a> page on the official WebGPU GitHub wiki. This resource tracks which browsers and driver versions support WebGPU and provides estimates for when implementations are expected.
         </p>
-        <ul style="list-style: none; padding: 0; margin: 12px 0 0 0;">
-            <li>• Google Chrome (latest version)</li>
-            <li>• Microsoft Edge (latest version)</li>
-            <li>• Chromium-based browsers with WebGPU enabled</li>
-        </ul>
     `;
 
     document.body.appendChild(container);
