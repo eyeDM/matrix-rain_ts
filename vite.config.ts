@@ -1,5 +1,4 @@
 import { defineConfig } from 'vite';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
     base: process.env.VITE_BASE_URL || '/',
@@ -12,5 +11,7 @@ export default defineConfig({
     server: {
         port: 5173
     },
-    plugins: [tsconfigPaths()],
+    resolve: {
+        tsconfigPaths: true 
+    }
 });
