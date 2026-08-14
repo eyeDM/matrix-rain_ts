@@ -396,7 +396,7 @@ export async function bootstrap(): Promise<void> {
 
         const historyPass = new HistoryComputePass(
             gpu.device,
-            resources.frameScope,
+            resources.surfaceScope,
             historyDeviceResources.pipeline,
             drawSurfaceResources.colorTex,
             historySurfaceResources.historyTexA,

@@ -154,7 +154,7 @@ export class HistoryComputePass {
 
     constructor(
         device: GPUDevice,
-        frameScope: GpuResourceScope,
+        surfaceScope: GpuResourceScope,
         private readonly pipeline: GPUComputePipeline,
         // scene texture produced by DrawPass
         sceneTex: GPUTexture,
@@ -175,7 +175,7 @@ export class HistoryComputePass {
         // ping = 0
         // prev = B
         // dst  = A
-        this.bindGroupPing = frameScope.track(
+        this.bindGroupPing = surfaceScope.track(
             device.createBindGroup({
                 label: 'History Compute BG (ping)',
                 layout,
@@ -204,7 +204,7 @@ export class HistoryComputePass {
         // ping = 1
         // prev = A
         // dst  = B
-        this.bindGroupPong = frameScope.track(
+        this.bindGroupPong = surfaceScope.track(
             device.createBindGroup({
                 label: 'History Compute BG (pong)',
                 layout,
