@@ -116,7 +116,6 @@ export function createSimulationSurfaceResources(
                     binding: 0,
                     resource: {
                         buffer: resources.glyphGridParamsBuffer,
-                        offset: 0,
                         size: GlyphGridParamsLayout.SIZE,
                     },
                 },
@@ -124,7 +123,6 @@ export function createSimulationSurfaceResources(
                     binding: 1,
                     resource: {
                         buffer: resources.frameParamsBuffer,
-                        offset: 0,
                         size: FrameParamsLayout.SIZE,
                     },
                 },
@@ -132,7 +130,6 @@ export function createSimulationSurfaceResources(
                     binding: 2,
                     resource: {
                         buffer: resources.simulationParamsBuffer,
-                        offset: 0,
                         size: SimulationParamsLayout.SIZE,
                     },
                 },
@@ -140,7 +137,6 @@ export function createSimulationSurfaceResources(
                     binding: 3,
                     resource: {
                         buffer: resources.columnStateBuffer,
-                        offset: 0,
                     },
                 },
             ],

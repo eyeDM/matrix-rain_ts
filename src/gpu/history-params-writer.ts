@@ -2,7 +2,7 @@ import { HistoryParamsLayout } from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 export type HistoryParams = {
-    decay: number;
+    retention: number;
 };
 
 /**
@@ -31,7 +31,11 @@ export class HistoryParamsWriter {
     }
 
     set(params: HistoryParams): void {
-        this.view.setFloat32(HistoryParamsLayout.offsets.decay, params.decay, true);
+        this.view.setFloat32(
+            HistoryParamsLayout.offsets.retention,
+            params.retention,
+            true
+        );
     }
 
     flush(): void {

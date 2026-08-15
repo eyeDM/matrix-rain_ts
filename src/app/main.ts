@@ -126,7 +126,7 @@ const cfg: ConfigParameters = {
     flickerAmplitude: 0.08,
     flickerFrequency: 1.6,
     // HistoryParams
-    decay: 0.2,
+    retention: 0.4,
     // PresentParams
     vignetteStrength: 0.1,
     scanlineFreq: 200.0,
@@ -268,7 +268,7 @@ export async function bootstrap(): Promise<void> {
         resources.deviceScope,
     );
     const updateHistoryParams = (): void => {
-        historyParamsWriter.update({decay: cfg.decay});
+        historyParamsWriter.update({retention: cfg.retention});
     };
 
     const presentParamsWriter = new PresentParamsWriter(
@@ -402,6 +402,7 @@ export async function bootstrap(): Promise<void> {
             historySurfaceResources.historyTexA,
             historySurfaceResources.historyTexB,
             viewportParamsWriter.buffer,
+            frameParamsWriter.buffer,
             historyParamsWriter.buffer,
             layout.viewport.width,
             layout.viewport.height,
@@ -559,7 +560,7 @@ export async function bootstrap(): Promise<void> {
                 updateSimulationParams();
             }
 
-            if (cfg.decay !== oldCfg.decay) {
+            if (cfg.retention !== oldCfg.retention) {
                 updateHistoryParams();
             }
         },

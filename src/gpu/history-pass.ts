@@ -1,4 +1,8 @@
-import { ViewportParamsLayout, HistoryParamsLayout } from '@backend/layouts';
+import {
+    ViewportParamsLayout,
+    FrameParamsLayout,
+    HistoryParamsLayout,
+} from '@backend/layouts';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
@@ -42,7 +46,7 @@ export function createHistoryDeviceResources(
                 {
                     binding: 1,
                     visibility: GPUShaderStage.COMPUTE,
-                    texture: { sampleType: 'float' },
+                    texture: { sampleType: 'unfilterable-float' },
                 },
 
                 /* --- dst texture storage --- */
@@ -62,9 +66,19 @@ export function createHistoryDeviceResources(
                     },
                 },
 
-                /* --- HistoryParams uniform --- */
+                /* --- FrameParams uniform --- */
                 {
                     binding: 4,
+                    visibility: GPUShaderStage.COMPUTE,
+                    buffer: {
+                        type: 'uniform',
+                        minBindingSize: FrameParamsLayout.SIZE,
+                    },
+                },
+
+                /* --- HistoryParams uniform --- */
+                {
+                    binding: 5,
                     visibility: GPUShaderStage.COMPUTE,
                     buffer: {
                         type: 'uniform',
@@ -162,6 +176,7 @@ export class HistoryComputePass {
         historyTexA: GPUTexture,
         historyTexB: GPUTexture,
         private readonly viewportParamsBuffer: GPUBuffer,
+        private readonly frameParamsBuffer: GPUBuffer,
         private readonly paramsBuffer: GPUBuffer,
         private readonly viewportWidth: number,
         private readonly viewportHeight: number,
@@ -193,6 +208,13 @@ export class HistoryComputePass {
                     {
                         binding: 4,
                         resource: {
+                            buffer: this.frameParamsBuffer,
+                            size: FrameParamsLayout.SIZE,
+                        },
+                    },
+                    {
+                        binding: 5,
+                        resource: {
                             buffer: this.paramsBuffer,
                             size: HistoryParamsLayout.SIZE,
                         },
@@ -221,6 +243,13 @@ export class HistoryComputePass {
                     },
                     {
                         binding: 4,
+                        resource: {
+                            buffer: this.frameParamsBuffer,
+                            size: FrameParamsLayout.SIZE,
+                        },
+                    },
+                    {
+                        binding: 5,
                         resource: {
                             buffer: this.paramsBuffer,
                             size: HistoryParamsLayout.SIZE,

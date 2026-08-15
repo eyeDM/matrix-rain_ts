@@ -51,7 +51,7 @@ export const FrameParamsLayout = {
     SIZE: 16,
     offsets: {
         dt: 0,     // f32: delta; seconds
-        time: 4,   // f32: periodic time wrapped to [0, 2π) - guarantees f32 precision; seconds
+        time: 4,   // f32: periodic time phase wrapped to [0, 2π)
         _pad0: 8,  // f32
         _pad1: 12, // f32
     },
@@ -87,10 +87,10 @@ export const HistoryParamsLayout = {
     ALIGN: 4,
     SIZE: 16,
     offsets: {
-        decay: 0,  // f32
-        _pad0: 4,  // f32
-        _pad1: 8,  // f32
-        _pad2: 12, // f32
+        retention: 0, // f32
+        _pad0: 4,     // f32
+        _pad1: 8,     // f32
+        _pad2: 12,    // f32
     },
 } as const;
 

@@ -5,7 +5,7 @@ export type ConfigParameters = {
     flickerAmplitude: number;
     flickerFrequency: number;
     // HistoryParams
-    decay: number;
+    retention: number;
     // PresentParams
     vignetteStrength: number;
     scanlineFreq: number;
@@ -28,7 +28,7 @@ const ConfigParameterSpecs: {
 } = {
     flickerAmplitude: { min: 0, max: 0.5, step: 0.001, label: 'Flicker amp' },
     flickerFrequency: { min: 0, max: 4, step: 0.01, label: 'Flicker freq' },
-    decay: { min: 0, max: 0.99, step: 0.01, label: 'Decay' },
+    retention: { min: 0, max: 0.99, step: 0.01, label: 'Retention' },
     vignetteStrength: { min: 0, max: 1, step: 0.01, label: 'Vignette' },
     scanlineFreq: { min: 200, max: 1500, step: 10.0, label: 'Scanline freq' },
     scanlineStrength: { min: 0, max: 1, step: 0.01, label: 'Scanline' },
@@ -252,7 +252,7 @@ export function initEffectsPanel(
 ): void {
     let effectsPanel: EffectsPanelHandle | null = null;
 
-    console.info("Press 'C' to toggle Effects Panel");
+    console.info("Press 'c' to toggle Effects Panel");
 
     /**
      * Determines whether a keyboard event originated from a text-input context.
