@@ -1,65 +1,103 @@
 // ============================================================================
-// Final-frame presentation with a stylized CRT aesthetic.
+// Final-frame presentation.
 //
-// Purpose:
-//   This shader implements a fullscreen post-processing “CRT / retro display”
-//   effect applied to an already rendered image.
-//   It renders a fullscreen triangle and, in the fragment shader, simulates:
-//   - monochrome phosphor display with color tint,
-//   - barrel (CRT-style) screen curvature,
-//   - animated scanlines,
-//   - edge vignette,
-//   - film grain / noise,
-//   - additive bloom from a separate texture.
+// The shader combines the accumulated scene history and bloom contribution,
+// applies CRT-style display effects, tone-maps the resulting HDR intensity,
+// and converts the final linear RGB color to sRGB.
 //
-// The shader is designed for numerical stability:
-//  the time parameter is wrapped to [0, 2π), which is sufficient for all periodic effects.
+// PARAMETERS:
 //
-// It is well suited for retro games, terminal displays, and old-monitor-style UI overlays.
+//   @binding(0): samp (sampler)
+//     Linear filtering sampler used when sampling the input textures.
 //
-// --------------------------------------------------
+//   @binding(1): tex (texture_2d<f32>, rgba16float)
+//     Accumulated scene/history texture.
+//     Input values are interpreted as linear RGB HDR values.
+//     The shader converts the sampled RGB value to BT.709 luminance.
 //
-// Parameters:
+//   @binding(2): bloomTex (texture_2d<f32>, rgba16float)
+//     Bloom texture produced by the blur stage.
+//     Input values are interpreted as linear RGB HDR values.
+//     The shader converts the sampled RGB value to BT.709 luminance.
 //
-//   time:
-//   - Purpose: periodic time value used to animate scanlines and grain.
-//   - Effect: controls phase of sinusoidal and hash-based functions.
-//   - Reasonable range: [0, 2π); wrapping is required for f32 precision stability.
+//   @binding(3): frame (uniform, FrameParamsLayout)
+//     dt: Frame delta time in seconds. Present in the shared frame layout;
+//         this shader does not use it.
+//     time: Periodic time value used to animate scanlines and film grain.
+//           The input is expected to remain in the periodic range [0, 2π).
 //
-//   vignetteStrength:
-//   - Purpose: controls the strength of edge darkening.
-//   - Effect: 0 disables vignette, 1 produces strong edge falloff.
-//   - Reasonable range: [0, 1]; values >1 cause excessive darkening.
+//   @binding(4): params (uniform, PresentParamsLayout)
+//     vignetteStrength (f32):
+//       Strength of radial edge darkening.
+//       Effect: 0 disables vignette, 1 produces strong edge falloff.
+//       Reasonable range: [0, 1]; values >1 cause excessive darkening.
 //
-//   scanlineFreq:
-//   - Purpose: vertical frequency of scanlines.
-//   - Effect: determines the number of scanlines across the screen.
-//   - Reasonable range: ~200–1500 for Full HD; too low produces banding, too high may cause aliasing.
+//     scanlineFreq (f32):
+//       Spatial frequency of the horizontal scanline modulation.
+//       Effect: determines the number of scanlines across the screen.
+//       Reasonable range: ~200–1500 for Full HD; too low produces banding, too high may cause aliasing.
 //
-//   scanlineStrength:
-//   - Purpose: blend factor for scanline modulation.
-//   - Effect: 0 disables scanlines, 1 applies full modulation.
-//   - Reasonable range: [0, 1]; values >1 exaggerate contrast unnaturally.
+//     scanlineStrength (f32):
+//       Blend strength of the scanline modulation.
+//       Effect: 0.0 leaves the image unmodulated by scanlines, 1 applies full modulation.
+//       Reasonable range: [0, 1]; values >1 exaggerate contrast unnaturally.
 //
-//   noiseAmplitude:
-//   - Purpose: amplitude of film grain noise.
-//   - Effect: added additively to the final color.
-//   - Reasonable range: [0, 0.1]; values >0.2 quickly overwhelm image detail.
+//     noiseAmplitude (f32):
+//       Amplitude of the procedural film-grain noise.
+//       Effect: added additively to the final color.
+//       Reasonable range: [0, 0.1]; values >0.2 quickly overwhelm image detail.
 //
-//   curvature:
-//   - Purpose: strength of barrel distortion (CRT curvature).
-//   - Effect: increases geometric distortion toward screen edges.
-//   - Reasonable range: [0, 0.3]; values >0.5 cause severe stretching and edge loss.
+//     curvature (f32):
+//       Strength of the barrel distortion applied to texture coordinates.
+//       Effect: increases geometric distortion toward screen edges.
+//       Reasonable range: [0, 0.3]; values >0.5 cause severe stretching and edge loss.
 //
-//   tintR, tintG, tintB:
-//   - Purpose: phosphor color tint applied to monochrome luminance.
-//   - Effect: scales luminance per color channel.
-//   - Reasonable range: [0, 1.5]; classic green CRT look is approximately (0.2, 1.0, 0.2).
+//     tintR, tintG, tintB (f32):
+//       Per-channel phosphor tint applied to the resulting luminance.
+//       Effect: scales luminance per color channel.
+//       Reasonable range: [0, 1.5]; classic green CRT look is approximately (0.2, 1.0, 0.2).
 //
-//   bloomIntensity:
-//   - Purpose: intensity of the additive bloom contribution.
-//   - Effect: amplifies bright areas using bloomTex.
-//   - Reasonable range: [0, 1]; values >1 lead to overexposure and loss of detail.
+//     bloomIntensity (f32):
+//       Multiplier applied to the bloom luminance before it is added to
+//       the scene luminance.
+//       Effect: amplifies bright areas using bloomTex.
+//       Reasonable range: [0, 1]; values >1 lead to overexposure and loss of detail.
+//
+// ALGORITHM:
+//
+//   1. Convert the fragment position to normalized texture coordinates.
+//   2. Apply radial barrel distortion controlled by `curvature` and clamp
+//      the resulting coordinates to the valid texture range.
+//   3. Sample `tex` and `bloomTex` using linear filtering.
+//   4. Convert both sampled RGB values to scalar BT.709 luminance:
+//        sceneLuminance = dot(sceneRGB, LUMA_BT709)
+//        bloomLuminance = dot(bloomRGB, LUMA_BT709)
+//   5. Combine scene and bloom luminance:
+//        energy = sceneLuminance + bloomLuminance * bloomIntensity
+//   6. Apply animated sinusoidal scanline modulation along the Y axis.
+//   7. Apply radial vignette attenuation.
+//   8. Generate procedural time-varying film grain and add it to the
+//      modulated luminance.
+//   9. Convert the resulting monochrome intensity to RGB using the
+//      configured phosphor tint.
+//  10. Clamp negative values to zero and apply Reinhard tone mapping:
+//        mapped = color / (1 + color)
+//  11. Convert the tone-mapped linear RGB value to sRGB using the
+//      IEC 61966-2-1 piecewise transfer function.
+//
+// OUTPUT:
+//
+//   @location(0): vec4<f32>
+//
+//     RGB:
+//       sRGB-encoded display color resulting from the final tone-mapped
+//       presentation image.
+//
+//     Alpha:
+//       Constant 1.0.
+//
+//     The shader outputs normalized sRGB color values suitable for the
+//     presentation render target.
 //
 // ============================================================================
 

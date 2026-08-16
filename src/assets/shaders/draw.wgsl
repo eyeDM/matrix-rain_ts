@@ -1,5 +1,63 @@
 // ============================================================================
-// Matrix-style procedural render shader.
+// Instanced glyph rendering: Procedural rasterization of matrix trails.
+//
+// PARAMETERS:
+//   @binding(0): viewport (uniform, ViewportParamsLayout)
+//     width, height: Render target dimensions in pixels.
+//
+//   @binding(1): grid (uniform, GlyphGridParamsLayout)
+//     cellSize: Dimensions of each glyph cell in pixels (vec2).
+//     atlasTexelSize: Normalized texel size in glyph atlas (vec2).
+//     glyphCount: Total number of glyphs in the atlas.
+//     cols, rows: Grid dimensions (cell count).
+//     maxTrail: Maximum trail length in cells.
+//
+//   @binding(2): columns (storage buffer, read-only, ColumnState[])
+//     Per-column simulation state; updated by SimulationComputePass.
+//     Each element contains: seed, head, length, speed, energy, flicker.
+//
+//   @binding(3): glyphUVs (storage buffer, read-only, GlyphUV[])
+//     Lookup table: glyph index → (uv0, uv1) in atlas.
+//
+//   @binding(4): atlasTexture (texture_2d<f32>)
+//     Glyph atlas; alpha channel encodes glyph visibility.
+//
+//   @binding(5): atlasSampler (sampler)
+//     Filtering sampler for atlas lookup.
+//
+// ALGORITHM:
+//   Vertex stage (per-instance):
+//     1. Decompose instanceIdx → (colIdx, cellIdx).
+//     2. Load column state; reject out-of-trail cells.
+//     3. Compute cell row (with wrapping).
+//     4. Map cell → pixel space → NDC.
+//     5. Select glyph using deterministic hash(seed, cellIdx).
+//     6. Compute brightness: parabolic falloff along trail, energy mapping,
+//        head boost, flicker modulation.
+//     7. Output position, glyph UV, LDR brightness, HDR energy, alpha.
+//
+//   Fragment stage (per-pixel):
+//     1. Sample glyph alpha from atlas.
+//     2. Compute LDR color: baseColor * brightnessLDR * glyphAlpha.
+//     3. Compute HDR color: baseColor * brightnessHDR * glyphAlpha.
+//     4. Extract bloom: max(HDR - BLOOM_THRESHOLD, 0.0).
+//     5. Output two render targets.
+//
+// OUTPUT TARGETS:
+//   @location(0): color (vec4<f32>, rgba16float)
+//     Scene luminance; linear RGB HDR.
+//     RGB = glyph color * LDR brightness.
+//     Alpha = glyph visibility * LDR brightness.
+//     Range: [0.0, ∞).
+//     Blending: src-alpha / one-minus-src-alpha (standard alpha blend).
+//
+//   @location(1): bright (vec4<f32>, rgba16float)
+//     Bloom contribution; linear RGB HDR.
+//     RGB = max(glyph color * HDR energy - BLOOM_THRESHOLD, 0.0) * glyphAlpha.
+//     Alpha = glyph visibility * LDR brightness.
+//     Range: [0.0, ∞).
+//     Blending: one / one (additive).
+//
 // ============================================================================
 
 /* --- Data layouts --- */

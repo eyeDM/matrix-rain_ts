@@ -1,6 +1,55 @@
 // ============================================================================
-// Compute Shader.
-// Updates ColumnState per column.
+// Simulation compute: Per-column state update with deterministic randomness.
+//
+// PARAMETERS:
+//   @binding(0): grid (uniform, GlyphGridParamsLayout)
+//     cellSize: Dimensions of each glyph cell in pixels (vec2).
+//     atlasTexelSize: Normalized texel size in glyph atlas (vec2).
+//     glyphCount: Total number of glyphs in the atlas.
+//     cols, rows: Grid dimensions (cell count).
+//     maxTrail: Maximum trail length in cells.
+//
+//   @binding(1): frame (uniform, FrameParamsLayout)
+//     dt: Frame delta time (seconds).
+//     time: Total elapsed time (seconds); range [0, 2π) to prevent precision loss.
+//
+//   @binding(2): params (uniform, SimulationParamsLayout)
+//     flickerAmplitude (f32): Peak amplitude of per-column flicker modulation.
+//                              Range: [0.0, 1.0] (recommended).
+//                              Effect: multiplied into state.flicker = exp(amplitude).
+//     flickerFrequency (f32): Oscillation frequency in cycles per second.
+//                              Range: (0.0, ∞); typical [0.5, 5.0].
+//                              Effect: modulates phase via sin(time * TWO_PI * frequency + phase).
+//
+//   @binding(3): columns (storage buffer, read_write, ColumnState[])
+//     Per-column simulation state; modified in-place each frame.
+//     Each element: seed, head, length, speed, energy, flicker.
+//
+// ALGORITHM (per invocation = per column):
+//   1. Validate column index; exit if out of bounds.
+//   2. Load column state.
+//   3. Initialize RNG with column seed, index, and current time.
+//   4. Advance head position:
+//        head += speed * dt + jitter
+//   5. Compute tail position:
+//        tail = head - length
+//   6. Check respawn condition (tail exceeds rows OR energy depleted):
+//      - If true: respawn (reset head, speed, length, energy, reseed).
+//      - If false: apply exponential energy decay based on speed/length.
+//   7. Compute deterministic flicker:
+//        phase = (seed_low_bits * TWO_PI)
+//        flicker = exp(sin(time * TWO_PI * frequency + phase) * amplitude)
+//   8. Write updated state back to buffer.
+//
+// OUTPUT:
+//   @binding(3): columns[] (modified in-place)
+//     Updated per-column state:
+//       head: New position along vertical axis (may exceed rows; wraps in DrawPass).
+//       energy: Decayed or respawned.
+//       flicker: Computed oscillation value.
+//       seed: Reseeded if respawned; unchanged if decaying.
+//       speed, length: Unchanged if decaying; resampled if respawned.
+//
 // ============================================================================
 
 /* --- Data layouts --- */

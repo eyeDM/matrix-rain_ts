@@ -1,32 +1,40 @@
 // ============================================================================
-// Temporal history accumulation with frame-rate-independent exponential retention.
+// Temporal history accumulation: Exponential decay and blend.
 //
-// Purpose:
-//   For each pixel, blends the current scene value (sceneTex)
-//   with the previous frame (prevTex) and writes the result
-//   to the destination texture. The accumulated history provides
-//   temporal smoothing and phosphor-like persistence/trail effects.
+// PARAMETERS:
+//   @binding(0): sceneTex (texture_2d<f32>, rgba16float)
+//     Current frame; linear RGB HDR; range [0.0, ∞).
 //
-// --------------------------------------------------
+//   @binding(1): prevTex (texture_2d<f32>, rgba16float)
+//     Previous accumulated history; linear RGB HDR; range [0.0, ∞).
 //
-// Parameters:
+//   @binding(2): dstTex (texture_storage_2d<rgba16float, write>)
+//     Destination output texture; write-only.
 //
-//   `retention` defines the fraction of the previous history
-//   retained over REFERENCE_DT. The retention is adjusted using
-//   the current frame's `dt`, so the visual effect is independent
-//   of frame rate.
+//   @binding(3): viewport (uniform, ViewportParamsLayout)
+//     width, height: Render target dimensions in pixels.
 //
-//   Effect:
-//   - retention = 0.0 → history is completely ignored; output equals the current scene.
-//   - 0.0 < retention < 1.0 → previous frames fade exponentially over time.
-//   - retention ≈ 1.0 → history persists for a long time, producing strong trails
-//     and phosphor-like image persistence.
+//   @binding(4): frame (uniform, FrameParamsLayout)
+//     dt: Frame delta time (seconds).
+//     time: Total elapsed time (seconds).
 //
-// The effective retention for the current frame is:
+//   @binding(5): params (uniform, HistoryParamsLayout)
+//     retention (f32): Exponential decay factor per REFERENCE_DT (1/60 sec).
+//       Range: [0.0, 1.0]
+//       Semantics: Fraction of previous history to retain each frame.
+//       - 0.0: No temporal accumulation; output = current frame only.
+//       - 1.0: Perfect persistence; history never decays.
 //
-//   retention^(dt / REFERENCE_DT)
+// ALGORITHM:
+//   1. Load current frame (sceneTex) and previous history (prevTex) at pixel.
+//   2. Compute frame-rate-independent retention:
+//      retention_adjusted = pow(retention, dt / REFERENCE_DT)
+//   3. Linear blend: output = scene * (1 - retention_adjusted) + prev * retention_adjusted
+//   4. Store result to dstTex.
 //
-// This keeps the temporal behavior consistent across different frame rates.
+// OUTPUT:
+//   @binding(2): dstTex (rgba16float)
+//     Temporally blended result; linear RGB HDR; range [0.0, ∞).
 //
 // ============================================================================
 

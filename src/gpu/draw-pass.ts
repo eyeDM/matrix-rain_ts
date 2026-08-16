@@ -3,8 +3,8 @@ import { GpuResourceScope } from '@backend/resource-tracker';
 
 import { RenderContext } from '@gpu/render-graph';
 
-const COLOR_FORMAT_LDR: GPUTextureFormat = 'bgra8unorm-srgb';
-const COLOR_FORMAT_HDR: GPUTextureFormat = 'rgba16float';
+const COLOR_FORMAT_COLOR: GPUTextureFormat = 'rgba16float';
+const COLOR_FORMAT_BRIGHT: GPUTextureFormat = 'rgba16float';
 
 //
 // @location(0) pos : vec2<f32>
@@ -234,7 +234,7 @@ export function createDrawSurfaceResources(
                 targets: [
                     // colorTex
                     {
-                        format: COLOR_FORMAT_LDR,
+                        format: COLOR_FORMAT_COLOR,
                         blend: {
                             color: {
                                 srcFactor: 'src-alpha',
@@ -251,7 +251,7 @@ export function createDrawSurfaceResources(
                     },
                     // brightTex
                     {
-                        format: COLOR_FORMAT_HDR,
+                        format: COLOR_FORMAT_BRIGHT,
                         blend: {
                             color: {
                                 srcFactor: 'one',
@@ -279,21 +279,21 @@ export function createDrawSurfaceResources(
         })
     );
 
-    // --- Color and Depth textures ---
+    // --- Color and Bright textures ---
 
     const colorTex = scope.trackDestroyable(
         device.createTexture({
-            label: 'Draw Color Texture',
+            label: 'Draw Color Texture (scene luminance)',
             size: [viewportWidth, viewportHeight],
-            format: COLOR_FORMAT_LDR,
+            format: COLOR_FORMAT_COLOR,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
     );
     const brightTex = scope.trackDestroyable(
         device.createTexture({
-            label: 'Draw Bright Texture',
+            label: 'Draw Bright Texture (bloom contribution)',
             size: [viewportWidth, viewportHeight],
-            format: COLOR_FORMAT_HDR,
+            format: COLOR_FORMAT_BRIGHT,
             usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
         })
     );

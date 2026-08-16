@@ -128,6 +128,27 @@ matrix-rain_ts/
 
 ## Technical Overview
 
+## Texture Format & Color Space Specification
+
+| Texture Name    | Format           | Numeric Range        | Color Space          | Semantics                                   | Created By  | Used By                         |
+|-----------------|------------------|----------------------|----------------------|---------------------------------------------|-------------|---------------------------------|
+| `colorTex`      | `rgba16float`    | 0.0–64.0 (unbounded) | Linear RGB           | Scene luminance (per-cell intensity)        | DrawPass    | HistoryPass                     |
+| `brightTex`     | `rgba16float`    | 0.0–64.0 (unbounded) | Linear RGB HDR       | Bright contribution (above BLOOM_THRESHOLD) | DrawPass    | BlurPassH                       |
+| `historyTexA`   | `rgba16float`    | 0.0–64.0 (unbounded) | Linear RGB HDR       | Temporal persistence buffer (ping)          | HistoryPass | PresentPass, HistoryPass (prev) |
+| `historyTexB`   | `rgba16float`    | 0.0–64.0 (unbounded) | Linear RGB HDR       | Temporal persistence buffer (pong)          | HistoryPass | PresentPass, HistoryPass (prev) |
+| `blurTexTemp`   | `rgba16float`    | 0.0–64.0 (unbounded) | Linear RGB HDR       | Intermediate blur result (horizontal pass)  | BlurPassH   | BlurPassV                       |
+| `blurTexResult` | `rgba16float`    | 0.0–64.0 (unbounded) | Linear RGB HDR       | Final bloom texture (vertical pass)         | BlurPassV   | PresentPass                     |
+| `swapchain`     | Device-dependent | 0.0–1.0 (sRGB)       | sRGB (gamma-encoded) | Display output                              | PresentPass | Screen                          |
+
+All intermediate post-processing buffers (History, Blur, etc.) use linear RGB in `rgba16float` format. sRGB conversion happens only at the display boundary (PresentPass) after tone mapping.
+
+This design ensures:
+1. Temporal accumulation in HistoryPass is mathematically correct (linear blending)
+2. Bloom extraction and blur operate on linear energy values
+3. Tone mapping (Reinhard) works with linear inputs
+4. All CRT effects are applied to properly linear data
+5. sRGB encoding is deferred until the final display output
+
 ### Strengths
 
 - GPU-first simulation: All per-frame simulation runs in compute shaders, keeping CPU overhead minimal.

@@ -1,6 +1,33 @@
-// Separable Gaussian blur pass for bloom. This shader assumes the input texture
-// is already bright-pass filtered in HDR space. It performs only linear blurring
-// (no thresholding or renormalization), preserving energy and avoiding halo artifacts.
+// ============================================================================
+// Separable Gaussian blur: Applies a 5-tap Gaussian kernel to produce blur.
+//
+// PARAMETERS:
+//   @binding(0): sampler
+//     Filtering sampler; configured with linear magnification/minification
+//     and clamp-to-edge addressing.
+//
+//   @binding(1): tex (texture_2d<f32>, rgba16float)
+//     Input bloom texture in linear RGB HDR; range [0.0, ∞).
+//
+//   @binding(2): params (uniform buffer, BlurParams)
+//     dir (vec2<f32>):     Blur direction. (1.0, 0.0) for horizontal pass;
+//                          (0.0, 1.0) for vertical pass.
+//     texelSize (f32):     Normalized step size; 1.0 / texel count along
+//                          the blur direction (accounts for source resolution
+//                          and intermediate blur targets).
+//
+// ALGORITHM:
+//   1. Compute output UV from rasterization position.
+//   2. Sample 5 points along the direction specified by params.dir.
+//   3. Weight each sample with a 5-tap Gaussian kernel.
+//   4. Accumulate weighted RGB and normalize by total weight.
+//
+// OUTPUT:
+//   @location(0): vec4<f32> (rgba16float)
+//     Blurred result: RGB = weighted blur, alpha = 1.0.
+//     Linear RGB HDR; range [0.0, ∞).
+//
+// ============================================================================
 
 /* {@see BlurParamsLayout@backend/layouts} */
 struct BlurParams {
