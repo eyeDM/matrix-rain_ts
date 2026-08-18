@@ -1,6 +1,7 @@
 type TintTuple = [number, number, number];
 
 export type ConfigParameters = {
+    scale: number;
     // SimulationParams
     flickerAmplitude: number;
     flickerFrequency: number;
@@ -26,6 +27,7 @@ type Specs = {
 const ConfigParameterSpecs: {
     [K in Exclude<keyof ConfigParameters, 'tint'>]: Specs;
 } = {
+    scale: { min: 0.5, max: 2.0, step: 0.25, label: 'Screen scale' },
     flickerAmplitude: { min: 0, max: 0.5, step: 0.001, label: 'Flicker amp' },
     flickerFrequency: { min: 0, max: 4, step: 0.01, label: 'Flicker freq' },
     retention: { min: 0, max: 0.99, step: 0.01, label: 'Retention' },

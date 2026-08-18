@@ -15,8 +15,8 @@ export class SwapChain {
     }
 
     /** Resize backing buffer and reconfigure the context if needed */
-    resize(): CanvasSize {
-        const { size, changed } = this.resizer.resize();
+    resize(renderScale: number = 1.0): CanvasSize {
+        const { size, changed } = this.resizer.resize(renderScale);
 
         if (changed) {
             this.configure();

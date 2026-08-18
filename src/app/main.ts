@@ -122,6 +122,7 @@ function computeScreenLayout(
 }
 
 const cfg: ConfigParameters = {
+    scale: 1.0,
     // DrawParams
     flickerAmplitude: 0.08,
     flickerFrequency: 1.6,
@@ -207,7 +208,7 @@ export async function bootstrap(): Promise<void> {
 
     // --- Initial layout ---
 
-    const size: CanvasSize = swapChain.resize();
+    const size: CanvasSize = swapChain.resize(cfg.scale);
 
     let layout: ScreenLayout = computeScreenLayout(
         size,
@@ -514,8 +515,8 @@ export async function bootstrap(): Promise<void> {
 
     // --- Resize handling ---
 
-    window.addEventListener('resize', () => {
-        const newSize: CanvasSize = swapChain.resize();
+    function onResize(): void {
+        const newSize: CanvasSize = swapChain.resize(cfg.scale);
 
         if (
             newSize.width === layout.viewport.width
@@ -541,7 +542,9 @@ export async function bootstrap(): Promise<void> {
 
         // 3. Rebuild surface layer
         surface = buildSurface(layout);
-    });
+    }
+
+    window.addEventListener('resize', onResize);
 
     // --- Debug UI (runtime parameter tuning) ---
 
@@ -550,6 +553,10 @@ export async function bootstrap(): Promise<void> {
         (changedConfig: Partial<ConfigParameters>) => {
             const oldCfg = { ...cfg };
             Object.assign(cfg, changedConfig);
+
+            if (cfg.scale !== oldCfg.scale) {
+                onResize();
+            }
 
             updatePresentParams();
 

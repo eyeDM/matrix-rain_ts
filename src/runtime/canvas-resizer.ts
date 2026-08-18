@@ -14,10 +14,17 @@ export class CanvasResizer {
 
     constructor(private readonly canvas: HTMLCanvasElement) {}
 
-    resize(): ResizeResult {
+    resize(renderScale: number = 1.0): ResizeResult {
         const dpr = window.devicePixelRatio || 1;
-        const width = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
-        const height = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
+        const ratio = dpr * renderScale;
+        const width = Math.max(
+            1,
+            Math.floor(this.canvas.clientWidth * ratio)
+        );
+        const height = Math.max(
+            1,
+            Math.floor(this.canvas.clientHeight * ratio))
+        ;
 
         const changed =
             !this.last
