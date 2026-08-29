@@ -1,17 +1,53 @@
+const U32_RANGE = 0x1_0000_0000;
+
+const cryptoApi = typeof globalThis.crypto !== 'undefined'
+&& typeof globalThis.crypto.getRandomValues === 'function'
+    ? globalThis.crypto
+    : null;
+
 /**
  * Returns a pseudorandom 32-bit unsigned integer
- * in the range [0, 0xFFFFFFFF).
+ * in the full range [0, 0xFFFFFFFF].
+ *
+ * Not cryptographically secure.
  */
 export function rndU32Math(): number {
-    return Math.floor(Math.random() * 0xffffffff);
+    return Math.floor(Math.random() * U32_RANGE);
 }
 
 /**
  * Returns a cryptographically secure pseudorandom 32-bit unsigned integer
  * in the full range [0, 0xFFFFFFFF].
+ *
+ * @throws Error if Web Crypto is unavailable.
  */
 export function rndU32Crypto(): number {
-    return (crypto as any).getRandomValues(new Uint32Array(1))[0];
+    if (cryptoApi === null) {
+        throw new Error('Cryptographic random generator is unavailable');
+    }
+
+    const bytes = new Uint8Array(4);
+    cryptoApi.getRandomValues(bytes);
+
+    return new DataView(bytes.buffer).getUint32(0);
+}
+
+const rndU32Impl = cryptoApi !== null
+    ? rndU32Crypto
+    : rndU32Math;
+
+/**
+ * Returns a pseudorandom 32-bit unsigned integer
+ * in the full range [0, 0xFFFFFFFF].
+ *
+ * Uses a cryptographically secure generator when available,
+ * otherwise falls back to Math.random().
+ *
+ * Must not be used where cryptographic security is required,
+ * because the fallback generator is not cryptographically secure.
+ */
+export function rndU32(): number {
+    return rndU32Impl();
 }
 
 /**
@@ -20,8 +56,7 @@ export function rndU32Crypto(): number {
  *
  * Characteristics:
  * - Very fast (integer arithmetic only)
- * - Good statistical quality for real-time graphics, procedural generation,
- *   and simulation tasks
+ * - Suitable for real-time graphics and procedural generation
  * - Deterministic and reproducible for a given seed
  * - Output range: [0, 1)
  *
@@ -29,8 +64,8 @@ export function rndU32Crypto(): number {
  * - Not cryptographically secure.
  * - The period is 2^32.
  *
- * @param seed Unsigned 32-bit integer seed. Different seeds produce different sequences.
- * @returns Function that returns the next random float in the range [0, 1).
+ * @param seed Unsigned 32-bit integer seed.
+ * @returns Next random float.
  */
 export function mulberry32(seed: number): () => number {
     // Ensure unsigned 32-bit integer

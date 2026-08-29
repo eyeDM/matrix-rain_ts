@@ -1,5 +1,5 @@
 import { ColumnStateLayout } from '@backend/layouts';
-import { rndU32Math, rndU32Crypto, mulberry32 } from '@backend/rng';
+import { mulberry32, rndU32 } from '@backend/rng';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
 export const TRAIL_LENGTH_MIN = 4;
@@ -54,11 +54,6 @@ export class ColumnsState {
         this.staging = new ArrayBuffer(size);
         this.viewF32 = new Float32Array(this.staging);
         this.viewU32 = new Uint32Array(this.staging);
-
-        const cryptoAvailable = typeof crypto !== 'undefined'
-            && typeof (crypto as any).getRandomValues === 'function';
-
-        const rndU32 = cryptoAvailable ? rndU32Crypto : rndU32Math;
 
         const trailLengthCount = maxTrail - minTrail + 1;
 
