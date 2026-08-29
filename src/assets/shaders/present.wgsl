@@ -107,9 +107,6 @@
 struct FrameParams {
   dt: f32,
   time: f32,
-
-  pad0: f32,
-  pad1: f32,
 };
 
 /* {@see PresentParamsLayout@backend/layouts} */
@@ -123,10 +120,6 @@ struct PresentParams {
   tintG: f32,
   tintB: f32,
   bloomIntensity: f32,
-
-  pad0: f32,
-  pad1: f32,
-  pad2: f32,
 };
 
 /* --- Constants --- */

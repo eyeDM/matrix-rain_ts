@@ -1,6 +1,6 @@
 {
   "name": "matrix-rain_ts",
-  "version": "26.06.17a",
+  "version": "26.08.28a",
   "private": true,
   "scripts": {
     "dev": "vite",

@@ -5,7 +5,7 @@ import { WebGPUContext, initWebGPU, showWebGPUNotSupported } from '@backend/init
 import { ShaderLoader } from '@backend/shader-loader';
 import { GpuResources } from '@backend/resource-tracker';
 
-import { ColumnsState } from '@gpu/column-state';
+import { TRAIL_LENGTH_MIN, TRAIL_LENGTH_MAX, ColumnsState } from '@gpu/column-state';
 import { ViewportParamsWriter } from '@gpu/viewport-params-writer';
 import { FrameParamsWriter } from '@gpu/frame-params-writer';
 import { SimulationParamsWriter } from '@gpu/simulation-params-writer';
@@ -65,7 +65,8 @@ interface ScreenLayout {
 
     readonly instances: {
         count: number; // for render
-        maxTrail: number; // logical shader limit
+        minTrail: number; // logical shader limits
+        maxTrail: number;
     };
 }
 
@@ -95,8 +96,8 @@ function computeScreenLayout(
     const cols = Math.max(1, Math.floor(canvasSize.width / cellWidth));
     const rows = Math.max(1, Math.ceil(canvasSize.height / cellHeight));
 
-    const HARD_TRAIL_CAP = 128; // safe upper bound for vertex shader loops
-    const maxTrail = Math.min(rows, HARD_TRAIL_CAP);
+    const maxTrail = Math.min(rows, TRAIL_LENGTH_MAX);
+    const minTrail = Math.min(TRAIL_LENGTH_MIN, maxTrail);
 
     const requiredColumnStateBytes = cols * ColumnStateLayout.SIZE;
     if (requiredColumnStateBytes > limits.maxStorageBufferBindingSize) {
@@ -116,6 +117,7 @@ function computeScreenLayout(
 
         instances: {
             count: cols * maxTrail,
+            minTrail,
             maxTrail,
         }
     };
@@ -260,6 +262,7 @@ export async function bootstrap(): Promise<void> {
 
             cols: layout.grid.cols,
             rows: layout.grid.rows,
+            minTrail: layout.instances.minTrail,
             maxTrail: layout.instances.maxTrail,
         });
     };
@@ -328,6 +331,7 @@ export async function bootstrap(): Promise<void> {
             resources.surfaceScope,
             layout.grid.cols,
             layout.grid.rows,
+            layout.instances.minTrail,
             layout.instances.maxTrail,
         );
 

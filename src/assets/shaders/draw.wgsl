@@ -66,9 +66,6 @@
 struct ViewportParams {
   width: u32,
   height: u32,
-
-  pad0: u32,
-  pad1: u32,
 };
 
 /* {@see GlyphGridParamsLayout@backend/layouts} */
@@ -79,10 +76,9 @@ struct GlyphGridParams {
 
   cols: u32,
   rows: u32,
-  maxTrail: u32,
 
-  pad0: u32,
-  pad1: u32,
+  minTrail: u32,
+  maxTrail: u32,
 };
 
 /* {@see ColumnStateLayout@backend/layouts} */

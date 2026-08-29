@@ -10,6 +10,7 @@ export type GlyphGridParams = {
 
     cols: number;
     rows: number;
+    minTrail: number;
     maxTrail: number;
 }
 
@@ -60,6 +61,8 @@ export class GlyphGridParamsWriter {
         this.viewU32[GlyphGridParamsLayout.offsets.rows / 4] =
             params.rows;
 
+        this.viewU32[GlyphGridParamsLayout.offsets.minTrail / 4] =
+            params.minTrail;
         this.viewU32[GlyphGridParamsLayout.offsets.maxTrail / 4] =
             params.maxTrail;
     }

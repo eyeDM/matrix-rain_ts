@@ -2,14 +2,14 @@ import { ColumnStateLayout } from '@backend/layouts';
 import { rndU32Math, rndU32Crypto, mulberry32 } from '@backend/rng';
 import { GpuResourceScope } from '@backend/resource-tracker';
 
+export const TRAIL_LENGTH_MIN = 4;
+export const TRAIL_LENGTH_MAX = 24;
+
 const SPEED_MIN = 4.0;
-const SPEED_VARIANCE = 16.0;
+const SPEED_LIMIT = 20.0;
 
 const CELL_ENERGY_MIN = 1.25; // per cell
-const CELL_ENERGY_VARIANCE = 2.5;
-
-const TRAIL_LENGTH_MIN = 4;
-const TRAIL_LENGTH_VARIANCE = 20;
+const CELL_ENERGY_LIMIT = 3.75;
 
 /*type ColumnState = {
     seed: number;
@@ -32,8 +32,15 @@ export class ColumnsState {
         scope: GpuResourceScope,
         cols: number,
         rows: number,
+        minTrail: number,
         maxTrail: number,
     ) {
+        if (minTrail < 1 || minTrail > maxTrail) {
+            throw new RangeError(
+                `Invalid trail length range: ${minTrail}..${maxTrail}`,
+            );
+        }
+
         const size = cols * ColumnStateLayout.SIZE;
 
         this.buffer = scope.trackDestroyable(
@@ -53,20 +60,24 @@ export class ColumnsState {
 
         const rndU32 = cryptoAvailable ? rndU32Crypto : rndU32Math;
 
+        const trailLengthCount = maxTrail - minTrail + 1;
+
         for (let i = 0; i < cols; i++) {
             const seed = rndU32();
             const rng = mulberry32(seed);
 
-            let length
-                = TRAIL_LENGTH_MIN + Math.floor(TRAIL_LENGTH_VARIANCE * rng());
-            length = Math.min(length, maxTrail);
+            const length = minTrail
+                + Math.floor(trailLengthCount * rng());
 
             const head = (rows + length) * rng() - length;
 
-            const speed = SPEED_MIN + SPEED_VARIANCE * rng();
+            const speed = SPEED_MIN
+                + (SPEED_LIMIT - SPEED_MIN) * rng();
 
-            const energy
-                = (CELL_ENERGY_MIN + CELL_ENERGY_VARIANCE * rng()) * length;
+            const energyPerCell = CELL_ENERGY_MIN
+                + (CELL_ENERGY_LIMIT - CELL_ENERGY_MIN) * rng();
+
+            const energy = energyPerCell * length;
 
             const flicker = 1;
 

@@ -7,6 +7,7 @@
 //     atlasTexelSize: Normalized texel size in glyph atlas (vec2).
 //     glyphCount: Total number of glyphs in the atlas.
 //     cols, rows: Grid dimensions (cell count).
+//     minTrail: Minimum trail length in cells.
 //     maxTrail: Maximum trail length in cells.
 //
 //   @binding(1): frame (uniform, FrameParamsLayout)
@@ -16,7 +17,7 @@
 //   @binding(2): params (uniform, SimulationParamsLayout)
 //     flickerAmplitude (f32): Peak amplitude of per-column flicker modulation.
 //                              Range: [0.0, 1.0] (recommended).
-//                              Effect: multiplied into state.flicker = exp(amplitude).
+//                              Effect: state.flicker oscillates in [exp(-amplitude), exp(amplitude)].
 //     flickerFrequency (f32): Oscillation frequency in cycles per second.
 //                              Range: (0.0, ∞); typical [0.5, 5.0].
 //                              Effect: modulates phase via sin(time * TWO_PI * frequency + phase).
@@ -62,19 +63,15 @@ struct GlyphGridParams {
 
   cols: u32,
   rows: u32,
-  maxTrail: u32,
 
-  pad0: u32,
-  pad1: u32,
+  minTrail: u32,
+  maxTrail: u32,
 };
 
 /* {@see FrameParamsLayout@backend/layouts} */
 struct FrameParams {
   dt: f32,
   time: f32,
-
-  pad0: f32,
-  pad1: f32,
 };
 
 /* {@see SimulationParamsLayout@backend/layouts} */
@@ -105,14 +102,13 @@ struct RNG {
 
 /* --- Constants --- */
 
-const TRAIL_LENGTH_MIN: u32 = 4u;
-const TRAIL_LENGTH_VARIANCE: f32 = 20.0;
-
 const SPEED_MIN: f32 = 4.0;
-const SPEED_VARIANCE: f32 = 16.0;
+const SPEED_LIMIT: f32 = 20.0;
+const SPEED_RANGE: f32 = SPEED_LIMIT - SPEED_MIN;
 
 const CELL_ENERGY_MIN: f32 = 1.25;
-const CELL_ENERGY_VARIANCE: f32 = 2.5;
+const CELL_ENERGY_LIMIT: f32 = 3.75;
+const CELL_ENERGY_RANGE: f32 = CELL_ENERGY_LIMIT - CELL_ENERGY_MIN;
 
 const HALF_LIFE_MIN: f32 = 1.0;
 const HALF_LIFE_BASE: f32 = 8.0;
@@ -126,7 +122,7 @@ const PHASE_MASK: u32 = 0xffffu; // use lower 16 bits of seed
 const PHASE_SCALE: f32 = 1.0 / 65536.0; // reciprocal of (PHASE_MASK + 1)
 const TWO_PI: f32 = 6.283185307179586;
 
-// PCG hash / Murmur-style mix (stateless, deterministic)
+// Stateless 32-bit integer hash
 fn hash_u32(x: u32) -> u32 {
   var v = x;
   v ^= v >> 16u;
@@ -151,7 +147,8 @@ fn rng_next(rng: ptr<function, RNG>) -> u32 {
 }
 
 fn rng_next_f32(rng: ptr<function, RNG>) -> f32 {
-  return f32(rng_next(rng)) * (1.0 / 4294967296.0);
+  // Keep 24 random bits, which are represented exactly by f32.
+  return f32(rng_next(rng) >> 8u) * (1.0 / 16777216.0);
 }
 
 /* --- Simulation --- */
@@ -166,8 +163,8 @@ fn change_energy(state: ptr<function, ColumnState>) {
 
   let lambda: f32 = LN2 / halfLife;
   let energyNew: f32 = (*state).energy * exp(-lambda * frame.dt);
+  let energyMax: f32 = CELL_ENERGY_LIMIT * f32((*state).length);
 
-  let energyMax: f32 = CELL_ENERGY_MIN * f32((*state).length) * CELL_ENERGY_VARIANCE;
   (*state).energy = clamp(energyNew, 0.0, energyMax);
 }
 
@@ -178,17 +175,18 @@ fn respawn_column(
   let r0 = rng_next_f32(rng);
   let r1 = rng_next_f32(rng);
   let r2 = rng_next_f32(rng);
-  //let r3 = rng_next_f32(rng);
 
   (*state).head = 0.0;
 
-  (*state).speed = SPEED_MIN + SPEED_VARIANCE * r0;
-  (*state).length = min(
-    TRAIL_LENGTH_MIN + u32(TRAIL_LENGTH_VARIANCE * r1),
-    grid.maxTrail
-  );
+  (*state).speed = SPEED_MIN + SPEED_RANGE * r0;
 
-  (*state).energy = (CELL_ENERGY_MIN + CELL_ENERGY_VARIANCE * r2) * f32((*state).length);
+  let trailLengthCount = grid.maxTrail - grid.minTrail + 1u;
+
+  (*state).length = grid.minTrail + u32(f32(trailLengthCount) * r1);
+
+  let energyPerCell = CELL_ENERGY_MIN + CELL_ENERGY_RANGE * r2;
+
+  (*state).energy = energyPerCell * f32((*state).length);
 
   (*state).seed = rng_next(rng);
 }

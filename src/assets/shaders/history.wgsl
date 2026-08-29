@@ -42,18 +42,12 @@
 struct ViewportParams {
   width: u32,
   height: u32,
-
-  pad0: u32,
-  pad1: u32,
 };
 
 /* {@see FrameParamsLayout@backend/layouts} */
 struct FrameParams {
   dt: f32,
   time: f32,
-
-  pad0: f32,
-  pad1: f32,
 };
 
 /* {@see HistoryParamsLayout@backend/layouts} */
@@ -61,8 +55,6 @@ struct HistoryParams {
   retention: f32,
 
   pad0: f32,
-  pad1: f32,
-  pad2: f32,
 };
 
 const REFERENCE_DT: f32 = 1.0 / 60.0;
